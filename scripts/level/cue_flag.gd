@@ -1,9 +1,9 @@
 class_name CueFlag
 extends Node2D
 ## 起跳旗：插在段落起點的懸崖邊。
-## 平常只當節拍器：每 8 拍響一次鈴（前兩拍木魚倒數），挑任何一次鈴聲出發都行。
+## 平常只當節拍器：每 8 拍響一次鈴（前三拍木魚倒數，旗子上跳出 3、2、1，響鈴時 GO!），挑任何一次鈴聲出發都行。
 ## 站在旗子旁按「上」才看示範：下一個 8 拍循環開頭，旗子把這段連招彈一遍，
-## 鏡頭跟著半透明的示範角色把整段跑完，再飛回玩家；木魚倒數「二、一」，
+## 鏡頭跟著半透明的示範角色把整段跑完，再飛回玩家；一樣倒數 3、2、1，
 ## 示範開始後第 GO_BEATS 拍響鈴換玩家跑（機關都是 8 拍循環，所以響鈴時剛好對上）。
 ## demo 一格 = 半拍，從示範第 0 拍開始寫：T 點、L 長、o 音符點、O 音符長、D 衝、R 環衝、- 休止開始（要站著不動）、. 空。
 
@@ -32,6 +32,8 @@ var _last_slot: int = -9999
 var _demo_step: int = 0
 ## 「↑ 示範」提示的淡入程度
 var _prompt: float = 0.0
+## 玩家在起跑區（聽得到節拍器）時才顯示倒數
+var _counting: float = 0.0
 
 
 func setup(feet: Vector2, demo_pattern: String) -> void:
@@ -105,6 +107,7 @@ func _physics_process(delta: float) -> void:
 	var b := Conductor.song_beat
 	var near := state == State.FREE and _at_flag(p)
 	_prompt = move_toward(_prompt, 1.0 if near else 0.0, delta * 5.0)
+	_counting = move_toward(_counting, 1.0 if state == State.WATCH or _in_start_zone(p) else 0.0, delta * 4.0)
 	match state:
 		State.FREE:
 			if near and Input.is_action_just_pressed("up"):
@@ -137,8 +140,14 @@ func _tick_sounds(b: float) -> void:
 	if s == go:
 		GameState.play_cue("cue", 0.0, -6.0)
 		GameState.reset_notes()
-	elif s == go - 4 or s == go - 2:
+	elif s == go - 6 or s == go - 4 or s == go - 2:
 		GameState.play_cue("block", 0.0, -8.0)
+
+
+## 起跑區：段落左端到旗子右邊一點、還能操作的時候（節拍器只在這裡響）
+func _in_start_zone(p: Player) -> bool:
+	var x := p.global_position.x
+	return not p.control_locked and x >= section_from and x <= position.x + 60.0
 
 
 func _tick_metronome(b: float, p: Player) -> void:
@@ -146,14 +155,13 @@ func _tick_metronome(b: float, p: Player) -> void:
 	if s == _last_slot:
 		return
 	_last_slot = s
-	var x := p.global_position.x
-	if p.control_locked or x < section_from or x > position.x + 60.0:
+	if not _in_start_zone(p):
 		return
 	var slot := posmod(s, roundi(CYCLE_BEATS * 2.0))
 	if slot == 0:
 		GameState.play_cue("cue", 0.0, -6.0)
 		GameState.reset_notes()
-	elif slot == 12 or slot == 14:
+	elif slot == 10 or slot == 12 or slot == 14:
 		GameState.play_cue("block", 0.0, -8.0)
 
 
@@ -197,9 +205,7 @@ func _draw() -> void:
 	var flash := clampf(1.0 - since * 3.0, 0.0, 1.0)
 	var col := COLOR.lerp(Color.WHITE, flash)
 	draw_colored_polygon(PackedVector2Array([Vector2(1, -56), Vector2(30, -47), Vector2(1, -38)]), Color(col, fill))
-	var pips := ceili(until) if until <= 2.0 else 0
-	for i in pips:
-		draw_circle(Vector2(-10, -50 + i * 10), 3.0, COLOR)
+	_draw_countdown(until, since)
 	if flash > 0.0:
 		draw_arc(Vector2(0, -47), 20.0 + (1.0 - flash) * 24.0, 0.0, TAU, 32, Color(COLOR, flash), 3.0, true)
 	if _prompt > 0.0:
@@ -208,6 +214,36 @@ func _draw() -> void:
 		var t := b - start_beat
 		if t >= 0.0 and t <= ghost_end() + 0.3:
 			_draw_ghost(t)
+
+
+## 倒數：響鈴前三拍跳出 3、2、1，響鈴那拍 GO!；下面四顆燈一拍亮一顆
+func _draw_countdown(until: float, since: float) -> void:
+	if _counting <= 0.0:
+		return
+	var label := ""
+	var age := 0.0
+	if until > 0.0 and until <= 3.0:
+		label = str(ceili(until))
+		age = ceilf(until) - until
+	elif since < 0.75:
+		label = "GO!"
+		age = since
+	if label == "":
+		return
+	var go := label == "GO!"
+	var a := _counting * (clampf((0.75 - age) * 4.0, 0.0, 1.0) if go else 1.0)
+	var lit := 4 if go else 4 - ceili(until)
+	for i in 4:
+		var on := i < lit
+		var r := (5.0 if i == 3 else 4.0) + (1.5 if on and i == lit - 1 else 0.0)
+		draw_circle(Vector2(-24.0 + i * 16.0, -116.0), r, Color(COLOR, a) if on else Color(1, 1, 1, 0.25 * a))
+	var font_size := 50 if go else 60
+	var pop := 1.0 + 0.5 * maxf(0.0, 1.0 - age * 5.0)
+	var w := UiKit.width_of(label, font_size, UiKit.title_font())
+	var fill := COLOR if go or label == "1" else Color.WHITE
+	draw_set_transform(Vector2(0, -158), 0.0, Vector2(pop, pop))
+	UiKit.bold_text(self, Vector2(-w * 0.5, font_size * 0.36), -1, label, font_size, Color(fill, a), COLOR)
+	draw_set_transform(Vector2.ZERO)
 
 
 func _draw_prompt() -> void:

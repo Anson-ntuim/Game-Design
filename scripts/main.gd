@@ -11,6 +11,8 @@ var level_size: Vector2 = Vector2.ZERO
 var spawn_point: Vector2 = Vector2.ZERO
 
 var _hints: Array[Dictionary] = []
+## 和 _hints 一一對應的標準節奏（見 level_data.gd）
+var _plans: Array = []
 var _patterns: Dictionary = {}
 var _level_name: String = ""
 var _stage: bool = false
@@ -168,7 +170,18 @@ func _on_player_died() -> void:
 	if _wave:
 		_wave.reset()
 	hud.fade(0.9)
-	hud.show_message("回到長椅……", 1.2)
+	var section := 0
+	for i in _hints.size():
+		if player.death_pos.x >= float(_hints[i]["from"]):
+			section = i
+	var tip := {}
+	if GameState.level_index == 0:
+		tip = DeathCoach.advise(player, _plans[section] if section < _plans.size() else [])
+	if tip.is_empty():
+		hud.show_message("回到長椅……", 1.2)
+	else:
+		hud.show_message(String(tip["title"]), 1.4)
+		hud.show_tip(String(tip["detail"]))
 	var tw := create_tween()
 	tw.tween_interval(0.4)
 	tw.tween_callback(func() -> void:
@@ -203,6 +216,7 @@ func _build_level() -> void:
 	var width: int = data["width"]
 	var height: int = data["height"]
 	_hints = data["hints"]
+	_plans = data["plans"]
 	_patterns = data["patterns"]
 	_level_name = data["name"]
 	_stage = data["stage"]

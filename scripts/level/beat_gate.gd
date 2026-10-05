@@ -44,11 +44,27 @@ func reject() -> void:
 	_reject_flash = 1.0
 
 
-## 在 dash_beat 按下的衝刺能不能穿過這道光牆
+## 在 dash_beat 按下的衝刺能不能穿過這道光牆。
+## 判定窗不超過兩次打開間隔的 40%：每拍都開的光柱在簡單難度下才不會一直開著、晚半拍衝也能過
 func accepts(dash_beat: float) -> bool:
 	var spb := Conductor.sec_per_beat
-	return BeatPattern.since_hit(notes, dash_beat) * spb <= GameState.judge_late() \
-		or BeatPattern.until_hit(notes, dash_beat) * spb <= GameState.judge_early()
+	var cap := _min_gap() * 0.4 * spb
+	return BeatPattern.since_hit(notes, dash_beat) * spb <= minf(GameState.judge_late(), cap) \
+		or BeatPattern.until_hit(notes, dash_beat) * spb <= minf(GameState.judge_early(), cap)
+
+
+## 相鄰兩次打開相隔幾拍（循環）
+func _min_gap() -> float:
+	var hits: Array[int] = []
+	for i in notes.length():
+		if notes[i] == "x":
+			hits.append(i)
+	if hits.is_empty():
+		return INF
+	var gap := notes.length() - hits[-1] + hits[0]
+	for k in range(1, hits.size()):
+		gap = mini(gap, hits[k] - hits[k - 1])
+	return gap * 0.5
 
 
 ## 判定窗比拍子早開，提示音和閃光要等到真正的拍點（半拍格）才發

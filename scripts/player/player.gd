@@ -43,6 +43,8 @@ const APEX_SPEED := 150.0
 @export var jump_min_time: float = 0.08
 ## 最長可維持上升的時間（按住到底的高度）
 @export var jump_max_time: float = 0.2
+## 按住超過這個時間就算長按：之後放開也會跳到最高（tools/sim_player.py 的 JUMP_COMMIT 要一起改）
+@export var jump_commit_time: float = 0.22
 @export var gravity: float = 2400.0
 @export var max_fall_speed: float = 760.0
 @export var coyote_time: float = 0.08
@@ -77,6 +79,19 @@ var watch_x: float = 0.0
 var checkpoint_position: Vector2
 var kill_y: float = 100000.0
 
+## 倒下時給提示用（death_coach.gd 讀）
+## 最近一次起跳：beat、x、kind（ground／orb／wall／pad）、long（有沒有變成大跳）、held（按了幾秒）
+var last_jump: Dictionary = {}
+## 最近一次按錯拍：what（orb／ring／gate）、beat、off（離最近的 x 拍幾拍，負的是早）
+var last_miss: Dictionary = {}
+## 最近幾次按下衝刺的拍子、在空中按跳卻沒碰著亮起音符的拍子
+var recent_dashes: Array[float] = []
+var recent_air_presses: Array[float] = []
+## 碰到的機關（掉坑是 null）
+var death_source: Node = null
+var death_beat: float = 0.0
+var death_pos: Vector2 = Vector2.ZERO
+
 var _coyote: float = 0.0
 var _jump_buffer: float = 0.0
 var _jumping: bool = false
@@ -86,7 +101,6 @@ var _jump_max_current: float = 0.0
 var _jump_cancelable: bool = false
 ## 這次跳躍彈出的音高；按住超過輕點的時間就接上延音，讓「長」聽得出來（INF = 不接）
 var _hold_note: float = INF
-var _hold_sounded: bool = false
 var _air_dash: bool = true
 var _dash_timer: float = 0.0
 var _dash_cooldown_timer: float = 0.0
@@ -178,6 +192,8 @@ func _physics_process(delta: float) -> void:
 			var gate := get_slide_collision(i).get_collider() as Node
 			if gate and gate.has_method("reject"):
 				gate.call("reject")
+				if gate is BeatGate:
+					last_miss = {"what": "gate", "beat": _dash_beat, "off": BeatPattern.offset((gate as BeatGate).notes, _dash_beat)}
 		_after_move(delta)
 		return
 
@@ -205,15 +221,23 @@ func _physics_process(delta: float) -> void:
 				_orb_jump(orb)
 			elif Input.is_action_just_pressed("jump"):
 				_orb_miss_feedback()
-
-	# 垂直：按住期間維持固定上升速度，放開就把上升速度歸零
+				recent_air_presses.append(Conductor.song_beat)
+				if recent_air_presses.size() > 8:
+					recent_air_presses.pop_front()
+	# 垂直：按住期間維持固定上升速度，放開就把上升速度歸零；按滿 jump_commit_time 就一定跳到最高
 	var jump_held := Input.is_action_pressed("jump")
-	if _jumping:
+	# 等速上升（jump_max_time）結束後還在往上的期間也要計時，門檻可以比 jump_max_time 長
+	if _jumping or _jump_cancelable:
 		_jump_elapsed += delta
+		if jump_held and _jump_cancelable:
+			last_jump["held"] = _jump_elapsed
+			if _jump_elapsed >= jump_commit_time:
+				_jump_cancelable = false
+				last_jump["long"] = true
+				if _hold_note != INF:
+					GameState.play_sfx("hold", _hold_note, -9.0)
+	if _jumping:
 		var holding := jump_held or not _jump_cancelable
-		if holding and not _hold_sounded and _jump_elapsed >= 0.1 and _hold_note != INF:
-			_hold_sounded = true
-			GameState.play_sfx("hold", _hold_note, -9.0)
 		if _jump_elapsed < jump_min_time or (holding and _jump_elapsed < _jump_max_current):
 			velocity.y = -_jump_speed_current
 		else:
@@ -342,7 +366,7 @@ func _floor_pad() -> Node:
 func _ground_jump() -> void:
 	var note := GameState.next_note()
 	GameState.play_sfx("pluck", note)
-	_begin_jump(jump_speed, jump_max_time, true)
+	_begin_jump(jump_speed, jump_max_time, true, "ground")
 	_hold_note = note
 
 
@@ -352,7 +376,7 @@ func launch_from_pad(pad: Node) -> bool:
 		return false
 	GameState.play_sfx("pluck", GameState.next_note() - 12.0)
 	GameState.play_sfx("cue", 0.0, -8.0)
-	_begin_jump(beat_pad_speed, beat_pad_time, false)
+	_begin_jump(beat_pad_speed, beat_pad_time, false, "pad")
 	return true
 
 
@@ -372,7 +396,7 @@ func _orb_jump(orb: RhythmOrb) -> void:
 	_wing_timer = 0.3
 	_drum_timer = DRUM_POSE_TIME
 	_air_dash = true
-	_begin_jump(orb_jump_speed, orb_jump_max_time, true)
+	_begin_jump(orb_jump_speed, orb_jump_max_time, true, "orb")
 	_hold_note = note
 
 
@@ -382,6 +406,8 @@ func _orb_miss_feedback() -> void:
 		if area is RhythmOrb:
 			GameState.play_sfx("miss", 0.0, -6.0)
 			_fail_puff = 0.35
+			var b := Conductor.song_beat
+			last_miss = {"what": "orb", "beat": b, "off": BeatPattern.offset((area as RhythmOrb).notes, b)}
 			return
 
 
@@ -403,13 +429,14 @@ func _check_rings() -> void:
 			_ring_missed = true
 			GameState.play_sfx("miss", 0.0, -6.0)
 			_fail_puff = 0.35
+			last_miss = {"what": "ring", "beat": _dash_beat, "off": BeatPattern.offset(ring.notes, _dash_beat)}
 
 
-func _begin_jump(speed: float, max_time: float, cancelable: bool) -> void:
+func _begin_jump(speed: float, max_time: float, cancelable: bool, kind: String) -> void:
 	_jumping = true
 	_jump_elapsed = 0.0
 	_hold_note = INF
-	_hold_sounded = false
+	last_jump = {"beat": Conductor.song_beat, "x": global_position.x, "kind": kind, "long": not cancelable, "held": 0.0}
 	_jump_speed_current = speed
 	_jump_max_current = max_time
 	_jump_cancelable = cancelable
@@ -425,7 +452,7 @@ func _wall_jump() -> void:
 	_wall_push_dir = -_wall_dir
 	_wall_push_timer = wall_jump_push_time
 	facing = _wall_push_dir
-	_begin_jump(jump_speed, jump_max_time * 0.9, true)
+	_begin_jump(jump_speed, jump_max_time * 0.9, true, "wall")
 	_hold_note = note
 	velocity.x = _wall_push_dir * run_speed
 
@@ -446,6 +473,9 @@ func _try_dash(input_x: int, on_floor: bool) -> void:
 	_dash_timer = dash_time
 	_dash_cooldown_timer = dash_cooldown
 	_dash_beat = Conductor.song_beat
+	recent_dashes.append(_dash_beat)
+	if recent_dashes.size() > 8:
+		recent_dashes.pop_front()
 	_ring_hit = null
 	_ring_missed = false
 	collision_mask = LAYER_WORLD
@@ -465,7 +495,7 @@ func _check_hurtbox() -> void:
 		elif area.is_in_group("goal"):
 			area.call("reach", self)
 		elif _invincible_timer <= 0.0 and area.has_method("is_harmful") and area.call("is_harmful"):
-			kill()
+			kill(area)
 			return
 
 
@@ -478,10 +508,13 @@ func _on_landed() -> void:
 	_start_timer = 0.0
 
 
-## 碰到尖刺、活塞、雷射、掉坑或被音浪吞沒：直接倒下，由主場景送回長椅
-func kill() -> void:
+## 碰到尖刺、活塞、雷射、掉坑或被音浪吞沒：直接倒下，由主場景送回長椅（source = 碰到的機關，掉坑是 null）
+func kill(source: Node = null) -> void:
 	if control_locked:
 		return
+	death_source = source
+	death_beat = Conductor.song_beat
+	death_pos = global_position
 	damaged.emit()
 	control_locked = true
 	_reset_motion()

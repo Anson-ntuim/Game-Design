@@ -1,6 +1,6 @@
 class_name Hud
 extends CanvasLayer
-## 介面：關卡進度、死亡次數與律動條、節拍指示條、區塊提示、示範時的上下黑邊、盲拍的黑幕、淡出與結算畫面。
+## 介面：關卡進度、死亡次數與律動條、節拍指示條、區塊提示、倒下的提示卡、示範時的上下黑邊、盲拍的黑幕、淡出與結算畫面。
 
 const DARK_SHADER := "
 shader_type canvas_item;
@@ -13,8 +13,10 @@ void fragment() {
 	COLOR = vec4(0.0, 0.0, 0.02, amount * 0.97 * smoothstep(radius, radius * 2.2, d));
 }
 "
-const CONTROLS_A := [[["←", "→"], "移動"], [["Z"], "跳"], [["C"], "衝刺"]]
+const CONTROLS_A := [[["←", "→"], "移動"], [["空白鍵"], "跳"], [["C"], "衝刺"]]
 const CONTROLS_B := [[["↑"], "看示範"], [["R"], "重來"], [["Esc"], "選關"]]
+const TIP_TIME := 6.0
+const TIP_COLOR := Color(1.0, 0.45, 0.5)
 
 var player: Player
 
@@ -34,6 +36,9 @@ var _dark: float = 0.0
 var _dark_target: float = 0.0
 var _deaths_shown: int = 0
 var _death_bump: float = 0.0
+## 倒下後的提示卡：一句指令（太短、太長、太早、太晚才有）
+var _tip: String = ""
+var _tip_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -59,6 +64,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_message_timer = maxf(0.0, _message_timer - delta)
+	_tip_timer = maxf(0.0, _tip_timer - delta)
 	_hint_alpha = move_toward(_hint_alpha, 1.0 if _hint != "" else 0.0, delta * 3.0)
 	_bars = move_toward(_bars, 1.0 if _watching else 0.0, delta * 3.0)
 	_dark = move_toward(_dark, _dark_target, delta * 20.0)
@@ -100,6 +106,11 @@ func show_message(text: String, duration: float = 2.0) -> void:
 	_message_duration = duration
 
 
+func show_tip(text: String) -> void:
+	_tip = text
+	_tip_timer = TIP_TIME
+
+
 ## data：time、deaths、judge、new_record、best_time、best_deaths、has_next
 func show_results(data: Dictionary) -> void:
 	_results = data
@@ -130,6 +141,8 @@ func _on_view_draw() -> void:
 		_draw_message(size, edge)
 	if _hint != "" and _hint_alpha > 0.0:
 		_draw_hint(size, edge)
+	if _tip_timer > 0.0 and not done and not _watching:
+		_draw_tip(size)
 	if done:
 		_draw_results(size, edge)
 
@@ -200,7 +213,7 @@ func _draw_bars(size: Vector2, edge: Color) -> void:
 	var a := clampf(_bars * 2.0 - 1.0, 0.0, 1.0)
 	if a <= 0.0:
 		return
-	var label := "看一遍節奏，鈴響後換你跑"
+	var label := "看一遍節奏，旗子倒數 3、2、1 後換你跑"
 	var pw := UiKit.width_of("示範中", 14) + 25.0
 	var total := pw + 12.0 + UiKit.width_of(label, 17)
 	var x := size.x * 0.5 - total * 0.5
@@ -267,6 +280,22 @@ func _draw_hint(size: Vector2, edge: Color) -> void:
 		var title := i == 0 and lines.size() > 1
 		var col := Color(UiKit.GOLD, a) if title else Color(1, 1, 1, 0.92 * a)
 		UiKit.text(_view, Vector2(0, baselines[i]), size.x, lines[i], sizes[i], col, HORIZONTAL_ALIGNMENT_CENTER)
+
+
+## 下方中央、節拍條上面：倒下的提示卡，從下面滑上來，最後半秒淡出
+func _draw_tip(size: Vector2) -> void:
+	var t := TIP_TIME - _tip_timer
+	var a := minf(1.0, _tip_timer * 2.0) * minf(1.0, t * 4.0)
+	var rise := 16.0 * (1.0 - ease(minf(1.0, t * 4.0), -2.0))
+	var label := "提示"
+	var pw := UiKit.width_of(label, 13) + 24.0
+	var box_w := pw + 12.0 + UiKit.width_of(_tip, 17) + 44.0
+	var box := Rect2(size.x * 0.5 - box_w * 0.5, size.y - 150.0 + rise, box_w, 50.0)
+	UiKit.panel(_view, box, TIP_COLOR, 0.35, a, 10.0)
+	var x := box.position.x + 22.0
+	var y := box.position.y + 32.0
+	UiKit.pill(_view, Vector2(x, y - 18.0), label, Color(TIP_COLOR, a), UiKit.INK, 13)
+	UiKit.text(_view, Vector2(x + pw + 12.0, y), -1, _tip, 17, Color(1, 1, 1, a))
 
 
 ## 下方中央：拍點從兩側往中間收，收到中央的鼓就是拍點

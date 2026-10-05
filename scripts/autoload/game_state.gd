@@ -17,9 +17,10 @@ const SKINS: Array[Dictionary] = [
 	},
 ]
 ## 判定難度：音符、衝刺環、光柱的判定窗，以 60 fps 的幀數計（x 拍前 early 幀到後 late 幀內按下都算準）。
-## 兩者都要短於最快 BPM（140）的半拍 ≈ 12.8 幀，否則反拍的輸入也會被當成準
+## 簡單比半拍（120 BPM 時 15 幀）還寬，提早或晚半拍也算準；音符和衝刺環最多往前找兩個半拍格，所以不能超過 30 幀。
+## 每拍都開的光柱另外限制在打開間隔的 40%（beat_gate.gd），不然會一直開著
 const DIFFICULTIES: Array[Dictionary] = [
-	{"name": "簡單", "early": 10, "late": 11},
+	{"name": "簡單", "early": 20, "late": 20},
 	{"name": "普通", "early": 7, "late": 8},
 	{"name": "困難", "early": 4, "late": 5},
 ]
@@ -241,7 +242,7 @@ func _setup_input() -> void:
 	_add_action("move_right", [KEY_RIGHT, KEY_D], [JOY_BUTTON_DPAD_RIGHT], [[JOY_AXIS_LEFT_X, 1.0]])
 	_add_action("up", [KEY_UP, KEY_W], [JOY_BUTTON_DPAD_UP], [[JOY_AXIS_LEFT_Y, -1.0]])
 	_add_action("down", [KEY_DOWN, KEY_S], [JOY_BUTTON_DPAD_DOWN], [[JOY_AXIS_LEFT_Y, 1.0]])
-	_add_action("jump", [KEY_Z, KEY_SPACE, KEY_K], [JOY_BUTTON_A])
+	_add_action("jump", [KEY_SPACE], [JOY_BUTTON_A])
 	_add_action("dash", [KEY_C, KEY_SHIFT, KEY_L], [JOY_BUTTON_B], [[JOY_AXIS_TRIGGER_RIGHT, 1.0]])
 	_add_action("restart", [KEY_R], [JOY_BUTTON_BACK])
 	_add_action("confirm", [KEY_ENTER, KEY_KP_ENTER], [JOY_BUTTON_START])

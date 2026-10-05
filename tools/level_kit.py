@@ -91,6 +91,12 @@ def render_chunk(chunk):
             for (x, y, n, t) in chunk[key]:
                 out.append(f'\t\t\t[{x}, {y}, "{n}", {t}],')
             out.append("\t\t],")
+    if chunk.get("plan"):
+        p = chunk["plan"]
+        out.append('\t\t"plan": [')
+        for i in range(0, len(p), 8):
+            out.append("\t\t\t" + ", ".join(f'[{b}, "{c}", {x}]' for (b, c, x) in p[i:i + 8]) + ",")
+        out.append("\t\t],")
     if chunk.get("ghost"):
         g = chunk["ghost"]
         out.append('\t\t"ghost": [')

@@ -95,7 +95,7 @@ func _physics_process(delta: float) -> void:
 		if main and main.has_method("shake"):
 			main.shake(8.0)
 		if strict:
-			p.kill()
+			p.kill(self)
 
 
 func _process(_delta: float) -> void:

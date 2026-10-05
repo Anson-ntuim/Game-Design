@@ -44,6 +44,13 @@ static func until_hit(notes: String, beat: float) -> float:
 	return best
 
 
+## 離最近的 x 格開頭幾拍：負的是還沒到（按早了）、正的是已經過了（按晚了）
+static func offset(notes: String, beat: float) -> float:
+	var since := since_hit(notes, beat)
+	var until := until_hit(notes, beat)
+	return since if since <= until else -until
+
+
 ## 距離下一個「由空轉為 x」的時間點還有幾拍（沒有時回傳 INF）
 static func until_start(notes: String, beat: float) -> float:
 	var c := cycle(notes)

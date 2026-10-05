@@ -17,6 +17,7 @@ RUN = 310.0
 JUMP_SPEED = 560.0
 JUMP_MIN = 0.08
 JUMP_MAX = 0.2
+JUMP_COMMIT = 0.22
 GRAVITY = 2400.0
 MAX_FALL = 760.0
 COYOTE = 0.08
@@ -40,7 +41,7 @@ class Orb:
 
     def active_slot(self, beat):
         s0 = int(beat * 2 // 1)
-        for s in (s0, s0 + 1, s0 - 1):
+        for s in (s0, s0 + 1, s0 - 1, s0 + 2):
             if s in self.slots:
                 dt = (beat - s * 0.5) * SPB
                 if -ORB_EARLY <= dt <= ORB_LATE:
@@ -190,8 +191,12 @@ class Sim:
                     self.air_dash = True
                     self.begin_jump(ORB_SPEED, ORB_MAX)
                     self.events.append(("orb", round(self.beat, 3), round(self.x), round(self.y)))
-        if self.jumping:
+        # 等速上升（jmax）結束後還在往上的期間也要計時，門檻可以比 jmax 長
+        if self.jumping or self.cancelable:
             self.elapsed += DT
+            if jump_held and self.cancelable and self.elapsed >= JUMP_COMMIT:
+                self.cancelable = False
+        if self.jumping:
             holding = jump_held or not self.cancelable
             if self.elapsed < JUMP_MIN or (holding and self.elapsed < self.jmax):
                 self.vy = -self.jspeed

@@ -23,7 +23,7 @@ from gen_level3 import (
     feet_cross, x_at, solid_rect, beats_notes, notes_for, first_hit,
     MelodyPlatform, BeatPlatform, PatternSpike, FixedSpike,
 )
-from level_kit import flag_spec, ghost_for, ghost_points
+from level_kit import flag_spec, ghost_for, ghost_points, demo_char
 
 GROUND_Y = 617.5
 ## 和 rest_zone.gd 相同：休止開始後多久開始判定
@@ -424,7 +424,8 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
 
     # 旗子的示範只有 8 拍，超過 8 拍的長段落只示範開頭一小節
     ghost = ghost_for(sim, script) if last < 8 else ghost_points(sim, 8.0)
-    out = {"hint": hint, "ghost": ghost, "rows": ch.lines()}
+    plan = [[b, demo_char(k, h), round(x_at(sim, b))] for (b, k, h) in script]
+    out = {"hint": hint, "ghost": ghost, "plan": plan, "rows": ch.lines()}
     if bpm:
         out["bpm"] = bpm
     if course.orbs:

@@ -240,8 +240,12 @@ class Gate:
         self.slots = slots_of(notes)
 
     def accepts(self, dash_beat):
-        return (since_hit(self.slots, dash_beat) * SPB <= self.LATE
-                or until_hit(self.slots, dash_beat) * SPB <= self.EARLY)
+        # 判定窗不超過兩次打開間隔的 40%（和 beat_gate.gd 相同）
+        s = sorted(self.slots)
+        gap = min([16 - s[-1] + s[0]] + [b - a for a, b in zip(s, s[1:])]) * 0.5
+        cap = gap * 0.4 * SPB
+        return (since_hit(self.slots, dash_beat) * SPB <= min(self.LATE, cap)
+                or until_hit(self.slots, dash_beat) * SPB <= min(self.EARLY, cap))
 
 
 class RingSim(Sim):

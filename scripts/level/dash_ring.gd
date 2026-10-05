@@ -38,7 +38,7 @@ func _slot_at(beat: float) -> int:
 	var spb := Conductor.sec_per_beat
 	var n := notes.length()
 	var s0 := floori(beat * 2.0)
-	for s: int in [s0, s0 + 1, s0 - 1]:
+	for s: int in [s0, s0 + 1, s0 - 1, s0 + 2]:
 		if notes[posmod(s, n)] != "x":
 			continue
 		if GameState.in_window((beat - s * 0.5) * spb):

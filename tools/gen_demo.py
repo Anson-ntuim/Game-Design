@@ -32,7 +32,7 @@ SECOND_HALF = "......xxxxxxxxxx"
 EVERY_BEAT = "x.x.x.x.x.x.x.x."
 BENCH = "長椅\n坐下就存檔：倒下後會回到最後坐過的長椅"
 ## 和 GameState.DIFFICULTIES 相同：x 拍前／後幾幀（60 fps）內按下算準
-JUDGES = {"easy": (10, 11), "normal": (7, 8), "hard": (4, 5)}
+JUDGES = {"easy": (20, 20), "normal": (7, 8), "hard": (4, 5)}
 
 
 def set_judge(name):
@@ -105,7 +105,7 @@ def goal(hint):
 
 def demo1(pat):
     return [
-        intro("移動與跳躍\n方向鍵／WASD 移動，Z／空白跳，按越久跳越高。每段開頭站在旗子旁按 ↑ 看示範"),
+        intro("移動與跳躍\n方向鍵／WASD 移動，空白鍵跳：輕點小跳，按住一下聽到延音就是大跳。每段開頭站在旗子旁按 ↑ 看示範"),
         section(pat, "黃色音符", [J(0), O(1)],
                 "黃色音符：遊戲核心\n音符只在拍子上亮起。先起跳，外圈縮到音符上時，在空中碰著它再按一次跳"),
         bench(BENCH),
@@ -113,7 +113,7 @@ def demo1(pat):
                 "連續音符：長按\n每拍碰一顆音符，每顆都按住跳鍵，就會一路往上爬過大坑"),
         bench(BENCH),
         section(pat, "輕點", [J(0), O(1, T), O(1.5, T), O(2, T), O(2.5, T)],
-                "輕點：跳得比較低\n音符排成一排時每半拍輕點 Z 一下，平平地飛過去。頭上有雷射，按住就會撞上"),
+                "輕點：跳得比較低\n音符排成一排時每半拍輕點空白鍵一下，平平地飛過去。頭上有雷射，按住就會撞上"),
         bench(BENCH),
         gate_hall("藍色光柱\n兩側光條收到柱子上、出現 >> 的那一拍按 C／Shift 衝刺穿過去，按早按晚都會被擋住"),
         bench(BENCH),
@@ -121,96 +121,75 @@ def demo1(pat):
                 "跳起來衝刺\n坑太寬跳不過：起跳後下一拍按 C／Shift 在空中衝刺。空中只能衝一次，落地才補回"),
         bench(BENCH),
         section(pat, "衝刺環", [J(0), R(1), D(2)],
-                "衝刺環\n在亮起的拍子衝刺穿過環，就能在空中再衝刺一次：跳、衝過環、再衝"),
+                "衝刺環：跳 → 衝過環 → 再衝\n起跳後，外圈縮到環上的那拍按 C／Shift 衝進環裡；"
+                "穿過亮著的環會補回空中衝刺，下一拍再按一次衝過坑"),
         goal("終點\n走到終點的旗子就過關！"),
     ]
 
 
 def demo2(pat):
     return [
-        intro("組合\n把第一關學到的音符、輕點、衝刺和衝刺環串起來。不熟就在旗子旁按 ↑ 看示範"),
-        section(pat, "音符補衝刺", [J(0), D(1), O(2), D(3)],
-                "音符補回衝刺\n跳、衝，碰到音符再跳一次就補回空中衝刺，接著再衝一次"),
-        bench(BENCH),
-        section(pat, "長短交替", [J(0), O(1), O(2, T), O(2.5, T), O(3, T)],
-                "長短交替\n第一顆音符長按跳上高處，接著三顆排成一排的每半拍輕點"),
-        bench(BENCH),
-        section(pat, "光牆衝刺", [J(0), O(1, T), O(1.5, T), D(2)],
-                "音符接光牆\n兩顆音符輕點，下一拍光條收到牆上時按 C／Shift 衝過去，早一點晚一點都會撞牆", gates=[2]),
-        bench(BENCH),
-        section(pat, "安可", [J(0), R(1), O(2), R(3), O(4, T), O(4.5, T)],
-                "安可！衝刺環接音符\n環、長按音符、再一個環，最後兩顆輕點，落到舞台上抵達終點", finale=True),
+        intro(""),
+        section(pat, "音符補衝刺", [J(0), D(1), O(2), D(3)], ""),
+        bench(""),
+        section(pat, "長短交替", [J(0), O(1), O(2, T), O(2.5, T), O(3, T)], ""),
+        bench(""),
+        section(pat, "光牆衝刺", [J(0), O(1, T), O(1.5, T), D(2)], "", gates=[2]),
+        bench(""),
+        section(pat, "安可", [J(0), R(1), O(2), R(3), O(4, T), O(4.5, T)], "", finale=True),
     ]
 
 
 def demo3(pat):
     return [
-        intro("節奏地形\n這關的地面會跟著節奏出現、消失或長出尖刺。先一樣一樣認識，後面要一路跑到底，不能停下來等"),
+        intro(""),
         section(pat, "旋律平台", [J(0), J(2), J(4), J(6)],
                 "旋律平台\n綠色平台照旋律一塊接一塊亮起，只亮一下：每兩拍長按跳到下一塊，停下來就會掉下去",
                 floor="melody", flow=True, final_rise=2),
-        bench(BENCH),
+        bench(""),
         section(pat, "節拍平台", [J(0), J(2), J(4), J(6)],
                 "節拍平台\n黃、藍平台每兩拍輪流出現，交接的那一拍兩色都在：在拍點上長按跳到另一色",
                 floor="beat", flow=True, final_rise=2),
-        bench(BENCH),
+        bench(""),
         section(pat, "尖刺", [J(1), J(3), J(5), J(7)],
                 "尖刺\n整排地刺在第 1、3、5、7 拍一起彈出：在那一拍按住跳，刺冒出來時人在空中就躲得掉",
                 floor="ground", spikes=[1, 3, 5, 7], flow=True),
-        bench(BENCH),
-        section(pat, "旋律接音符", [J(0), O(1), J(3.5), O(4.5), J(7)],
-                "旋律平台＋音符\n跳起來碰音符再跳一次，落在剛亮起的旋律平台上，馬上再跳：中間沒有地方可以停",
-                floor="melody", flow=True, final_rise=2),
-        bench(BENCH),
-        section(pat, "節拍衝刺", [J(0), D(1), J(3), D(4), J(6)],
-                "節拍平台＋空中衝刺\n跳、衝，落在另一色平台上，下一拍再跳、衝。平台一換色就要離開",
-                floor="beat", flow=True, final_rise=2),
-        bench(BENCH),
-        section(pat, "尖刺接平台", [J(0), O(1, T), O(1.5, T), J(3), J(5), J(7)],
-                "全部一起\n輕點兩顆音符落到地上，馬上跳走（地面會長出尖刺），再踩旋律平台、節拍平台",
+        bench(""),
+        section(pat, "旋律接音符", [J(0), O(1), J(3.5), O(4.5), J(7)], "", floor="melody", flow=True, final_rise=2),
+        bench(""),
+        section(pat, "節拍衝刺", [J(0), D(1), J(3), D(4), J(6)], "", floor="beat", flow=True, final_rise=2),
+        bench(""),
+        section(pat, "尖刺接平台", [J(0), O(1, T), O(1.5, T), J(3), J(5), J(7)], "",
                 floor=["pit", "melody", "beat"], flow=True, final_rise=2),
-        bench(BENCH),
-        section(pat, "安可", [J(0), R(1), D(2), J(4), O(5), R(6), D(7)],
-                "安可！\n跳、衝刺環補回衝刺，下一拍再衝過光柱；落在旋律平台馬上跳、碰音符，再一次環接衝刺上舞台",
+        bench(""),
+        section(pat, "安可", [J(0), R(1), D(2), J(4), O(5), R(6), D(7)], "",
                 floor="melody", flow=True, finale=True, gates=[2, 7]),
     ]
 
 
 def demo4(pat):
     return [
-        intro("挑戰\n每一段都和第三關的安可差不多難，而且一路跑到底不能停。不熟就在旗子旁按 ↑ 看示範"),
-        section(pat, "音符衝刺鏈", [J(0), D(1), O(2), D(3), O(4), D(5)],
-                "音符衝刺鏈\n跳、衝過光柱，碰音符補回衝刺再衝，連續三次：每道光柱都只在拍子上打開",
-                flow=True, gates=[1, 3, 5], final_rise=2),
-        bench(BENCH),
-        section(pat, "尖刺音符", [J(1), O(2), J(5), J(7)],
-                "尖刺＋音符\n第 1 拍跳、第 2 拍碰音符飛過大坑（不碰會掉下去），落地後照第 5、7 拍的尖刺起跳",
-                floor="ground", spikes=[1, 3, 5, 7], flow=True),
-        bench(BENCH),
-        section(pat, "節拍環", [J(0), R(1), D(2), J(4), R(5), D(6)],
-                "節拍平台＋衝刺環\n跳、衝過環、下一拍衝過光柱，落在另一色平台上，馬上再來一次",
+        intro(""),
+        section(pat, "音符衝刺鏈", [J(0), D(1), O(2), D(3), O(4), D(5)], "", flow=True, gates=[1, 3, 5], final_rise=2),
+        bench(""),
+        section(pat, "尖刺音符", [J(1), O(2), J(5), J(7)], "", floor="ground", spikes=[1, 3, 5, 7], flow=True),
+        bench(""),
+        section(pat, "節拍環", [J(0), R(1), D(2), J(4), R(5), D(6)], "",
                 floor="beat", flow=True, gates=[2, 6], final_rise=2),
-        bench(BENCH),
-        section(pat, "旋律輕點", [J(0), O(1, T), O(1.5, T), O(2, T), J(4), O(5), R(6), D(7)],
-                "旋律平台＋輕點\n三顆音符每半拍輕點，落到旋律平台馬上長按跳、碰音符，最後環接衝刺穿過光柱",
+        bench(""),
+        section(pat, "旋律輕點", [J(0), O(1, T), O(1.5, T), O(2, T), J(4), O(5), R(6), D(7)], "",
                 floor="melody", flow=True, gates=[7], final_rise=2),
-        bench(BENCH),
-        section(pat, "尖刺衝刺", [J(1), J(3), O(4), D(5), J(7)],
-                "尖刺＋音符＋衝刺\n第 1、3 拍躲尖刺，第 4 拍碰音符、第 5 拍空中衝刺飛過大坑，落地後第 7 拍再躲一次",
-                floor="ground", spikes=[1, 3, 7], flow=True),
-        bench(BENCH),
-        section(pat, "混合地形", [J(0), O(1), J(3.5), D(4.5), J(6)],
-                "混合地形\n碰音符落到旋律平台，反拍馬上跳起來衝刺，落到節拍平台再跳走",
+        bench(""),
+        section(pat, "尖刺衝刺", [J(1), J(3), O(4), D(5), J(7)], "", floor="ground", spikes=[1, 3, 7], flow=True),
+        bench(""),
+        section(pat, "混合地形", [J(0), O(1), J(3.5), D(4.5), J(6)], "",
                 floor=["melody", "beat"], flow=True, final_rise=2),
-        bench(BENCH),
-        section(pat, "環與光柱", [J(0), R(1), D(2), J(4), O(5), R(6), D(7)],
-                "音符、環、光柱\n跳、穿過環、下一拍衝過光柱落到旋律平台；第 4 拍再跳、碰音符、穿過環、衝過光柱",
+        bench(""),
+        section(pat, "環與光柱", [J(0), R(1), D(2), J(4), O(5), R(6), D(7)], "",
                 floor="melody", flow=True, gates=[2, 7], final_rise=2),
-        bench(BENCH),
-        section(pat, "安可", FINALE4,
-                "安可！一口氣 48 拍\n高高低低的小島、旋律／節拍平台、整排尖刺、音符、環、光柱全部接在一起，"
-                "中間沒有任何地方可以停。旗子只示範第一小節",
-                floor=FINALE4_FLOOR, flow=True, finale=True, gates=[5, 11, 19, 24, 32, 39, 48]),
+        bench(""),
+        section(pat, "安可", FINALE4, "", floor=FINALE4_FLOOR, flow=True, finale=True,
+                gates=[5, 11, 19, 24, 32, 39, 48]),
     ]
 
 

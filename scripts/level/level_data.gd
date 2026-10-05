@@ -15,6 +15,7 @@ extends RefCounted
 ## 區塊的 "orbs" 是節奏音符：[x, y, 節奏型, 音高]，x / y 以格為單位、指音符中心（可有小數）。
 ## 區塊的 "rings" 是衝刺環，格式和音符相同。
 ## 區塊的 "ghost" 是旗子示範時半透明角色的路徑：[x0, y0, x1, y1, …]（px，區塊內座標），每 1/8 拍一點。
+## 區塊的 "plan" 是整段的標準節奏：[拍, 動作（同 demo 的字元）, 按下時的 x（px，區塊內座標）]，倒下時拿來對照（death_coach.gd）。
 ## flag 節奏型的 "demo" 是示範的連招（見 cue_flag.gd）。
 ## 區塊的 "bpm" 是玩家走進這個區塊後要換成的速度（下一個小節頭生效，預設 120）。
 ##
@@ -55,6 +56,8 @@ static func build(level: int) -> Dictionary:
 	var orbs: Array[Dictionary] = []
 	var rings: Array[Dictionary] = []
 	var ghosts: Array[Dictionary] = []
+	## 和 hints 一一對應
+	var plans: Array = []
 	var x_offset := 0
 	for chunk: Dictionary in info["chunks"]:
 		var rows: Array = chunk["rows"]
@@ -86,8 +89,13 @@ static func build(level: int) -> Dictionary:
 			for i in range(0, g.size() - 1, 2):
 				pts.append(Vector2(x_offset * TILE + float(g[i]), float(g[i + 1])))
 			ghosts.append({"from": x_offset * TILE, "to": (x_offset + w) * TILE, "points": pts})
+		var steps: Array[Dictionary] = []
+		for s: Array in chunk.get("plan", []):
+			steps.append({"beat": float(s[0]), "act": String(s[1]), "x": x_offset * TILE + float(s[2])})
+		plans.append(steps)
 		x_offset += w
 	return {
 		"grid": grid, "width": x_offset, "height": HEIGHT, "hints": hints, "orbs": orbs, "rings": rings, "ghosts": ghosts,
+		"plans": plans,
 		"patterns": info["patterns"], "name": info["name"], "stage": info.get("stage", false),
 	}
