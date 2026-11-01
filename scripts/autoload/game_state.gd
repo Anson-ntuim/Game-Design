@@ -23,6 +23,7 @@ const DIFFICULTIES: Array[Dictionary] = [
 	{"name": "簡單", "early": 20, "late": 20},
 	{"name": "普通", "early": 7, "late": 8},
 	{"name": "困難", "early": 4, "late": 5},
+	{"name": "自由", "early": 0, "late": 0, "free": true},
 ]
 const JUDGE_FPS := 60.0
 
@@ -36,6 +37,8 @@ var groove: float = 0.0
 var _note_step: int = 0
 ## 關卡編號 → {"time": 最快秒數, "deaths": 最少死亡數}
 var records: Dictionary = {}
+## 第五關重力／道路機關解鎖狀態（進關時清空）
+var path_unlocks: Dictionary = {}
 
 var palettes: Array[Dictionary] = [
 	{ # 月夜藍
@@ -140,6 +143,22 @@ func reset_stats() -> void:
 	_palette_from = 0
 	_palette_to = 0
 	_palette_t = 1.0
+	path_unlocks.clear()
+
+
+func free_rhythm() -> bool:
+	return bool(DIFFICULTIES[difficulty].get("free", false))
+
+
+func set_path_unlock(id: String, on: bool) -> void:
+	if on:
+		path_unlocks[id] = true
+	else:
+		path_unlocks.erase(id)
+
+
+func is_path_unlock(id: String) -> bool:
+	return path_unlocks.get(id, false)
 
 
 ## 記下過關成績，回傳是否刷新了任何一項紀錄
@@ -248,6 +267,7 @@ func _setup_input() -> void:
 	_add_action("confirm", [KEY_ENTER, KEY_KP_ENTER], [JOY_BUTTON_START])
 	_add_action("back", [KEY_ESCAPE], [JOY_BUTTON_GUIDE])
 	_add_action("guide", [KEY_H, KEY_TAB], [JOY_BUTTON_Y])
+	_add_action("use_item", [KEY_V], [JOY_BUTTON_X])
 	_add_action("easier", [KEY_Q], [JOY_BUTTON_LEFT_SHOULDER])
 	_add_action("harder", [KEY_E], [JOY_BUTTON_RIGHT_SHOULDER])
 

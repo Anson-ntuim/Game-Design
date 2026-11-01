@@ -23,6 +23,9 @@ var _rest_zones: Array[RestZone] = []
 var _blind_zones: Array[BlindZone] = []
 ## 玩家所在區塊要求的速度；在下一個小節頭才真的換速，拍子才不會亂
 var _tempo_target: float = 120.0
+## 玩家所在區塊的重力；走進區塊立刻強制轉換（和 bpm 一樣寫在 chunk 上）
+var _gravity_target: float = 2400.0
+var _gravity_applied: float = 2400.0
 var _level_time: float = 0.0
 var _completed: bool = false
 var _shake: float = 0.0
@@ -98,10 +101,13 @@ func _process(delta: float) -> void:
 		if px >= float(h["from"]) and px < float(h["to"]):
 			hint = h["text"]
 			_tempo_target = float(h["bpm"])
+			_gravity_target = float(h.get("gravity", 2400))
 			break
+	_apply_section_gravity()
 	var watching := _watching_flag() != null
 	hud.set_hint("" if _completed or watching else hint)
 	hud.set_watching(watching)
+	hud.set_gravity(_gravity_applied)
 
 	var b := Conductor.song_beat
 	var dark := 0.0
@@ -155,6 +161,24 @@ func _on_measure(_m: int) -> void:
 
 func shake(amount: float) -> void:
 	_shake = maxf(_shake, amount)
+
+
+func show_message(text: String, duration: float = 2.0) -> void:
+	if hud:
+		hud.show_message(text, duration)
+
+
+func _apply_section_gravity() -> void:
+	if _completed or not player:
+		return
+	player.apply_gravity_mode(_gravity_target)
+	if absf(_gravity_applied - _gravity_target) < 0.5:
+		return
+	_gravity_applied = _gravity_target
+	if absf(_gravity_target - 2400.0) < 0.5:
+		return
+	var label := "輕重力" if _gravity_target < 2400.0 else "重重力"
+	hud.show_message("%s　跳起來的滯空不一樣了" % label, 1.8)
 
 
 func _on_wave_armed(_start_beat: float) -> void:
@@ -229,6 +253,12 @@ func _build_level() -> void:
 		var ring := DashRing.new()
 		ring.setup(o["pos"], o["notes"], o["tone"])
 		add_child(ring)
+	for h in _hints:
+		var g := float(h.get("gravity", 2400))
+		if absf(g - 2400.0) > 0.5:
+			var gz := GravityZone.new()
+			gz.setup(float(h["from"]), float(h["to"]), g)
+			add_child(gz)
 
 	var solid: Array[PackedByteArray] = []
 	for y in height:

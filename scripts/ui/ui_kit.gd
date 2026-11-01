@@ -3,7 +3,8 @@ extends RefCounted
 ## 介面共用的畫法：字型、切角霓虹面板、按鍵小方塊、音符難度、關卡縮圖。
 ## 顏色跟著 GameState 的色盤（edge）走，換段落時介面會一起換色。
 
-const FONT_NAMES := ["PingFang TC", "Heiti TC", "Microsoft JhengHei", "Noto Sans CJK TC", "Noto Sans TC", "sans-serif"]
+## 網頁版沒有系統字型，只能用專案裡的字型檔；它只含遊戲用到的字，改了文字要重跑 tools/subset_font.py
+const FONT_PATH := "res://assets/fonts/NotoSansTC-Game.ttf"
 const PANEL := Color(0.03, 0.035, 0.09, 0.84)
 const INK := Color(0.02, 0.02, 0.07)
 const GOLD := Color(1.0, 0.86, 0.42)
@@ -14,17 +15,14 @@ static var _fonts: Dictionary = {}
 static var _minimaps: Dictionary = {}
 
 
-## PingFang 最粗只到 600，標題用 embolden 加粗
-static func font(weight: int = 600, embolden: float = 0.0) -> Font:
-	var key := "%d:%.2f" % [weight, embolden]
+## 字型檔固定 600 字重，標題用 embolden 加粗
+static func font(embolden: float = 0.0) -> Font:
+	var key := "%.2f" % embolden
 	if not _fonts.has(key):
-		var sf := SystemFont.new()
-		sf.font_names = PackedStringArray(FONT_NAMES)
-		sf.font_weight = weight
-		var f: Font = sf
+		var f: Font = load(FONT_PATH)
 		if embolden > 0.0:
 			var fv := FontVariation.new()
-			fv.base_font = sf
+			fv.base_font = f
 			fv.variation_embolden = embolden
 			f = fv
 		_fonts[key] = f
@@ -32,7 +30,7 @@ static func font(weight: int = 600, embolden: float = 0.0) -> Font:
 
 
 static func title_font() -> Font:
-	return font(600, 0.9)
+	return font(0.9)
 
 
 static func width_of(s: String, size: int, f: Font = null) -> float:

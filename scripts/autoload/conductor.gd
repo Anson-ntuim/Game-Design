@@ -18,6 +18,9 @@ var current_beat: int = -1
 ## 播放倍率（變速關）：音樂、音效、物理一起加快，像把錄音帶轉快。
 ## 拍子和物理的比例不變，所以關卡照 120 BPM 設計、驗證就好；song_position 是「歌曲裡的秒數」。
 var rate: float = 1.0
+var _base_rate: float = 1.0
+var _slow_mul: float = 1.0
+var _slow_beats_left: float = 0.0
 ## 0~1：配樂壓低音量的程度（休止區的休止拍）
 var duck_target: float = 0.0
 var _duck: float = 0.0
@@ -46,6 +49,8 @@ var _start_usec: int = 0
 var _anchor_position: float = 0.0
 var _anchor_usec: int = 0
 var _running: bool = false
+## 網頁版回報的播放位置開頭會卡在 0 約一秒，之後一直比實際聲音晚；但 play() 當下就出聲，所以只靠計時器
+var _clock_only: bool = OS.has_feature("web")
 
 
 func _ready() -> void:
@@ -68,9 +73,11 @@ func start() -> void:
 	_last_raw_position = 0.0
 	current_beat = -1
 	_start_usec = Time.get_ticks_usec()
-	_anchor_position = 0.0
+	_anchor_position = -_output_latency if _clock_only else 0.0
 	_anchor_usec = _start_usec
 	_running = true
+	_slow_mul = 1.0
+	_slow_beats_left = 0.0
 	set_rate(1.0)
 	duck_target = 0.0
 	_duck = 0.0
@@ -80,9 +87,20 @@ func start() -> void:
 
 
 func set_rate(r: float) -> void:
-	rate = r
-	_player.pitch_scale = r
-	Engine.time_scale = r
+	_base_rate = r
+	_apply_rate()
+
+
+func apply_slow(factor: float, duration_beats: float) -> void:
+	_slow_mul = clampf(factor, 0.35, 1.0)
+	_slow_beats_left = maxf(_slow_beats_left, duration_beats)
+	_apply_rate()
+
+
+func _apply_rate() -> void:
+	rate = _base_rate * _slow_mul
+	_player.pitch_scale = rate
+	Engine.time_scale = rate
 
 
 func stop() -> void:
@@ -98,12 +116,13 @@ func _process(_delta: float) -> void:
 	_duck = move_toward(_duck, duck_target, real_dt * 10.0)
 	_player.volume_db = linear_to_db(1.0 - 0.8 * _duck)
 	var predicted := _anchor_position + real_dt * rate
-	var measured := _measured_position(now)
-	var error := measured - predicted
-	if absf(error) > 0.08:
-		predicted = measured
-	else:
-		predicted += error * 0.1
+	if not _clock_only:
+		var measured := _measured_position(now)
+		var error := measured - predicted
+		if absf(error) > 0.08:
+			predicted = measured
+		else:
+			predicted += error * 0.1
 	_anchor_position = predicted
 	_anchor_usec = now
 	_emit_beats()
@@ -125,6 +144,11 @@ func _emit_beats() -> void:
 		current_beat += 1
 		if current_beat < 0:
 			continue
+		if _slow_beats_left > 0.0:
+			_slow_beats_left = maxf(0.0, _slow_beats_left - 1.0)
+			if _slow_beats_left <= 0.0:
+				_slow_mul = 1.0
+				_apply_rate()
 		beat.emit(current_beat)
 		if current_beat % beats_per_measure == 0:
 			var m := floori(float(current_beat) / beats_per_measure)

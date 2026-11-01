@@ -78,6 +78,8 @@ var watching: bool = false
 var watch_x: float = 0.0
 var checkpoint_position: Vector2
 var kill_y: float = 100000.0
+var slow_charges: int = 0
+var _gravity_strength: float = 2400.0
 
 ## 倒下時給提示用（death_coach.gd 讀）
 ## 最近一次起跳：beat、x、kind（ground／orb／wall／pad）、long（有沒有變成大跳）、held（按了幾秒）
@@ -155,6 +157,7 @@ func _ready() -> void:
 	add_child(_hurtbox)
 
 	checkpoint_position = position
+	_gravity_strength = gravity
 
 
 func _physics_process(delta: float) -> void:
@@ -182,6 +185,8 @@ func _physics_process(delta: float) -> void:
 		_jump_buffer = jump_buffer_time
 	if Input.is_action_just_pressed("dash") and not watching:
 		_try_dash(input_x, on_floor)
+	if Input.is_action_just_pressed("use_item") and not watching:
+		_try_slow_item()
 
 	if _dash_timer > 0.0:
 		velocity = Vector2(_dash_dir * dash_speed, 0.0)
@@ -245,7 +250,7 @@ func _physics_process(delta: float) -> void:
 			if not holding:
 				velocity.y = 0.0
 	else:
-		velocity.y = minf(velocity.y + gravity * delta, max_fall_speed)
+		velocity.y = minf(velocity.y + _gravity_strength * delta, max_fall_speed)
 		if _jump_cancelable and velocity.y < 0.0 and not jump_held:
 			velocity.y = 0.0
 		if velocity.y >= 0.0:
@@ -380,17 +385,35 @@ func launch_from_pad(pad: Node) -> bool:
 	return true
 
 
-func _ready_orb() -> RhythmOrb:
+func _ready_orb() -> Node:
 	for area in _hurtbox.get_overlapping_areas():
-		var orb := area as RhythmOrb
-		if orb and orb.is_ready():
-			return orb
+		if not area.is_in_group("rhythm_orb"):
+			continue
+		if area.has_method("is_ready") and area.call("is_ready"):
+			return area
 	return null
 
 
+func apply_gravity_mode(strength: float, _inverted: bool = false) -> void:
+	_gravity_strength = strength
+	gravity = strength
+
+
+func _try_slow_item() -> void:
+	if slow_charges <= 0:
+		return
+	slow_charges -= 1
+	Conductor.apply_slow(0.55, 8.0)
+	GameState.play_sfx("hold", GameState.next_note(), -5.0)
+	var main := get_tree().get_first_node_in_group("main")
+	if main and main.has_method("show_message"):
+		main.call("show_message", "減速瓶　音樂與動作放慢 8 拍", 1.6)
+
+
 ## 節奏音符：在音符亮起的瞬間按跳，再跳一次並補回空中衝刺
-func _orb_jump(orb: RhythmOrb) -> void:
-	orb.consume()
+func _orb_jump(orb: Node) -> void:
+	if orb.has_method("consume"):
+		orb.call("consume")
 	var note := GameState.next_note() + 12.0
 	GameState.play_sfx("pluck", note)
 	_wing_timer = 0.3
@@ -525,6 +548,7 @@ func kill(source: Node = null) -> void:
 
 func respawn_at(pos: Vector2) -> void:
 	global_position = pos
+	apply_gravity_mode(2400.0)
 	_reset_motion()
 	_hurt_timer = 0.0
 	_drum_timer = 0.0

@@ -47,6 +47,8 @@ func reject() -> void:
 ## 在 dash_beat 按下的衝刺能不能穿過這道光牆。
 ## 判定窗不超過兩次打開間隔的 40%：每拍都開的光柱在簡單難度下才不會一直開著、晚半拍衝也能過
 func accepts(dash_beat: float) -> bool:
+	if GameState.free_rhythm():
+		return true
 	var spb := Conductor.sec_per_beat
 	var cap := _min_gap() * 0.4 * spb
 	return BeatPattern.since_hit(notes, dash_beat) * spb <= minf(GameState.judge_late(), cap) \

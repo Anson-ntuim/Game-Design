@@ -35,6 +35,8 @@ func _ready() -> void:
 
 ## 目前落在判定窗內的 x 格編號（沒有回傳 -1）。格編號 = 從第 0 拍起算的半拍數
 func _active_slot() -> int:
+	if GameState.free_rhythm():
+		return 0 if notes.contains("x") and _used_slot == -9999 else -1
 	var b := Conductor.song_beat
 	var spb := Conductor.sec_per_beat
 	var n := notes.length()
@@ -49,7 +51,7 @@ func _active_slot() -> int:
 
 func is_ready() -> bool:
 	var s := _active_slot()
-	return s != -1 and s != _used_slot
+	return s != -1 and (GameState.free_rhythm() or s != _used_slot)
 
 
 func consume() -> void:
@@ -58,6 +60,10 @@ func consume() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if GameState.free_rhythm():
+		var p := get_tree().get_first_node_in_group("player") as Player
+		if p and p.is_on_floor():
+			_used_slot = -9999
 	var s := floori(Conductor.song_beat * 2.0)
 	if s != _last_cue_slot and notes[posmod(s, notes.length())] == "x":
 		_last_cue_slot = s

@@ -19,6 +19,7 @@ const TIP_TIME := 6.0
 const TIP_COLOR := Color(1.0, 0.45, 0.5)
 
 var player: Player
+var _gravity: float = 2400.0
 
 var _view: Control
 var _message: String = ""
@@ -87,6 +88,10 @@ func _process(delta: float) -> void:
 ## 盲拍：0 = 全亮、1 = 全暗（角色周圍留一圈微光）
 func set_dark(amount: float) -> void:
 	_dark_target = amount
+
+
+func set_gravity(strength: float) -> void:
+	_gravity = strength
 
 
 func set_hint(text: String) -> void:
@@ -197,6 +202,10 @@ func _draw_stats(size: Vector2, edge: Color, lift: float) -> void:
 		_view.draw_rect(r, Color(1, 1, 1, 0.1))
 		if k > 0.0:
 			_view.draw_rect(Rect2(r.position, Vector2(r.size.x * k, r.size.y)), edge.lerp(UiKit.GOLD, float(i) / segs))
+	if absf(_gravity - 2400.0) > 0.5:
+		var light := _gravity < 2400.0
+		var gcol := Color(0.45, 0.85, 1.0) if light else Color(1.0, 0.65, 0.3)
+		UiKit.pill(_view, Vector2(p.x + 100, p.y + 8), "輕重力" if light else "重重力", Color(gcol, 0.95), UiKit.INK, 12)
 
 
 func _draw_controls(size: Vector2, edge: Color, lift: float) -> void:

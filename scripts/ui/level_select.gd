@@ -319,5 +319,7 @@ func _draw_difficulty_picker(box: Rect2, edge: Color, pulse: float) -> void:
 		_view.draw_string(UiKit.font(), Vector2(r.position.x, r.position.y + 22), String(GameState.DIFFICULTIES[i]["name"]),
 			HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 17, UiKit.INK if on else Color(1, 1, 1, 0.55))
 	var d: Dictionary = GameState.DIFFICULTIES[GameState.difficulty]
-	UiKit.text(_view, Vector2(p.x, box.end.y - 13), box.size.x, "早 %d 幀／晚 %d 幀內按下都算準（60fps）" % [int(d["early"]), int(d["late"])],
+	var sub := "音符、衝刺環、光牆隨時可用，不用對拍" if GameState.free_rhythm() else \
+			"早 %d 幀／晚 %d 幀內按下都算準（60fps）" % [int(d["early"]), int(d["late"])]
+	UiKit.text(_view, Vector2(p.x, box.end.y - 13), box.size.x, sub,
 		13, Color(1, 1, 1, 0.7), HORIZONTAL_ALIGNMENT_CENTER)
