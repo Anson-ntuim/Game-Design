@@ -33,6 +33,7 @@ var _completed: bool = false
 var _shake: float = 0.0
 var _zoom_punch: float = 0.0
 var _camera_ground_y: float = 0.0
+var _score_cue_slot: int = -99999
 
 
 func _ready() -> void:
@@ -118,10 +119,14 @@ func _process(delta: float) -> void:
 	if not _completed:
 		_level_time += delta
 	var hint := ""
+	var subdivision_cue := false
+	var section_duck := 0.0
 	var px := player.global_position.x
 	for h in _hints:
 		if px >= float(h["from"]) and px < float(h["to"]):
 			hint = h["text"]
+			subdivision_cue = bool(h.get("subdivision_cue", false))
+			section_duck = float(h.get("music_duck", 0.0))
 			_tempo_target = float(h["bpm"])
 			_gravity_target = float(h.get("gravity", 2400))
 			player.kill_y = float(h.get("kill_y", level_size.y + 120.0))
@@ -134,11 +139,16 @@ func _process(delta: float) -> void:
 	hud.set_gravity(player.gravity if player else _gravity_applied)
 
 	var b := Conductor.song_beat
+	var cue_slot := floori(b * 2.0)
+	if cue_slot != _score_cue_slot:
+		_score_cue_slot = cue_slot
+		if subdivision_cue and not _completed and not watching and not player.control_locked:
+			GameState.play_cue("block", 12.0 if posmod(cue_slot, 2) else 0.0, -15.0 if posmod(cue_slot, 2) else -19.0)
 	var dark := 0.0
 	for z in _blind_zones:
 		dark = maxf(dark, z.darkness(b, px))
 	hud.set_dark(0.0 if _completed or player.control_locked else dark)
-	var duck := 0.0
+	var duck := section_duck
 	for z in _rest_zones:
 		if z.contains(px) and z.resting(b):
 			duck = 1.0

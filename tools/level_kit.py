@@ -20,13 +20,13 @@ def demo_char(kind, hold):
     return {"dash": "D", "ring": "R", "gdash": "D", "pdash": "D"}[kind]
 
 
-def flag_spec(script, rests=()):
-    """script: [(beat, kind, hold)] → 旗子的示範連招（demo），連招必須在 8 拍內；
+def flag_spec(script, rests=(), slots=DEMO_SLOTS):
+    """script: [(beat, kind, hold)] → 旗子的示範連招（demo），預設 8 拍，可由 slots 指定更長的整段譜面；
     rests: [(起拍, 迄拍)] 休止，開頭那格寫 '-'（示範時響收音）"""
-    demo = ["."] * DEMO_SLOTS
+    demo = ["."] * slots
     for (b, k, h) in script:
         s = round(b * 2)
-        assert 0 <= s < DEMO_SLOTS, ("連招超過 8 拍", script)
+        assert 0 <= s < slots, ("連招超過示範長度", script)
         demo[s] = demo_char(k, h)
     for (r0, _) in rests:
         s = round(r0 * 2) % DEMO_SLOTS
@@ -83,6 +83,9 @@ def render_patterns(patterns):
 def render_chunk(chunk):
     hint = chunk["hint"].replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
     out = ["\t{", f'\t\t"hint": "{hint}",']
+    for key in ("score_beats", "subdivision_cue", "music_duck"):
+        if key in chunk:
+            out.append(f'\t\t"{key}": {spec_value(chunk[key])},')
     if "row_offset" in chunk:
         out.append(f'\t\t"row_offset": {chunk["row_offset"]},')
     if "bpm" in chunk:

@@ -84,7 +84,16 @@ func _replay_level(index: int) -> bool:
 		if node.show_right_boundary:
 			check(not is_equal_approx(level._gravity_at_x(node.to_x - 1), level._gravity_at_x(node.to_x + 1)),
 				"Gravity line without a real transition at right edge")
-	check(visual_count == (2 if index == 3 else 1), "Continuous light gravity was not merged")
+	check(visual_count == (2 if index == 3 else 3), "Continuous light gravity was not merged")
+	if index == 5:
+		var score_sections := 0
+		for hint: Dictionary in data["hints"]:
+			if float(hint.get("score_beats", 0)) > 0:
+				score_sections += 1
+		check(score_sections == 8, "New score must have eight complete sections")
+		for flag in level._flags:
+			check(flag.demo.length() >= 64, "Full score demo was truncated")
+			check(flag.go_beat() - flag.start_beat > flag.ghost_end(), "GO starts before full demo finishes")
 	for ghost: Dictionary in data["ghosts"]:
 		var within_map := true
 		for point: Vector2 in ghost["points"]:
@@ -113,18 +122,28 @@ func _replay_level(index: int) -> bool:
 		var lower_view := true
 		Input.action_press("move_right")
 		player.set_physics_process(true)
-		for frame in range(-30, 1100):
+		for frame in range(-30, maxi(1100, roundi(float(chunk.get("score_beats", 0)) * 60.0) + 600)):
 			await physics_frame
 			for item: Dictionary in pending:
-				if frame == int(item["frame"]) + 2:
+				var delay := 4 if item["kind"] == "ring" else 2
+				if frame != int(item["frame"]) + delay:
+					continue
+				if item["kind"] in ["ground", "orb"]:
 					check(player.last_jump.get("kind", "") == item["kind"] and absf(float(player.last_jump.get("beat", -999)) - float(item["frame"]) / 60.0) < 0.06,
 						"Stage %d %s beat %.1f: expected %s, got %s" % [index + 1, section_name, float(item["frame"]) / 60.0, item["kind"], player.last_jump])
+				else:
+					check(player._dash_timer > 0.0 and absf(player._dash_beat - float(item["frame"]) / 60.0) < 0.06,
+						"Dash did not trigger: %s at %.1f" % [section_name, float(item["frame"]) / 60.0])
+					if item["kind"] == "ring":
+						check(player._ring_hit != null, "Ring was not consumed: %s at %.1f" % [section_name, float(item["frame"]) / 60.0])
+
 			conductor._anchor_position = frame / 120.0
 			conductor._anchor_usec = Time.get_ticks_usec()
 			conductor._running = true
 			var jump_held := false
 			var dash_pressed := false
 			var expected_jump := ""
+			var expected_dash := ""
 			for j in plan.size():
 				var step: Array = plan[j]
 				var start := roundi(float(step[0]) * 60.0)
@@ -140,11 +159,14 @@ func _replay_level(index: int) -> bool:
 						expected_jump = "orb" if act in ["O", "o"] else "ground"
 				elif frame == start:
 					dash_pressed = true
+					expected_dash = "ring" if act == "R" else "dash"
 			_set_action("jump", jump_held)
 			_set_action("dash", dash_pressed)
 			await process_frame
 			if expected_jump != "":
 				pending.append({"frame": frame, "kind": expected_jump})
+			if expected_dash != "":
+				pending.append({"frame": frame, "kind": expected_dash})
 			var current_screen: Vector2 = player.get_global_transform_with_canvas().origin
 			framed = framed and current_screen.y > 70.0 and current_screen.y < level.get_viewport_rect().size.y - 30.0
 			if frame >= 0 and not player.is_on_floor():
@@ -153,6 +175,8 @@ func _replay_level(index: int) -> bool:
 					lower_view = lower_view and current_screen.y < 500.0
 
 			if player.control_locked:
+				if not level._completed:
+					print("REPLAY_DEATH beat=", frame / 60.0, " source=", player.death_source, " position=", player.death_pos)
 				if level._completed:
 					reached = true
 				break

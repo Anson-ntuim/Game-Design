@@ -264,7 +264,7 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
             orb_tones=(12, 15, 19, 17, 22, 24, 27), ring_tones=(19, 24, 27), finale=False, wave=False,
             rests=(), strict=True, blind=None, bpm=None, floor="pit", spikes=(), fixed_spikes=(),
             melody_tones=(0, 3, 7, 10, 12, 15, 19, 22), flow=False, final_rise=0, gravity=None,
-            gravity_flip=None, island_spikes=True, flag=None, audit_air=False):
+            gravity_flip=None, island_spikes=True, flag=None, audit_air=False, require_ring_use=True, compact_islands=False, score_beats=None):
     """rests: [(起拍, 迄拍)] 休止；strict = False 搶拍只發出錯音。
     blind: {"notes": 16 格, "strobe": bool} 盲拍區。bpm: 走進這段時換成的速度。
     floor: pit／melody／beat／ground，或有高低差的 [(種類, 高幾格, 起跳幾次)]（見檔頭）。spikes: ground 整排地板尖刺彈出的拍子（要在這幾拍跳起來）；
@@ -284,7 +284,7 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
             orb_tones=orb_tones, ring_tones=ring_tones, finale=finale, wave=wave, rests=rests,
             strict=strict, blind=blind, bpm=bpm, floor=floor, spikes=spikes, fixed_spikes=fixed_spikes,
             melody_tones=melody_tones, flow=flow, final_rise=final_rise, gravity=gravity,
-            gravity_flip=gravity_flip, island_spikes=island_spikes, flag=flag, audit_air=audit_air)
+            gravity_flip=gravity_flip, island_spikes=island_spikes, flag=flag, audit_air=audit_air, require_ring_use=require_ring_use, compact_islands=compact_islands, score_beats=score_beats)
     finally:
         sim_player.GRAVITY = _old_g
 
@@ -293,7 +293,7 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
             orb_tones=(12, 15, 19, 17, 22, 24, 27), ring_tones=(19, 24, 27), finale=False, wave=False,
             rests=(), strict=True, blind=None, bpm=None, floor="pit", spikes=(), fixed_spikes=(),
             melody_tones=(0, 3, 7, 10, 12, 15, 19, 22), flow=False, final_rise=0, gravity=None,
-            gravity_flip=None, island_spikes=True, flag=None, audit_air=False):
+            gravity_flip=None, island_spikes=True, flag=None, audit_air=False, require_ring_use=True, compact_islands=False, score_beats=None):
     kinds = _floor_kinds(floor)
     if kinds & {"melody", "beat"}:
         assert not any(k == "orb" for (_, k, _) in script), (
@@ -306,7 +306,7 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
     for (r0, r1) in rests:
         assert r0 == int(r0) and r1 - r0 in (1, 2), ("休止要從正拍開始、剛好一拍或兩拍", r0, r1)
     last = max(b for (b, _, _) in script)
-    end_beat = last + 6
+    end_beat = max(last + 6, float(score_beats or 0) + 1)
     right = rest_right(rests, script)
     course = Course(name, script, end_beat, right=right)
     if rests:
@@ -330,8 +330,13 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
         jumps = [b for (b, k, _) in script if k == "jump"]
         islands = []
         for i, (x0, x1, b0, b1) in enumerate(spans):
-            c0 = 0 if i == 0 else int((x0 - 12) // TILE) - 1
-            c1 = int((x1 + 12) // TILE)
+            c0 = 0 if i == 0 else (int((x0 + 8) // TILE) if compact_islands else int((x0 - 12) // TILE) - 1)
+            c1 = max(c0, int((x1 - 8 if compact_islands else x1 + 12) // TILE))
+            if compact_islands and i > 0:
+                previous = [k for b, k, h in script if b < b0]
+                if previous and previous[-1] in ("orb", "ring", "dash"):
+                    # 空中連招的落點多留一格接住實際碰撞／幀邊界誤差；短跳缺口仍維持窄邊。
+                    c0 -= 1
             ## 只有「正上方有夠高的黃音符、且這裡不起跳」才不蓋島（有球走球）
             ## 近地擦觸／起跳前緩衝落點仍保留，否則會掉進虛空
             if i > 0 and i < len(spans) - 1:
@@ -341,7 +346,7 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
                     for o in course.orbs)
                 if not has_jump and air_orbs:
                     continue
-            if islands and c0 <= islands[-1][1] + 2:
+            if not compact_islands and islands and c0 <= islands[-1][1] + 2:
                 ## 中間若跳過球路假島，兩端不要併成一條大道
                 if islands[-1][4] < b0 - 0.4:
                     islands.append([c0, c1, b0, x0, b1, 16])
@@ -425,7 +430,8 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
             lc = int((x_down - 28) // TILE)
             assert not mid or lc > mid[-1][1] + 1, ("墊高的終點島和前一個落腳處重疊", name)
         ch.fill(lc, lc, top, 19, "%")
-        ch.fill(lc + 1, lc + 7, top, 19, "#")
+        tail_col = max(lc + 7, int(x_at(sim, score_beats) // TILE) + 3) if score_beats else lc + 7
+        ch.fill(lc + 1, tail_col, top, 19, "#")
         course.solids.append((lc * TILE, top * TILE, (lc + 60) * TILE, 20 * TILE))
         course.goal = (lc * TILE + 12, 16 * TILE)
         zone_end = lc
@@ -449,8 +455,9 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
             timed_notes or gates or flow or rests or spikes or fixed_spikes
             or (kinds_now & {"melody", "beat"}))
     if flag:
-        demo = [s for s in script if s[0] < 8]
-        ch.fill(5, 5, 15, 15, pat.add(flag_spec(demo, rests)))
+        demo = script if score_beats else [s for s in script if s[0] < 8]
+        slots = round(score_beats * 2) if score_beats else 16
+        ch.fill(5, 5, 15, 15, pat.add(flag_spec(demo, rests, slots=slots)))
 
     sim = course.sim()
     if spikes:
@@ -532,7 +539,7 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
             assert course.outcome(script) is not None, (name, "音符拿掉仍可通過", i)
         course.orbs = saved
         course.orb_check(True)
-        course.ring_check(True)
+        course.ring_check(require_ring_use)
     if not rests:
         course.wait_check(flow)
     course.dash_check(flow)
@@ -553,7 +560,7 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
         print(f"  {spec['kind']} 區：第 {zc}～{zone_end} 格  {spec['notes']}")
 
     # 旗子的示範只有 8 拍，超過 8 拍的長段落只示範開頭一小節
-    ghost = ghost_for(sim, script) if last < 8 else ghost_points(sim, 8.0)
+    ghost = ghost_points(sim, score_beats) if score_beats else (ghost_for(sim, script) if last < 8 else ghost_points(sim, 8.0))
     plan = [[b, demo_char(k, h), round(x_at(sim, b))] for (b, k, h) in script]
     out = {"hint": hint, "ghost": ghost, "plan": plan, "rows": ch.lines()}
     if bpm:

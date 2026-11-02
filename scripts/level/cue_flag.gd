@@ -4,7 +4,7 @@ extends Node2D
 ## 平常只當節拍器：每 8 拍響一次鈴（前三拍木魚倒數，旗子上跳出 3、2、1，響鈴時 GO!），挑任何一次鈴聲出發都行。
 ## 站在旗子旁按「上」才看示範：下一個 8 拍循環開頭，旗子把這段連招彈一遍，
 ## 鏡頭跟著半透明的示範角色把整段跑完，再飛回玩家；一樣倒數 3、2、1，
-## 示範開始後第 GO_BEATS 拍響鈴換玩家跑（機關都是 8 拍循環，所以響鈴時剛好對上）。
+## 示範結束後留時間返回玩家，再對齊八拍循環響鈴換玩家跑（機關都是 8 拍循環，所以響鈴時剛好對上）。
 ## demo 一格 = 半拍，從示範第 0 拍開始寫：T 點、L 長、o 音符點、O 音符長、D 衝、R 環衝、- 休止開始（要站著不動）、. 空。
 
 enum State { FREE, WATCH }
@@ -55,7 +55,9 @@ func has_demo() -> bool:
 
 
 func go_beat() -> float:
-	return start_beat + GO_BEATS
+	# 長譜面先完整示範，再留出鏡頭返回與倒數時間；仍對齊八拍循環。
+	var demo_beats := maxf(demo.length() * 0.5, ghost_end())
+	return start_beat + maxf(GO_BEATS, ceilf((demo_beats + 2.0) / CYCLE_BEATS) * CYCLE_BEATS)
 
 
 ## 示範角色跑完（落地）的拍數
@@ -141,7 +143,7 @@ func _tick_sounds(b: float) -> void:
 	if s == _last_slot:
 		return
 	_last_slot = s
-	var go := roundi(GO_BEATS * 2.0)
+	var go := roundi((go_beat() - start_beat) * 2.0)
 	if s >= 0 and s < demo.length() and s < go and demo[s] != ".":
 		_play_demo(demo[s])
 	if s == go:

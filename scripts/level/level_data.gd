@@ -47,7 +47,7 @@ const LEVELS: Array[Dictionary] = [
 		"patterns": Demo6Data.PATTERNS, "chunks": Demo6Data.CHUNKS},
 	{"name": "第五關　挑戰", "desc": "每段都混合音符、衝刺環、光柱、尖刺和節奏地形，一路跑到底", "stars": 3,
 		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true},
-	{"name": "第六關　節奏變奏", "desc": "短點旋律、補能環橋、交替階梯、空中光門與雙音風井，六段不同任務一路登頂", "stars": 2,
+	{"name": "第六關　節奏變奏", "desc": "八段完整變奏：開場、流動、切分、緩衝、空中、雙安可與終章；部分段落切換輕重力", "stars": 3,
 		"patterns": Demo5Data.PATTERNS, "chunks": Demo5Data.CHUNKS},
 ]
 
@@ -88,6 +88,9 @@ static func build(level: int) -> Dictionary:
 			grid[r] += lines[r].rpad(w)
 		hints.append({"from": x_offset * TILE, "to": (x_offset + w) * TILE, "text": chunk.get("hint", ""),
 			"bpm": float(chunk.get("bpm", 120)), "gravity": float(chunk.get("gravity", 2400)),
+			"score_beats": float(chunk.get("score_beats", 0)),
+			"subdivision_cue": bool(chunk.get("subdivision_cue", false)),
+			"music_duck": float(chunk.get("music_duck", 0)),
 			"kill_y": (row_offset + rows.size()) * TILE + 120.0})
 		for o: Array in chunk.get("orbs", []):
 			orbs.append({
