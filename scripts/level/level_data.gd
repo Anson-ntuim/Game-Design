@@ -45,9 +45,11 @@ const LEVELS: Array[Dictionary] = [
 		"patterns": Demo2Data.PATTERNS, "chunks": Demo2Data.CHUNKS},
 	{"name": "第四關　輕重力", "desc": "浮空階梯、借力登高、寬坑衝刺與重力對照；平台和長椅隨路線逐段上升", "stars": 1,
 		"patterns": Demo6Data.PATTERNS, "chunks": Demo6Data.CHUNKS},
-	{"name": "第五關　挑戰", "desc": "每段都混合音符、衝刺環、光柱、尖刺和節奏地形，一路跑到底", "stars": 3,
+	{"name": "第五關　變速踏板", "desc": "踩藍板減速、橘板加速：慢拍階梯、快拍光門、極速環橋與混速接力，音樂和世界一起變速", "stars": 2,
+		"patterns": TempoCourseData.PATTERNS, "chunks": TempoCourseData.CHUNKS, "tempo_stage": true},
+	{"name": "第六關　挑戰", "desc": "每段都混合音符、衝刺環、光柱、尖刺和節奏地形，一路跑到底", "stars": 3,
 		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true},
-	{"name": "第六關　節奏變奏", "desc": "八段完整變奏：開場、流動、切分、緩衝、空中、雙安可與終章；部分段落切換輕重力", "stars": 3,
+	{"name": "第七關　節奏變奏", "desc": "八段完整變奏：開場、流動、切分、緩衝、空中、雙安可與終章；部分段落切換輕重力", "stars": 3,
 		"patterns": Demo5Data.PATTERNS, "chunks": Demo5Data.CHUNKS},
 ]
 
@@ -70,6 +72,7 @@ static func build(level: int) -> Dictionary:
 	var gravity_switches: Array[Dictionary] = []
 	var gravity_zones: Array[Dictionary] = []
 	var path_blocks: Array[Dictionary] = []
+	var tempo_pads: Array[Dictionary] = []
 	## 和 hints 一一對應
 	var plans: Array = []
 	var x_offset := 0
@@ -105,6 +108,9 @@ static func build(level: int) -> Dictionary:
 				"notes": o[2],
 				"tone": float(o[3]) if o.size() > 3 else 19.0,
 			})
+		for pad: Array in chunk.get("tempo_pads", []):
+			tempo_pads.append({"pos": Vector2((x_offset + float(pad[0])) * TILE, float(pad[1]) * TILE + y_offset),
+				"bpm": float(pad[2]), "width": float(pad[3]) * TILE if pad.size() > 3 else 144.0})
 		for o: Array in chunk.get("dual_orbs", []):
 			dual_orbs.append({
 				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE + y_offset),
@@ -152,4 +158,5 @@ static func build(level: int) -> Dictionary:
 		"plans": plans, "dual_orbs": dual_orbs, "slow_items": slow_items, "gravity_switches": gravity_switches,
 		"gravity_zones": gravity_zones, "path_blocks": path_blocks,
 		"patterns": info["patterns"], "name": info["name"], "stage": info.get("stage", false),
+		"tempo_pads": tempo_pads, "tempo_stage": bool(info.get("tempo_stage", false)),
 	}

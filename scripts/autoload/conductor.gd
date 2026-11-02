@@ -101,6 +101,11 @@ func apply_slow(factor: float, duration_beats: float) -> void:
 
 
 func _apply_rate() -> void:
+	# 保持切速當下的歌曲位置連續，避免倍率改變時節拍突然跳動。
+	if _running:
+		var now := Time.get_ticks_usec()
+		_anchor_position += float(now - _anchor_usec) / 1000000.0 * rate
+		_anchor_usec = now
 	rate = _base_rate * _slow_mul
 	_player.pitch_scale = rate
 	Engine.time_scale = rate

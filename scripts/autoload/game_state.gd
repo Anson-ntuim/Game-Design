@@ -239,6 +239,7 @@ func skin_frame(pose: String, index: int = -1) -> Texture2D:
 
 func _save() -> void:
 	var cfg := ConfigFile.new()
+	cfg.set_value("settings", "level_order_version", 2)
 	cfg.set_value("settings", "skin", skin)
 	cfg.set_value("settings", "difficulty", difficulty)
 	cfg.set_value("settings", "audio_offset_ms", audio_offset_ms)
@@ -255,9 +256,14 @@ func _load_records() -> void:
 	skin = clampi(int(cfg.get_value("settings", "skin", 0)), 0, SKINS.size() - 1)
 	difficulty = clampi(int(cfg.get_value("settings", "difficulty", 1)), 0, DIFFICULTIES.size() - 1)
 	audio_offset_ms = clampf(float(cfg.get_value("settings", "audio_offset_ms", 0.0)), AUDIO_OFFSET_MIN, AUDIO_OFFSET_MAX)
+	var order_version := int(cfg.get_value("settings", "level_order_version", 1))
+	records.clear()
 	for section in cfg.get_sections():
 		if section.begins_with("level_"):
-			records[int(section.trim_prefix("level_"))] = {
+			var index := int(section.trim_prefix("level_"))
+			if order_version < 2 and index >= 4:
+				index += 1
+			records[index] = {
 				"time": float(cfg.get_value(section, "time", 0.0)),
 				"deaths": int(cfg.get_value(section, "deaths", 0)),
 			}

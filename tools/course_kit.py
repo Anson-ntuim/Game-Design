@@ -563,6 +563,8 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
     ghost = ghost_points(sim, score_beats) if score_beats else (ghost_for(sim, script) if last < 8 else ghost_points(sim, 8.0))
     plan = [[b, demo_char(k, h), round(x_at(sim, b))] for (b, k, h) in script]
     out = {"hint": hint, "ghost": ghost, "plan": plan, "rows": ch.lines()}
+    if score_beats is not None:
+        out["score_beats"] = score_beats
     if bpm:
         out["bpm"] = bpm
     if gravity is not None:

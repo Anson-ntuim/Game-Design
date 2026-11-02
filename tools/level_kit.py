@@ -104,6 +104,8 @@ def render_chunk(chunk):
             for (x, y, n, t) in chunk[key]:
                 out.append(f'\t\t\t[{x}, {y}, "{n}", {t}],')
             out.append("\t\t],")
+    if chunk.get("tempo_pads"):
+        out.append('\t\t"tempo_pads": ' + json.dumps(chunk["tempo_pads"]) + ',')
     if chunk.get("plan"):
         p = chunk["plan"]
         out.append('\t\t"plan": [')

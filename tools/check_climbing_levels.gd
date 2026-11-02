@@ -1,5 +1,5 @@
 extends SceneTree
-## 實際 CharacterBody2D 回放第四／六關，包含升高後的接縫、長椅與鏡頭。
+## 實際 CharacterBody2D 回放第四／五／七關，包含升高後的接縫、長椅與鏡頭。
 ## Godot --headless --path . --fixed-fps 120 --script res://tools/check_climbing_levels.gd
 ## 延後載入主場景，讓 autoload 先完成註冊；失敗必定回傳非零。
 
@@ -29,12 +29,14 @@ func _run() -> void:
 	var saved_bytes := FileAccess.get_file_as_bytes(save_path) if had_save else PackedByteArray()
 	conductor = root.get_node("Conductor")
 	var levels = load("res://scripts/level/level_data.gd")
-	for index: int in [0, 1, 2, 4]:
+	for index: int in [0, 1, 2, 5]:
 		check(levels.build(index)["height"] == 20, "Existing flat level height changed")
-	for index: int in [3, 5]:
+	for index: int in ([4] if OS.get_cmdline_user_args().has("--tempo-only") else [3, 4, 6]):
 		if await _replay_level(index) != true:
 			failures += 1
 			push_error("Stage %d replay aborted" % (index + 1))
+	if await _tempo_features() != true:
+		failures += 1
 	if had_save:
 		var save_file := FileAccess.open(save_path, FileAccess.WRITE)
 		if save_file:
@@ -69,6 +71,8 @@ func _replay_level(index: int) -> bool:
 	conductor._player.stop()
 	for flag in level._flags:
 		flag.set_physics_process(false)
+	for pad in get_nodes_in_group("tempo_pad"):
+		pad.set_physics_process(false)
 	var player = level.player
 	player.set_physics_process(false)
 	check(data["height"] > 20, "Tall map bounds")
@@ -84,8 +88,8 @@ func _replay_level(index: int) -> bool:
 		if node.show_right_boundary:
 			check(not is_equal_approx(level._gravity_at_x(node.to_x - 1), level._gravity_at_x(node.to_x + 1)),
 				"Gravity line without a real transition at right edge")
-	check(visual_count == (2 if index == 3 else 3), "Continuous light gravity was not merged")
-	if index == 5:
+	check(visual_count == ({3: 2, 4: 0, 6: 3}[index]), "Continuous light gravity was not merged")
+	if index == 6:
 		var score_sections := 0
 		for hint: Dictionary in data["hints"]:
 			if float(hint.get("score_beats", 0)) > 0:
@@ -122,7 +126,7 @@ func _replay_level(index: int) -> bool:
 		var lower_view := true
 		Input.action_press("move_right")
 		player.set_physics_process(true)
-		for frame in range(-30, maxi(1100, roundi(float(chunk.get("score_beats", 0)) * 60.0) + 600)):
+		for frame in range(-30, maxi(1100, roundi(float(chunk.get("score_beats", 0)) * 60.0) + 720)):
 			await physics_frame
 			for item: Dictionary in pending:
 				var delay := 4 if item["kind"] == "ring" else 2
@@ -187,6 +191,8 @@ func _replay_level(index: int) -> bool:
 		Input.action_release("jump")
 		Input.action_release("dash")
 		player.set_physics_process(false)
+		if not reached:
+			print("STALL velocity=", player.velocity, " locked=", player.control_locked, " watch=", player.watching, " auto_wait=", player.auto_flag_wait, " rate=", conductor.rate, " target=", target_x, " beat=", conductor.song_beat, " score=", chunk.get("score_beats", 0))
 		check(framed, "Camera lost player during traversal: " + section_name)
 		check(lower_view, "Camera hid lower landing space: " + section_name)
 		check(reached, "Stage %d %s did not reach next rest / goal; position %s" % [index + 1, section_name, player.position])
@@ -222,3 +228,98 @@ func _set_action(action: String, pressed: bool) -> void:
 		Input.action_press(action)
 	else:
 		Input.action_release(action)
+
+
+func _tempo_features() -> bool:
+	var state := root.get_node("GameState")
+	state.level_index = 4
+	var level = load("res://scenes/main.tscn").instantiate()
+	root.add_child(level)
+	current_scene = level
+	level.set_process(false)
+	conductor.set_process(false)
+	conductor._player.stop()
+	for flag in level._flags:
+		flag.set_physics_process(false)
+	var pads := get_nodes_in_group("tempo_pad")
+	check(pads.size() == 9, "Tempo course must have entry, mid-course and finale pads")
+	var player = level.player
+	var hits := [0]
+	pads[0].triggered.connect(func(_bpm: float) -> void: hits[0] += 1)
+	var measured: Dictionary = {}
+	for pad in pads:
+		player.respawn_at(pad.global_position - Vector2(0, 22.01))
+		for tick in 4:
+			await physics_frame
+			await process_frame
+		check(absf(conductor.current_bpm - pad.target_bpm) < 0.1, "Stepping on pad did not set BPM")
+		check(is_equal_approx(Engine.time_scale, pad.target_bpm / 120.0), "World time scale differs from music")
+		check(is_equal_approx(conductor._player.pitch_scale, Engine.time_scale), "Music and world are not synchronized")
+		if pad.target_bpm in [90.0, 168.0] and not measured.has(pad.target_bpm):
+			Input.action_press("move_right")
+			for tick in 3:
+				await physics_frame
+				await process_frame
+			var start_x: float = player.position.x
+			var distance := 0.0
+			for tick in 10:
+				await physics_frame
+				distance += 310.0 * player.get_physics_process_delta_time()
+				await process_frame
+			measured[pad.target_bpm] = player.position.x - start_x
+			check(absf(float(measured[pad.target_bpm]) - distance) < 1.0, "Player motion does not follow scaled time")
+			Input.action_release("move_right")
+	check(float(measured[168.0]) > float(measured[90.0]) * 1.5, "Fast pad does not move player faster")
+	player.respawn_at(pads[0].global_position - Vector2(0, 180))
+	var count: int = hits[0]
+	for tick in 4:
+		await physics_frame
+		await process_frame
+	check(hits[0] == count, "Flying above pad incorrectly triggered it")
+	player.respawn_at(pads[0].global_position - Vector2(0, 22.01))
+	for tick in 10:
+		await physics_frame
+		await process_frame
+	check(hits[0] == count + 1, "Pad should trigger once after leaving and stepping back")
+	var before: float = conductor.song_position
+	level.set_world_tempo(168, false)
+	check(absf(conductor.song_position - before) < 0.02, "Changing tempo jumped the beat clock")
+	level._on_measure(10)
+	check(absf(conductor.current_bpm - 168) < 0.1, "Measure boundary reset stepped tempo")
+	level.set_world_tempo(90, false)
+	var checkpoint = level._checkpoints[-1]
+	for candidate in level._checkpoints:
+		if absf(candidate.position.x - pads[0].position.x - 80.0) < 1.0:
+			checkpoint = candidate
+	player.respawn_at(checkpoint.position - Vector2(0, 22.01))
+	for tick in 4:
+		await physics_frame
+		await process_frame
+	level.set_world_tempo(156, false)
+	player.kill()
+	for tick in 160:
+		await process_frame
+	check(not player.control_locked and absf(conductor.current_bpm - 90) < 0.1, "Respawn did not restore checkpoint tempo")
+	level.queue_free()
+	await process_frame
+	await process_frame
+	Engine.time_scale = 1.0
+	# 驗證舊第五／六關成績只搬移一次；原始存檔由主 runner 結尾還原。
+	var original: Dictionary = state.records.duplicate(true)
+	var fixture := ConfigFile.new()
+	fixture.set_value("settings", "skin", state.skin)
+	fixture.set_value("settings", "difficulty", state.difficulty)
+	fixture.set_value("settings", "audio_offset_ms", state.audio_offset_ms)
+	fixture.set_value("level_4", "time", 40.0)
+	fixture.set_value("level_4", "deaths", 4)
+	fixture.set_value("level_5", "time", 50.0)
+	fixture.set_value("level_5", "deaths", 5)
+	fixture.save("user://save.cfg")
+	state._load_records()
+	check(not state.records.has(4) and state.records[5]["time"] == 40.0 and state.records[6]["time"] == 50.0,
+		"Old clear records were not shifted around inserted stage")
+	state._save()
+	state._load_records()
+	check(state.records[5]["time"] == 40.0 and state.records[6]["time"] == 50.0, "Records migrated more than once")
+	state.records = original
+	return true

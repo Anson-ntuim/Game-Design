@@ -1,6 +1,6 @@
 class_name Demo5Data
 extends RefCounted
-## 選單第六關・八段完整譜面：開場、流動、切分、緩衝、空中、雙安可與終章，含輕重力段落。
+## 選單第七關・八段完整譜面：開場、流動、切分、緩衝、空中、雙安可與終章，含輕重力段落。
 ## 地形由 tools/gen_demo.py（tools/course_kit.py）的物理模擬算出。
 
 const PATTERNS: Dictionary = {
@@ -30,7 +30,7 @@ const PATTERNS: Dictionary = {
 
 const CHUNKS: Array[Dictionary] = [
 	{
-		"hint": "第六關・節奏變奏\n八段完整譜面，120 BPM；旗子按 ↑ 看整段示範。空白鍵長／短跳，C 穿環或衝刺",
+		"hint": "第七關・節奏變奏\n八段完整譜面，120 BPM；旗子按 ↑ 看整段示範。空白鍵長／短跳，C 穿環或衝刺",
 		"row_offset": 30,
 		"rows": [
 			"",

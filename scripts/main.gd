@@ -34,6 +34,8 @@ var _shake: float = 0.0
 var _zoom_punch: float = 0.0
 var _camera_ground_y: float = 0.0
 var _score_cue_slot: int = -99999
+var _tempo_pad_mode: bool = false
+var _checkpoint_tempo_bpm: float = 120.0
 
 
 func _ready() -> void:
@@ -66,6 +68,7 @@ func _ready() -> void:
 
 	hud = Hud.new()
 	hud.player = player
+	hud.tempo_mode = _tempo_pad_mode
 	add_child(hud)
 
 	GameState.reset_stats()
@@ -187,6 +190,8 @@ func _watching_flag() -> CueFlag:
 
 func _on_measure(_m: int) -> void:
 	_zoom_punch = 1.0
+	if _tempo_pad_mode:
+		return
 	var now := Conductor.current_bpm
 	if absf(now - _tempo_target) > 0.5 and not _completed:
 		Conductor.set_rate(_tempo_target / Conductor.bpm)
@@ -200,6 +205,21 @@ func shake(amount: float) -> void:
 func show_message(text: String, duration: float = 2.0) -> void:
 	if hud:
 		hud.show_message(text, duration)
+
+
+func _on_tempo_pad_triggered(bpm: float) -> void:
+	set_world_tempo(bpm)
+
+
+func set_world_tempo(bpm: float, announce: bool = true) -> void:
+	if not _tempo_pad_mode or _completed:
+		return
+	var changed := absf(Conductor.current_bpm - bpm) > 0.5
+	var accelerating := bpm > Conductor.current_bpm
+	Conductor.set_rate(clampf(bpm / Conductor.bpm, 0.6, 1.4))
+	if announce and changed:
+		GameState.play_sfx("cue", 7.0 if accelerating else -5.0, -7.0)
+		hud.show_message(("加速！" if accelerating else "減速") + "　%d BPM" % roundi(bpm), 1.5)
 
 
 func _apply_section_gravity() -> void:
@@ -258,12 +278,16 @@ func _on_player_died() -> void:
 	var tw := create_tween()
 	tw.tween_interval(0.4)
 	tw.tween_callback(func() -> void:
+		if _tempo_pad_mode:
+			set_world_tempo(_checkpoint_tempo_bpm, false)
 		player.respawn_at(player.checkpoint_position)
 		camera.position = player.global_position
 		_camera_ground_y = player.global_position.y)
 
 
 func _on_checkpoint_activated(cp: Checkpoint) -> void:
+	if _tempo_pad_mode:
+		_checkpoint_tempo_bpm = Conductor.bpm * Conductor._base_rate
 	for other in _checkpoints:
 		if other != cp:
 			other.active = false
@@ -294,8 +318,14 @@ func _build_level() -> void:
 	_patterns = data["patterns"]
 	_level_name = data["name"]
 	_stage = data["stage"]
+	_tempo_pad_mode = data["tempo_stage"]
 	_gravity_zones = data["gravity_zones"]
 	level_size = Vector2(width * TILE, height * TILE)
+	for spec: Dictionary in data["tempo_pads"]:
+		var pad := TempoPad.new()
+		pad.setup(spec["pos"], spec["bpm"], spec["width"])
+		pad.triggered.connect(_on_tempo_pad_triggered)
+		add_child(pad)
 	for o: Dictionary in data["orbs"]:
 		var orb := RhythmOrb.new()
 		orb.setup(o["pos"], o["notes"], o["tone"], int(o.get("subdiv", 2)))

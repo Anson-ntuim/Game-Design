@@ -229,8 +229,8 @@ func _draw_card(i: int, center: Vector2, selected: bool, edge: Color, pulse: flo
 	_view.draw_set_transform(center, 0.0, Vector2(s, s))
 	var r := Rect2(-CARD_SIZE * 0.5, CARD_SIZE)
 	var accent := edge
-	## 第五關用浮力藍當焦點色，呼應輕重力主題
-	if i == 4:
+	## 輕重力關與變速關以主題色標示。
+	if i == 3 or bool(info.get("tempo_stage", false)):
 		accent = UiKit.FLOAT if selected else Color(0.55, 0.78, 0.95)
 	UiKit.panel(_view, r, accent if selected else Color(0.8, 0.85, 1.0), 0.6 + 0.4 * pulse if selected else 0.0,
 		1.0 if selected else 0.75, 18.0)
@@ -245,8 +245,8 @@ func _draw_card(i: int, center: Vector2, selected: bool, edge: Color, pulse: flo
 	UiKit.text(_view, Vector2(x + 96, y + 76), w - 170, parts[1], 30, Color(1, 1, 1, alpha))
 	var stars := int(info.get("stars", 1))
 	UiKit.notes(_view, Vector2(r.end.x - 24 - 3 * 17, y + 40), stars, 3, Color(UiKit.GOLD, alpha), 22)
-	if i == 4:
-		UiKit.pill(_view, Vector2(r.end.x - 92, y + 68), "FLOAT", Color(UiKit.FLOAT, alpha), UiKit.INK, 11)
+	if i == 3 or bool(info.get("tempo_stage", false)):
+		UiKit.pill(_view, Vector2(r.end.x - 92, y + 68), "TEMPO" if bool(info.get("tempo_stage", false)) else "FLOAT", Color(UiKit.FLOAT, alpha), UiKit.INK, 11)
 	_view.draw_line(Vector2(x, y + 100), Vector2(r.end.x - 24, y + 100), Color(accent, 0.35 * alpha), 1.0)
 
 	_view.draw_multiline_string(UiKit.font(), Vector2(x, y + 126), String(info.get("desc", "")), HORIZONTAL_ALIGNMENT_LEFT,
