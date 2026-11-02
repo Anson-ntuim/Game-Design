@@ -2,17 +2,55 @@ class_name UiKit
 extends RefCounted
 ## 介面共用的畫法：字型、切角霓虹面板、按鍵小方塊、音符難度、關卡縮圖。
 ## 顏色跟著 GameState 的色盤（edge）走，換段落時介面會一起換色。
+## 佈局依 game-ui-ux：錨在邊角 + 安全邊距（notch／圓角／過掃描），不要寫死貼邊座標。
 
 ## 網頁版沒有系統字型，只能用專案裡的字型檔；它只含遊戲用到的字，改了文字要重跑 tools/subset_font.py
 const FONT_PATH := "res://assets/fonts/NotoSansTC-Game.ttf"
 const PANEL := Color(0.03, 0.035, 0.09, 0.84)
 const INK := Color(0.02, 0.02, 0.07)
 const GOLD := Color(1.0, 0.86, 0.42)
+const FLOAT := Color(0.45, 0.85, 1.0)
 const CUT := 12.0
 const KEY_H := 24.0
+## 桌面／網頁至少留這圈；手機再疊 DisplayServer safe area
+const SAFE_PAD := 24.0
 
 static var _fonts: Dictionary = {}
 static var _minimaps: Dictionary = {}
+
+
+## 回傳 UI 可用矩形（已扣掉安全邊距），單位是目前 viewport 的 UI 座標
+static func safe_rect(view_size: Vector2) -> Rect2:
+	var pad_l := SAFE_PAD
+	var pad_t := SAFE_PAD
+	var pad_r := SAFE_PAD
+	var pad_b := SAFE_PAD
+	var win_size := DisplayServer.window_get_size()
+	if win_size.x > 0 and win_size.y > 0:
+		var safe := Rect2(DisplayServer.get_display_safe_area())
+		var win := Rect2(Vector2(DisplayServer.window_get_position()), Vector2(win_size))
+		var inner := safe.intersection(win)
+		if inner.size.x > 0.0 and inner.size.y > 0.0:
+			var sx := view_size.x / win.size.x
+			var sy := view_size.y / win.size.y
+			pad_l = maxf(pad_l, (inner.position.x - win.position.x) * sx)
+			pad_t = maxf(pad_t, (inner.position.y - win.position.y) * sy)
+			pad_r = maxf(pad_r, (win.end.x - inner.end.x) * sx)
+			pad_b = maxf(pad_b, (win.end.y - inner.end.y) * sy)
+	return Rect2(pad_l, pad_t, view_size.x - pad_l - pad_r, view_size.y - pad_t - pad_b)
+
+
+static func gravity_label(strength: float) -> String:
+	if absf(strength - 2400.0) < 0.5:
+		return ""
+	if strength < 2400.0:
+		return "輕"
+	return ""
+
+
+## 0 = 正常、1 = 輕重力滿檔（給 HUD 浮力度條；第五關固定 1000）
+static func gravity_lightness(strength: float) -> float:
+	return clampf((2400.0 - strength) / (2400.0 - 1000.0), 0.0, 1.0)
 
 
 ## 字型檔固定 600 字重，標題用 embolden 加粗
@@ -145,6 +183,10 @@ static func pill(ci: CanvasItem, pos: Vector2, label: String, fill: Color, ink: 
 	ci.draw_circle(pos + Vector2(w - r, r), r, fill)
 	ci.draw_string(f, Vector2(pos.x, pos.y + r + size * 0.36), label, HORIZONTAL_ALIGNMENT_CENTER, w, size, ink)
 	return w
+
+
+static func clear_minimaps() -> void:
+	_minimaps.clear()
 
 
 ## 關卡縮圖：每格一個像素，地形白、平台半透明；回傳 {tex, cols, benches, goal}

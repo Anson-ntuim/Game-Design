@@ -1,11 +1,10 @@
 class_name GravityZone
 extends Node2D
-## 重力段落的視覺提示（實際重力由 main 依區塊 gravity 強制套用）。
-## 輕重力：淡藍上浮粒子；重重力：琥珀下沉粒子。
+## 輕重力段落的視覺提示（實際重力由 main 依區塊 gravity 強制套用）。
+## 第五關固定輕檔（1000）：藍幕＋上浮粒子；長椅外恢復正常。
 
-const LIGHT := 1200.0
-const HEAVY := 3600.0
 const NORMAL := 2400.0
+const LIGHT := 1000.0
 
 var from_x: float = 0.0
 var to_x: float = 0.0
@@ -20,6 +19,11 @@ func setup(x0: float, x1: float, strength: float, _inverted: bool = false) -> vo
 	position = Vector2(x0, 0.0)
 
 
+func _lightness() -> float:
+	## 0 = 正常、1 = 輕重力滿檔（1000）
+	return clampf((NORMAL - gravity_strength) / (NORMAL - LIGHT), 0.0, 1.0)
+
+
 func _process(delta: float) -> void:
 	_phase += delta
 	queue_redraw()
@@ -27,18 +31,19 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var w := to_x - from_x
-	if w <= 0.0 or absf(gravity_strength - NORMAL) < 1.0:
+	var lit := _lightness()
+	if w <= 0.0 or lit <= 0.02:
 		return
-	var light := gravity_strength < NORMAL
-	var col := Color(0.45, 0.85, 1.0, 0.08) if light else Color(1.0, 0.55, 0.25, 0.08)
+	var col := Color(0.35, 0.75, 1.0, 0.05 + 0.10 * lit)
 	draw_rect(Rect2(0, -40, w, 900), col)
-	var edge := Color(0.55, 0.9, 1.0, 0.55) if light else Color(1.0, 0.65, 0.3, 0.55)
-	draw_line(Vector2(0, 0), Vector2(0, 800), edge, 2.0)
-	draw_line(Vector2(w, 0), Vector2(w, 800), edge, 2.0)
+	var edge := Color(0.55, 0.9, 1.0, 0.35 + 0.45 * lit)
+	draw_line(Vector2(0, 0), Vector2(0, 800), edge, 2.0 + lit)
+	draw_line(Vector2(w, 0), Vector2(w, 800), edge, 2.0 + lit)
 	var n := maxi(4, int(w / 70.0))
+	var speed := 0.55 + lit * 0.9
 	for i in n:
 		var x := (i + 0.5) * w / n
-		var t := fposmod(_phase * (0.7 if light else 1.1) + i * 0.37, 1.0)
-		var y := lerpf(720.0, 80.0, t) if light else lerpf(80.0, 720.0, t)
-		var a := 0.15 + 0.35 * sin(t * PI)
-		draw_circle(Vector2(x, y), 3.0 + (2.0 if light else 0.0), Color(edge, a))
+		var t := fposmod(_phase * speed + i * 0.37, 1.0)
+		var y := lerpf(720.0, 40.0, t)
+		var a := 0.12 + 0.45 * lit * sin(t * PI)
+		draw_circle(Vector2(x, y), 2.5 + 3.0 * lit, Color(edge, a))

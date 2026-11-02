@@ -15,6 +15,7 @@ var _slide: float = 0.0
 var _fade: float = 0.0
 var _starting: bool = false
 var _guide: MechanicGuide
+var _calibrator: LatencyCalibrator
 
 
 func _ready() -> void:
@@ -35,6 +36,7 @@ func _ready() -> void:
 	_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_view)
 	_view.draw.connect(_on_view_draw)
+	UiKit.clear_minimaps()
 	for i in LevelData.LEVELS.size():
 		UiKit.minimap(i)
 
@@ -49,10 +51,13 @@ func _process(delta: float) -> void:
 	_diff_bump = move_toward(_diff_bump, 0.0, delta * 4.0)
 	_slide = lerpf(_slide, float(_selected), 1.0 - exp(-12.0 * delta))
 	_view.queue_redraw()
-	if _starting or is_instance_valid(_guide):
+	if _starting or is_instance_valid(_guide) or is_instance_valid(_calibrator):
 		return
 	if Input.is_action_just_pressed("guide"):
 		_open_guide()
+		return
+	if Input.is_action_just_pressed("calibrate"):
+		_open_calibrator()
 		return
 
 	var skin_step := 0
@@ -97,7 +102,8 @@ func _process(delta: float) -> void:
 ## 數字鍵 1、2… 直接開始該關
 func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
-	if key == null or not key.pressed or key.echo or _starting or is_instance_valid(_guide):
+	if key == null or not key.pressed or key.echo or _starting \
+			or is_instance_valid(_guide) or is_instance_valid(_calibrator):
 		return
 	var idx := key.physical_keycode - KEY_1
 	if idx >= 0 and idx < LevelData.LEVELS.size():
@@ -108,6 +114,12 @@ func _unhandled_input(event: InputEvent) -> void:
 func _open_guide() -> void:
 	_guide = MechanicGuide.new()
 	add_child(_guide)
+	GameState.play_sfx("pluck", GameState.next_note() + 7.0, -6.0)
+
+
+func _open_calibrator() -> void:
+	_calibrator = LatencyCalibrator.new()
+	add_child(_calibrator)
 	GameState.play_sfx("pluck", GameState.next_note() + 7.0, -6.0)
 
 
@@ -122,6 +134,7 @@ func _start(idx: int) -> void:
 
 func _on_view_draw() -> void:
 	var size := _view.size
+	var safe := UiKit.safe_rect(size)
 	var edge := GameState.color("edge")
 	var pulse := Conductor.pulse(6.0)
 	_view.draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.16))
@@ -129,24 +142,31 @@ func _on_view_draw() -> void:
 	_view.draw_polygon(PackedVector2Array([Vector2(0, size.y - shade), Vector2(size.x, size.y - shade), size, Vector2(0, size.y)]),
 		PackedColorArray([Color(0, 0, 0, 0), Color(0, 0, 0, 0), Color(0, 0, 0, 0.6), Color(0, 0, 0, 0.6)]))
 
-	_draw_logo(Vector2(size.x * 0.5, 104), edge)
+	_draw_logo(Vector2(safe.get_center().x, safe.position.y + 80), edge)
 
-	var center_y := 332.0
+	var center_y := safe.position.y + 268.0
 	for i in LevelData.LEVELS.size():
 		var offset := (i - _slide) * (CARD_SIZE.x + CARD_GAP)
-		if absf(offset) < size.x * 0.5 + CARD_SIZE.x:
-			_draw_card(i, Vector2(size.x * 0.5 + offset, center_y), i == _selected, edge, pulse)
-	_draw_arrows(Vector2(size.x * 0.5, center_y), edge, pulse)
-	_draw_dots(Vector2(size.x * 0.5, center_y + 168), edge)
+		if absf(offset) < safe.size.x * 0.5 + CARD_SIZE.x:
+			_draw_card(i, Vector2(safe.get_center().x + offset, center_y), i == _selected, edge, pulse)
+	_draw_arrows(Vector2(safe.get_center().x, center_y), edge, pulse)
+	_draw_dots(Vector2(safe.get_center().x, center_y + 168), edge)
 
-	_draw_skin_picker(Rect2(size.x * 0.5 - 336, 526, 324, 108), edge, pulse)
-	_draw_difficulty_picker(Rect2(size.x * 0.5 + 12, 526, 324, 108), edge, pulse)
+	var pick_y := minf(safe.end.y - 152.0, center_y + 194.0)
+	_draw_skin_picker(Rect2(safe.get_center().x - 336, pick_y, 324, 108), edge, pulse)
+	_draw_difficulty_picker(Rect2(safe.get_center().x + 12, pick_y, 324, 108), edge, pulse)
 
 	var hints := [[["←", "→"], "選關"], [["Q", "E"], "判定"],
-		[["Enter"], "開始"], [["H"], "機關說明"], [["1~%d" % LevelData.LEVELS.size()], "直接進入"]]
+		[["Enter"], "開始"], [["H"], "機關說明"], [["O"], "延遲校正"],
+		[["1~%d" % LevelData.LEVELS.size()], "直接進入"]]
 	if GameState.SKINS.size() > 1:
 		hints.insert(1, [["↑", "↓"], "造型"])
-	UiKit.key_hints(_view, size.x * 0.5, size.y - 44, hints, edge, 0.9)
+	UiKit.key_hints(_view, safe.get_center().x, safe.end.y - 20, hints, edge, 0.9)
+	## 目前音訊偏移，方便確認有沒有校正過
+	if absf(GameState.audio_offset_ms) >= 0.5:
+		var off := "延遲 %+.0f ms" % GameState.audio_offset_ms
+		UiKit.pill(_view, Vector2(safe.end.x - UiKit.width_of(off, 13) - 28.0, safe.position.y), off,
+			Color(UiKit.FLOAT, 0.9), UiKit.INK, 13)
 
 	if _fade > 0.0:
 		_view.draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, _fade))
@@ -208,20 +228,26 @@ func _draw_card(i: int, center: Vector2, selected: bool, edge: Color, pulse: flo
 	var alpha := 1.0 if selected else 0.45
 	_view.draw_set_transform(center, 0.0, Vector2(s, s))
 	var r := Rect2(-CARD_SIZE * 0.5, CARD_SIZE)
-	UiKit.panel(_view, r, edge if selected else Color(0.8, 0.85, 1.0), 0.6 + 0.4 * pulse if selected else 0.0,
+	var accent := edge
+	## 第五關用浮力藍當焦點色，呼應輕重力主題
+	if i == 4:
+		accent = UiKit.FLOAT if selected else Color(0.55, 0.78, 0.95)
+	UiKit.panel(_view, r, accent if selected else Color(0.8, 0.85, 1.0), 0.6 + 0.4 * pulse if selected else 0.0,
 		1.0 if selected else 0.75, 18.0)
 	var x := r.position.x + 24.0
 	var y := r.position.y
 	var w := r.size.x - 48.0
 
-	UiKit.text(_view, Vector2(x + 2, y + 32), -1, "STAGE", 12, Color(edge, 0.9 * alpha))
-	UiKit.bold_text(_view, Vector2(x, y + 82), -1, "%02d" % (i + 1), 46, Color(1, 1, 1, alpha), edge)
+	UiKit.text(_view, Vector2(x + 2, y + 32), -1, "STAGE", 12, Color(accent, 0.9 * alpha))
+	UiKit.bold_text(_view, Vector2(x, y + 82), -1, "%02d" % (i + 1), 46, Color(1, 1, 1, alpha), accent)
 	var parts := UiKit.split_name(String(info["name"]))
 	UiKit.text(_view, Vector2(x + 96, y + 40), -1, parts[0], 14, Color(1, 1, 1, 0.6 * alpha))
 	UiKit.text(_view, Vector2(x + 96, y + 76), w - 170, parts[1], 30, Color(1, 1, 1, alpha))
 	var stars := int(info.get("stars", 1))
 	UiKit.notes(_view, Vector2(r.end.x - 24 - 3 * 17, y + 40), stars, 3, Color(UiKit.GOLD, alpha), 22)
-	_view.draw_line(Vector2(x, y + 100), Vector2(r.end.x - 24, y + 100), Color(edge, 0.35 * alpha), 1.0)
+	if i == 4:
+		UiKit.pill(_view, Vector2(r.end.x - 92, y + 68), "FLOAT", Color(UiKit.FLOAT, alpha), UiKit.INK, 11)
+	_view.draw_line(Vector2(x, y + 100), Vector2(r.end.x - 24, y + 100), Color(accent, 0.35 * alpha), 1.0)
 
 	_view.draw_multiline_string(UiKit.font(), Vector2(x, y + 126), String(info.get("desc", "")), HORIZONTAL_ALIGNMENT_LEFT,
 		w, 15, 2, Color(1, 1, 1, 0.82 * alpha))

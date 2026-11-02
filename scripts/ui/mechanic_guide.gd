@@ -81,6 +81,8 @@ const PAGES: Array[Dictionary] = [
 			"desc": "紅色的休止拍（剛好一拍或兩拍）要站在地上完全不動；搶拍會錯音或直接倒下。"},
 		{"id": "blind", "name": "盲拍區", "keys": "",
 			"desc": "燈會跟著節奏熄滅，只剩角色周圍一圈光。亮著時記住地形，暗掉時聽聲音跑。"},
+		{"id": "gravity", "name": "輕重力區", "keys": "",
+			"desc": "淡藍光幕內重力變輕、滯空變長；機關混法和第四關類似，但飄的時候坑更寬。長椅會恢復正常重力。"},
 	]},
 ]
 
@@ -269,6 +271,8 @@ func _build_preview(id: String, root: Node2D) -> void:
 			_sketch(root, _paint_rest)
 		"blind":
 			_sketch(root, _paint_blind)
+		"gravity":
+			_sketch(root, _paint_gravity)
 		"wave":
 			_sketch(root, _paint_wave)
 
@@ -458,6 +462,24 @@ func _paint_rest(c: CanvasItem) -> void:
 		var head := feet + Vector2(0, -60)
 		c.draw_rect(Rect2(head + Vector2(-8, -9), Vector2(5, 18)), REST_COLOR)
 		c.draw_rect(Rect2(head + Vector2(3, -9), Vector2(5, 18)), REST_COLOR)
+
+
+## 淡藍光幕＋上浮粒子，示意單一輕重力
+func _paint_gravity(c: CanvasItem) -> void:
+	var b := Conductor.song_beat
+	var lit := 0.7
+	var col := Color(UiKit.FLOAT, 0.12 + 0.2 * lit)
+	c.draw_rect(Rect2(40, 8, 300, FLOOR_Y - 8), col)
+	c.draw_line(Vector2(40, 8), Vector2(40, FLOOR_Y), Color(UiKit.FLOAT, 0.5 + 0.4 * lit), 2.0)
+	c.draw_line(Vector2(340, 8), Vector2(340, FLOOR_Y), Color(UiKit.FLOAT, 0.5 + 0.4 * lit), 2.0)
+	for k in 8:
+		var t := fposmod(b * (0.5 + lit) + k * 0.18, 1.0)
+		var y := lerpf(FLOOR_Y - 6.0, 16.0, t)
+		c.draw_circle(Vector2(70.0 + k * 32.0, y), 2.0 + 2.0 * lit, Color(UiKit.FLOAT, 0.25 + 0.55 * lit * sin(t * PI)))
+	c.draw_string(_font, Vector2(150, FLOOR_Y + 18), "輕重力", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(UiKit.FLOAT, 0.95))
+	c.draw_rect(Rect2(10, FLOOR_Y, CARD.x - 20, 3), Color(UiKit.FLOAT, 0.55))
+	var hop := -absf(sin(b * PI * 0.5)) * 36.0
+	_player(c, Vector2(190, FLOOR_Y + hop))
 
 
 ## 後半拍暗掉，只剩角色周圍一圈光

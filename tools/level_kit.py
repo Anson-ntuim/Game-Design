@@ -85,6 +85,14 @@ def render_chunk(chunk):
     out = ["\t{", f'\t\t"hint": "{hint}",']
     if "bpm" in chunk:
         out.append(f'\t\t"bpm": {chunk["bpm"]},')
+    if "gravity" in chunk:
+        out.append(f'\t\t"gravity": {chunk["gravity"]},')
+    if chunk.get("gravity_zones"):
+        out.append('\t\t"gravity_zones": [')
+        for z in chunk["gravity_zones"]:
+            out.append(
+                f'\t\t\t{{"from": {z["from"]}, "to": {z["to"]}, "gravity": {z["gravity"]}}},')
+        out.append("\t\t],")
     for key in ("orbs", "rings"):
         if chunk.get(key):
             out.append(f'\t\t"{key}": [')

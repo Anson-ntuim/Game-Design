@@ -34,6 +34,11 @@ var _demo_step: int = 0
 var _prompt: float = 0.0
 ## 玩家在起跑區（聽得到節拍器）時才顯示倒數
 var _counting: float = 0.0
+## 自動跑：在這面旗子等候的目標 GO 拍；-1 表示沒在等
+var _auto_go_at: float = -1.0
+var _auto_waiting: bool = false
+## GO 出發後要先離開旗子旁，才會再在這面旗停一次
+var _auto_can_stop: bool = true
 
 
 func setup(feet: Vector2, demo_pattern: String) -> void:
@@ -107,10 +112,11 @@ func _physics_process(delta: float) -> void:
 	var b := Conductor.song_beat
 	var near := state == State.FREE and _at_flag(p)
 	_prompt = move_toward(_prompt, 1.0 if near else 0.0, delta * 5.0)
-	_counting = move_toward(_counting, 1.0 if state == State.WATCH or _in_start_zone(p) else 0.0, delta * 4.0)
+	_counting = move_toward(_counting, 1.0 if state == State.WATCH or _auto_waiting or _in_start_zone(p) else 0.0, delta * 4.0)
 	match state:
 		State.FREE:
 			if near and Input.is_action_just_pressed("up"):
+				_clear_auto_wait(p)
 				state = State.WATCH
 				start_beat = ceilf((b + 1.0) / 8.0) * 8.0
 				_demo_step = 0
@@ -118,6 +124,7 @@ func _physics_process(delta: float) -> void:
 				p.watching = true
 				p.watch_x = position.x
 			else:
+				_tick_auto_flag(b, p, near)
 				_tick_metronome(b, p)
 		State.WATCH:
 			# 響鈴前一點點就放開操作，剛好在鈴聲上按的跳才不會被吃掉
@@ -150,12 +157,42 @@ func _in_start_zone(p: Player) -> bool:
 	return not p.control_locked and x >= section_from and x <= position.x + 60.0
 
 
+## 自動跑：跑到旗子前停住等 3、2、1，GO 再繼續往右
+func _tick_auto_flag(b: float, p: Player, near: bool) -> void:
+	if not p.auto_running:
+		_clear_auto_wait(p)
+		_auto_can_stop = true
+		return
+	if not near:
+		_auto_can_stop = true
+	if not _auto_waiting and near and _auto_can_stop:
+		_auto_waiting = true
+		_auto_can_stop = false
+		## 至少留出完整倒數：離下一個小節頭太近就等再下一輪
+		_auto_go_at = ceilf((b + 0.85) / CYCLE_BEATS) * CYCLE_BEATS
+		p.auto_flag_wait = true
+		p.watch_x = position.x
+	if not _auto_waiting:
+		return
+	p.auto_flag_wait = true
+	p.watch_x = position.x
+	if b + 0.02 >= _auto_go_at and absf(p.global_position.x - position.x) < 16.0:
+		_clear_auto_wait(p)
+
+
+func _clear_auto_wait(p: Player) -> void:
+	_auto_waiting = false
+	_auto_go_at = -1.0
+	if p:
+		p.auto_flag_wait = false
+
+
 func _tick_metronome(b: float, p: Player) -> void:
 	var s := floori(b * 2.0)
 	if s == _last_slot:
 		return
 	_last_slot = s
-	if not _in_start_zone(p):
+	if not _in_start_zone(p) and not _auto_waiting:
 		return
 	var slot := posmod(s, roundi(CYCLE_BEATS * 2.0))
 	if slot == 0:
@@ -194,8 +231,12 @@ func _draw() -> void:
 	if state == State.WATCH:
 		until = go_beat() - b
 	elif state == State.FREE:
-		until = ceilf(b / CYCLE_BEATS) * CYCLE_BEATS - b
-		since = b - floorf(b / CYCLE_BEATS) * CYCLE_BEATS
+		if _auto_waiting and _auto_go_at >= 0.0:
+			until = _auto_go_at - b
+			since = INF
+		else:
+			until = ceilf(b / CYCLE_BEATS) * CYCLE_BEATS - b
+			since = b - floorf(b / CYCLE_BEATS) * CYCLE_BEATS
 	draw_line(Vector2(0, 0), Vector2(0, -56), Color(0.85, 0.85, 0.9), 3.0)
 	var fill := 0.25
 	if until <= 2.0:

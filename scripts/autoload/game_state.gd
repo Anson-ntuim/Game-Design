@@ -30,6 +30,10 @@ const JUDGE_FPS := 60.0
 var deaths: int = 0
 var skin: int = 0
 var difficulty: int = 1
+## 音訊延遲校正（毫秒）。正＝聲音比畫面晚，負＝聲音比畫面早。範圍約 ±300ms
+var audio_offset_ms: float = 0.0
+const AUDIO_OFFSET_MIN := -300.0
+const AUDIO_OFFSET_MAX := 300.0
 var _skin_textures: Dictionary = {}
 var level_index: int = 0
 ## 0~1，跟著音樂段落（4 小節）逐漸升高、段落開頭歸零，用來加強背景特效
@@ -73,11 +77,27 @@ func _ready() -> void:
 	get_window().title = GAME_TITLE
 	_setup_input()
 	_load_records()
+	_apply_audio_offset()
 	Conductor.section_changed.connect(_on_section_changed)
 	for i in 12:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
 		_sfx_players.append(p)
+
+
+func set_audio_offset_ms(ms: float, persist: bool = true) -> void:
+	audio_offset_ms = clampf(ms, AUDIO_OFFSET_MIN, AUDIO_OFFSET_MAX)
+	_apply_audio_offset()
+	if persist:
+		_save()
+
+
+func nudge_audio_offset_ms(delta_ms: float) -> void:
+	set_audio_offset_ms(audio_offset_ms + delta_ms)
+
+
+func _apply_audio_offset() -> void:
+	Conductor.user_offset = audio_offset_ms / 1000.0
 
 
 func play_sfx(id: String, semitones: float = 0.0, volume_db: float = -3.0) -> void:
@@ -221,6 +241,7 @@ func _save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("settings", "skin", skin)
 	cfg.set_value("settings", "difficulty", difficulty)
+	cfg.set_value("settings", "audio_offset_ms", audio_offset_ms)
 	for k: int in records:
 		cfg.set_value("level_%d" % k, "time", records[k]["time"])
 		cfg.set_value("level_%d" % k, "deaths", records[k]["deaths"])
@@ -233,6 +254,7 @@ func _load_records() -> void:
 		return
 	skin = clampi(int(cfg.get_value("settings", "skin", 0)), 0, SKINS.size() - 1)
 	difficulty = clampi(int(cfg.get_value("settings", "difficulty", 1)), 0, DIFFICULTIES.size() - 1)
+	audio_offset_ms = clampf(float(cfg.get_value("settings", "audio_offset_ms", 0.0)), AUDIO_OFFSET_MIN, AUDIO_OFFSET_MAX)
 	for section in cfg.get_sections():
 		if section.begins_with("level_"):
 			records[int(section.trim_prefix("level_"))] = {
@@ -259,6 +281,7 @@ func _on_section_changed(section: int) -> void:
 func _setup_input() -> void:
 	_add_action("move_left", [KEY_LEFT, KEY_A], [JOY_BUTTON_DPAD_LEFT], [[JOY_AXIS_LEFT_X, -1.0]])
 	_add_action("move_right", [KEY_RIGHT, KEY_D], [JOY_BUTTON_DPAD_RIGHT], [[JOY_AXIS_LEFT_X, 1.0]])
+	_add_action("auto_run", [KEY_F], [JOY_BUTTON_LEFT_STICK])
 	_add_action("up", [KEY_UP, KEY_W], [JOY_BUTTON_DPAD_UP], [[JOY_AXIS_LEFT_Y, -1.0]])
 	_add_action("down", [KEY_DOWN, KEY_S], [JOY_BUTTON_DPAD_DOWN], [[JOY_AXIS_LEFT_Y, 1.0]])
 	_add_action("jump", [KEY_SPACE], [JOY_BUTTON_A])
@@ -270,6 +293,7 @@ func _setup_input() -> void:
 	_add_action("use_item", [KEY_V], [JOY_BUTTON_X])
 	_add_action("easier", [KEY_Q], [JOY_BUTTON_LEFT_SHOULDER])
 	_add_action("harder", [KEY_E], [JOY_BUTTON_RIGHT_SHOULDER])
+	_add_action("calibrate", [KEY_O], [JOY_BUTTON_RIGHT_STICK])
 
 
 func _add_action(action: String, keys: Array, buttons: Array, axes: Array = []) -> void:

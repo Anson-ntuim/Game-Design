@@ -24,12 +24,15 @@ var _slow_beats_left: float = 0.0
 ## 0~1：配樂壓低音量的程度（休止區的休止拍）
 var duck_target: float = 0.0
 var _duck: float = 0.0
+## 玩家校正的音訊延遲（秒）：耳機／網頁／藍牙常讓聲音比時鐘晚；正值＝聲音晚到，時鐘會往後挪去對齊
+var user_offset: float = 0.0
 
 var song_position: float:
 	get:
 		if not _running:
 			return 0.0
-		return _anchor_position + float(Time.get_ticks_usec() - _anchor_usec) / 1000000.0 * rate - first_beat_offset
+		return _anchor_position + float(Time.get_ticks_usec() - _anchor_usec) / 1000000.0 * rate \
+			- first_beat_offset - user_offset
 
 ## 目前聽到的速度
 var current_bpm: float:

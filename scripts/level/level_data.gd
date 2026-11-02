@@ -18,7 +18,7 @@ extends RefCounted
 ## 區塊的 "plan" 是整段的標準節奏：[拍, 動作（同 demo 的字元）, 按下時的 x（px，區塊內座標）]，倒下時拿來對照（death_coach.gd）。
 ## flag 節奏型的 "demo" 是示範的連招（見 cue_flag.gd）。
 ## 區塊的 "bpm" 是玩家走進這個區塊後要換成的速度（下一個小節頭生效，預設 120）。
-## 區塊的 "gravity" 是走進這個區塊後立刻強制套用的重力（預設 2400；輕約 1200、重約 3600）。
+## 區塊的 "gravity" 是走進這個區塊後立刻強制套用的重力（預設 2400；第五關輕重力區固定 1000）。
 ##
 ## 高度參考（1 格 = 40px）：滿跳約 4.4 格、音符跳約 4.2 格、節拍鼓約 9.4 格；衝刺約 4.2 格。
 
@@ -38,13 +38,15 @@ const MOVER_TRAVEL_TILES := 6
 const LEVELS: Array[Dictionary] = [
 	{"name": "第一關　基礎教學", "desc": "音符、長按、輕點、光柱、空中衝刺、衝刺環，一段學一樣，每段後面都有長椅", "stars": 1,
 		"patterns": Demo1Data.PATTERNS, "chunks": Demo1Data.CHUNKS},
-	{"name": "第二關　組合", "desc": "把學過的串起來：音符補衝刺、長短交替、音符接光牆，最後衝刺環接音符", "stars": 2,
-		"patterns": Demo2Data.PATTERNS, "chunks": Demo2Data.CHUNKS},
-	{"name": "第三關　節奏地形", "desc": "旋律平台、節拍平台、尖刺先各學一段，後面混在一起，一路跑到底不能停", "stars": 3,
+	{"name": "第二關　節奏地形", "desc": "旋律平台、節拍平台、尖刺先各學一段，後面混在一起，一路跑到底不能停", "stars": 2,
 		"patterns": Demo3Data.PATTERNS, "chunks": Demo3Data.CHUNKS, "stage": true},
-	{"name": "第四關　挑戰", "desc": "每段都是第三關安可的難度：音符、衝刺環、光柱、尖刺和節奏地形混在一起，一路跑到底", "stars": 3,
+	{"name": "第三關　組合", "desc": "把學過的串起來：音符補衝刺、長短交替、音符接光牆，最後衝刺環接音符", "stars": 3,
+		"patterns": Demo2Data.PATTERNS, "chunks": Demo2Data.CHUNKS},
+	{"name": "第四關　輕重力", "desc": "展示輕重力：感受飄、黃音符、空中衝刺與輕重對照；有黃音符的段落先對旗出發", "stars": 1,
+		"patterns": Demo6Data.PATTERNS, "chunks": Demo6Data.CHUNKS},
+	{"name": "第五關　挑戰", "desc": "每段都混合音符、衝刺環、光柱、尖刺和節奏地形，一路跑到底", "stars": 3,
 		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true},
-	{"name": "第五關　重力", "desc": "走進段落就強制換成輕重力或重重力，仍要對拍用音符、衝刺環和空中衝刺；一段教一樣，中間有長椅", "stars": 2,
+	{"name": "第六關　節奏變奏", "desc": "黃音符為主；多次輕重切換；有球走球、底下少留平台；環可引導或補能", "stars": 2,
 		"patterns": Demo5Data.PATTERNS, "chunks": Demo5Data.CHUNKS},
 ]
 
@@ -84,6 +86,7 @@ static func build(level: int) -> Dictionary:
 				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE),
 				"notes": o[2],
 				"tone": float(o[3]) if o.size() > 3 else 12.0,
+				"subdiv": int(o[4]) if o.size() > 4 else 2,
 			})
 		for o: Array in chunk.get("rings", []):
 			rings.append({

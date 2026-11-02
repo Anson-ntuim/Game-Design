@@ -81,6 +81,35 @@ def contacts(sim):
     return out
 
 
+def landing_contacts(sim, script):
+    """只留「真的要落地起跳／起點／終點」的站立區間。
+    黃音符／衝刺空中鏈途中擦到地面的短接觸不蓋島，避免「球底下還有一塊多餘平台」。"""
+    spans = contacts(sim)
+    if len(spans) <= 2:
+        return spans
+    jumps = [b for (b, k, _) in script if k == "jump"]
+    kept = [spans[0]]
+    for sp in spans[1:-1]:
+        _x0, _x1, b0, b1 = sp
+        ## 這段站立上有譜面起跳 → 需要平台
+        if any(b0 - 0.02 <= jb <= b1 + 0.12 for jb in jumps):
+            kept.append(sp)
+            continue
+        ## 明顯站住（超過大半拍）也可能是緩衝落點，保留
+        if b1 - b0 >= 0.55:
+            kept.append(sp)
+    kept.append(spans[-1])
+    ## 去重並維持左到右
+    out = []
+    for sp in kept:
+        if not out or sp[2] > out[-1][3] + 0.01:
+            out.append(sp)
+        else:
+            x0, x1, b0, b1 = out[-1]
+            out[-1] = (x0, max(x1, sp[1]), b0, max(b1, sp[3]))
+    return out
+
+
 def place_row_lasers(course, chunk, pat, taps, script):
     """輕點音符上方的橫向雷射。同一列上相鄰的輕點（平行音符）合成一條，
     每個音符那拍和後半拍都發射，長按不管在哪一顆都會撞上。
@@ -221,15 +250,59 @@ def stepped_islands(script, steps, end_beat, right, final_top):
     return islands, orbs, rings, s
 
 
+def _floor_kinds(floor):
+    if isinstance(floor, str):
+        return {floor}
+    if isinstance(floor, (list, tuple)) and floor:
+        if isinstance(floor[0], tuple):
+            return {step[0] for step in floor}
+        return set(floor)
+    return set()
+
+
 def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=True,
             orb_tones=(12, 15, 19, 17, 22, 24, 27), ring_tones=(19, 24, 27), finale=False, wave=False,
             rests=(), strict=True, blind=None, bpm=None, floor="pit", spikes=(), fixed_spikes=(),
-            melody_tones=(0, 3, 7, 10, 12, 15, 19, 22), flow=False, final_rise=0):
+            melody_tones=(0, 3, 7, 10, 12, 15, 19, 22), flow=False, final_rise=0, gravity=None,
+            gravity_flip=None, island_spikes=True, flag=None):
     """rests: [(起拍, 迄拍)] 休止；strict = False 搶拍只發出錯音。
     blind: {"notes": 16 格, "strobe": bool} 盲拍區。bpm: 走進這段時換成的速度。
     floor: pit／melody／beat／ground，或有高低差的 [(種類, 高幾格, 起跳幾次)]（見檔頭）。spikes: ground 整排地板尖刺彈出的拍子（要在這幾拍跳起來）；
     fixed_spikes: 在這些拍長按跳過的固定尖刺（ground 才有地面可以放）。
-    final_rise: 終點小島墊高幾格、靠坑那面是光滑牆，最後一跳不能用地面衝刺代替"""
+    final_rise: 終點小島墊高幾格、靠坑那面是光滑牆，最後一跳不能用地面衝刺代替
+    gravity: 模擬／寫入區塊的重力（px/s²）；None = 用 sim_player 預設 2400
+    gravity_flip: (拍, 另一重力) — 以該拍的 x 為界，後半改成另一重力（給空中穿越切換）
+    island_spikes: False 時坑島不鋪「落地後彈出」的防站樁尖刺（第五關用黃音符主導時關掉）
+    flag: 是否放起跳旗。None = 自動：只要段落裡有要對拍的音符／環／光柱，或 flow／休止／尖刺／消失平台，就放旗"""
+    import sim_player
+    _old_g = sim_player.GRAVITY
+    if gravity is not None:
+        sim_player.GRAVITY = float(gravity)
+    try:
+        return _section_body(
+            pat, name, script, hint, gates=gates, pistons=pistons, crates=crates, lasers=lasers,
+            orb_tones=orb_tones, ring_tones=ring_tones, finale=finale, wave=wave, rests=rests,
+            strict=strict, blind=blind, bpm=bpm, floor=floor, spikes=spikes, fixed_spikes=fixed_spikes,
+            melody_tones=melody_tones, flow=flow, final_rise=final_rise, gravity=gravity,
+            gravity_flip=gravity_flip, island_spikes=island_spikes, flag=flag)
+    finally:
+        sim_player.GRAVITY = _old_g
+
+
+def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=True,
+            orb_tones=(12, 15, 19, 17, 22, 24, 27), ring_tones=(19, 24, 27), finale=False, wave=False,
+            rests=(), strict=True, blind=None, bpm=None, floor="pit", spikes=(), fixed_spikes=(),
+            melody_tones=(0, 3, 7, 10, 12, 15, 19, 22), flow=False, final_rise=0, gravity=None,
+            gravity_flip=None, island_spikes=True, flag=None):
+    kinds = _floor_kinds(floor)
+    if kinds & {"melody", "beat"}:
+        assert not any(k == "orb" for (_, k, _) in script), (
+            name, "消失平台（旋律／節拍）上不要再放音符，意義重疊")
+    if "ground" in kinds:
+        assert not any(k == "orb" for (_, k, _) in script), (
+            name, "平面地面可直接跳，不要再放黃色音符")
+        assert not any(k in ("dash", "ring") for (_, k, _) in script), (
+            name, "平面段落不要放地面衝刺／穿環，衝刺只留在空中")
     for (r0, r1) in rests:
         assert r0 == int(r0) and r1 - r0 in (1, 2), ("休止要從正拍開始、剛好一拍或兩拍", r0, r1)
     last = max(b for (b, _, _) in script)
@@ -254,13 +327,27 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
         course.orbs, course.rings, sim = place_notes(START, [ground(0, 400)], script, end_beat, right)
         # 踩到地面的區間 → 小島（第一個是起點地面）
         spans = contacts(sim)
+        jumps = [b for (b, k, _) in script if k == "jump"]
         islands = []
         for i, (x0, x1, b0, b1) in enumerate(spans):
             c0 = 0 if i == 0 else int((x0 - 12) // TILE) - 1
             c1 = int((x1 + 12) // TILE)
+            ## 只有「正上方有夠高的黃音符、且這裡不起跳」才不蓋島（有球走球）
+            ## 近地擦觸／起跳前緩衝落點仍保留，否則會掉進虛空
+            if i > 0 and i < len(spans) - 1:
+                has_jump = any(b0 - 0.02 <= jb <= b1 + 0.12 for jb in jumps)
+                air_orbs = any(
+                    c0 * TILE - 24 <= o.x <= (c1 + 1) * TILE + 24 and o.y < 16 * TILE - 100
+                    for o in course.orbs)
+                if not has_jump and air_orbs:
+                    continue
             if islands and c0 <= islands[-1][1] + 2:
-                islands[-1][1] = max(islands[-1][1], c1)
-                islands[-1][4] = b1
+                ## 中間若跳過球路假島，兩端不要併成一條大道
+                if islands[-1][4] < b0 - 0.4:
+                    islands.append([c0, c1, b0, x0, b1, 16])
+                else:
+                    islands[-1][1] = max(islands[-1][1], c1)
+                    islands[-1][4] = b1
             else:
                 islands.append([c0, c1, b0, x0, b1, 16])
         for (r0, _) in rests:
@@ -269,8 +356,15 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
                 if isl[0] * TILE <= xs + 12 and xs - 12 <= (isl[1] + 1) * TILE:
                     isl[1] = max(isl[1], int((xs + 12 + TILE) // TILE))
         *mid, final = islands
-        course.stands = [(b0, b1) for (_, _, b0, b1) in spans[1:-1]]
-        kinds = list(floor) if isinstance(floor, (list, tuple)) else [floor] * len(mid)
+        course.stands = [(b0, b1) for (_, _, b0, b1) in spans[1:-1]
+                         if any(b0 - 0.02 <= jb <= b1 + 0.12 for jb in jumps) or b1 - b0 >= 0.55]
+        n_kind = max(1, len(mid) - 1)
+        if isinstance(floor, str):
+            kinds = [floor] * n_kind
+        elif isinstance(floor, (list, tuple)) and floor and not isinstance(floor[0], tuple):
+            kinds = (list(floor) + [floor[-1]] * n_kind)[:n_kind]
+        else:
+            kinds = [floor] * n_kind
     course.solids = []
     # 站在實心地面上的時間和島面列（之後在腳下放離開後才彈出的尖刺）
     ground_stands = [(b0, b1, 16) for (b0, b1) in course.stands] if floor == "ground" else []
@@ -284,7 +378,7 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
             ch.fill(c0, c1, top, 19, "#")
             if c0 > 0:
                 ch.fill(c0, c0, top, 19, "%")
-            if c0 > 0 and kind == "pit":
+            if c0 > 0 and kind == "pit" and island_spikes:
                 ground_stands += [(s0, s1, top) for (s0, s1) in course.stands
                                   if c0 * TILE <= x_at(sim, s0) <= (c1 + 1) * TILE]
             elif kind == "row":
@@ -347,8 +441,16 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
             ch.fill(c0, c1, 16, 19, "#")
             if c0 > 0:
                 ch.fill(c0, c0, 16, 19, "%")
-    demo = [s for s in script if s[0] < 8]
-    ch.fill(5, 5, 15, 15, pat.add(flag_spec(demo, rests)))
+    kinds_now = _floor_kinds(floor)
+    if flag is None:
+        ## 有要對拍的黃音符／衝刺環／光柱，或必須卡拍出發的地形 → 一定放旗
+        timed_notes = any(k in ("orb", "ring") for (_, k, _) in script)
+        flag = bool(
+            timed_notes or gates or flow or rests or spikes or fixed_spikes
+            or (kinds_now & {"melody", "beat"}))
+    if flag:
+        demo = [s for s in script if s[0] < 8]
+        ch.fill(5, 5, 15, 15, pat.add(flag_spec(demo, rests)))
 
     sim = course.sim()
     if spikes:
@@ -402,6 +504,19 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
 
     print(f"[{name}] 島 {[(i[0], i[1]) for i in islands]}  音符 {show(course.orbs, 0)}  環 {show(course.rings, 0)}"
           f"  光牆 {[(g.col, g.notes) for g in course.gates]}")
+    ## 往上爬時鏡頭會跟著抬；只擋「貼出地圖頂」的極端高度。
+    for kind, items in (("環", course.rings), ("音符", course.orbs)):
+        for it in items:
+            assert it.y >= 1.5 * TILE, (name, f"{kind}太高會超出螢幕", round(it.y / TILE, 2))
+    ## 站立約 y=618；衝刺／環若太靠近地面＝地面衝刺設計，第五關起一律禁止
+    stand_y = 16 * TILE - 22.0
+    for kind, items in (("環", course.rings),):
+        for it in items:
+            assert it.y < stand_y - 40.0, (
+                name, "衝刺環太靠近地面（應在空中穿環）", round(it.y / TILE, 2))
+    for ev in sim.events:
+        if ev[0] == "dash" and ev[3] >= stand_y - 40.0:
+            assert False, (name, "衝刺時還站在／貼近地面", round(ev[1], 2), round(ev[3] / TILE, 2))
     course.verify()
     if not rests:
         course.wait_check(flow)
@@ -428,6 +543,19 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
     out = {"hint": hint, "ghost": ghost, "plan": plan, "rows": ch.lines()}
     if bpm:
         out["bpm"] = bpm
+    if gravity is not None:
+        out["gravity"] = float(gravity)
+    if gravity_flip is not None:
+        flip_beat, g_other = gravity_flip
+        flip_x = round(x_at(sim, float(flip_beat)) / TILE, 2)
+        width = float(len(ch.rows[0]))
+        g_a = float(gravity) if gravity is not None else 2400.0
+        assert 2.0 < flip_x < width - 2.0, (name, "重力切換邊界太靠邊緣", flip_x, width)
+        out["gravity_zones"] = [
+            {"from": 0.0, "to": flip_x, "gravity": g_a},
+            {"from": flip_x, "to": width, "gravity": float(g_other)},
+        ]
+        print(f"  重力切換：x={flip_x}格  {g_a:g} → {float(g_other):g}")
     if course.orbs:
         out["orbs"] = [[x, y, notes_for(s), orb_tones[i % len(orb_tones)]]
                        for i, (x, y, s) in enumerate(show(course.orbs, 0))]

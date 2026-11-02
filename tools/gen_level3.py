@@ -5,8 +5,8 @@
   活塞在反拍砸下、每拍都砸  → 只有正拍衝刺穿得過去（走路太慢）
   木箱 2 格高               → 要長按才跳得過
   音符上方的橫向雷射        → 在那一拍發射，長按會撞上，只能輕點
-  衝刺環                    → 在亮起的那一拍衝刺穿過，冷卻清零、空中衝刺補回，下一拍能再衝
-  寬坑                      → 要靠衝刺環連續每拍衝刺才過得去
+  衝刺環                    → 在亮起的那一拍衝刺穿過，冷卻清零、空中衝刺補回（可當引導：穿了就落地；或補能連環）
+  寬坑                      → 單次衝刺／引導環，或靠衝刺環連續每拍衝刺才過得去
 每段用標準節奏跑一次物理模擬（tools/sim_player.py），把機關放在對應位置，
 再逐一測試「提早／延後」「按錯長短」「少按衝刺」是否會失敗。
 """
@@ -289,7 +289,10 @@ class RingSim(Sim):
     def on_dash_end(self):
         if self.pop:
             self.pop = False
-            self.vy = -RING_POP
+            ## 與 player.gd 相同：輕重力時等比縮小上彈，避免一路往上爬
+            import sim_player
+            g_scale = (max(sim_player.GRAVITY, 1.0) / 2400.0) ** 0.5
+            self.vy = -RING_POP * g_scale
 
     def _move(self):
         if self.dash_t == DASH_TIME:

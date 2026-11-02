@@ -45,10 +45,24 @@ static func until_hit(notes: String, beat: float) -> float:
 
 
 ## 離最近的 x 格開頭幾拍：負的是還沒到（按早了）、正的是已經過了（按晚了）
-static func offset(notes: String, beat: float) -> float:
-	var since := since_hit(notes, beat)
-	var until := until_hit(notes, beat)
-	return since if since <= until else -until
+static func offset(notes: String, beat: float, subdiv: int = 2) -> float:
+	if subdiv == 2:
+		var since := since_hit(notes, beat)
+		var until := until_hit(notes, beat)
+		return since if since <= until else -until
+	## 三連音等：一格 = 1/subdiv 拍
+	var step := 1.0 / float(subdiv)
+	var c := notes.length() * step
+	var p := fposmod(beat, c)
+	var best_since := INF
+	var best_until := INF
+	for i in notes.length():
+		if notes[i] != "x":
+			continue
+		best_since = minf(best_since, fposmod(p - i * step, c))
+		var d := fposmod(i * step - p, c)
+		best_until = minf(best_until, d if d > 0.0 else c)
+	return best_since if best_since <= best_until else -best_until
 
 
 ## 距離下一個「由空轉為 x」的時間點還有幾拍（沒有時回傳 INF）

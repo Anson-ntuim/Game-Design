@@ -72,6 +72,10 @@ const APEX_SPEED := 150.0
 @export var beat_pad_time: float = 0.2
 
 var facing: int = 1
+## F 切換自動往右跑；手動方向輸入、死亡和示範會取消。
+var auto_running: bool = false
+## 自動跑時在旗子前等候 3、2、1、GO（由 CueFlag 開關）
+var auto_flag_wait: bool = false
 var control_locked: bool = false
 ## 看起跳旗示範的期間不能操作（重力等物理照常），會自己走到旗子下（watch_x）站好
 var watching: bool = false
@@ -80,6 +84,8 @@ var checkpoint_position: Vector2
 var kill_y: float = 100000.0
 var slow_charges: int = 0
 var _gravity_strength: float = 2400.0
+var _gravity_target: float = 2400.0
+## 走進輕重力區時柔順過渡；回到正常則較快，避免落地還飄
 
 ## 倒下時給提示用（death_coach.gd 讀）
 ## 最近一次起跳：beat、x、kind（ground／orb／wall／pad）、long（有沒有變成大跳）、held（按了幾秒）
@@ -163,6 +169,7 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	_tick_timers(delta)
 	if control_locked:
+		auto_running = false
 		velocity = Vector2.ZERO
 		_update_visuals(delta)
 		return
@@ -241,6 +248,7 @@ func _physics_process(delta: float) -> void:
 				last_jump["long"] = true
 				if _hold_note != INF:
 					GameState.play_sfx("hold", _hold_note, -9.0)
+	_tick_gravity_blend(delta)
 	if _jumping:
 		var holding := jump_held or not _jump_cancelable
 		if _jump_elapsed < jump_min_time or (holding and _jump_elapsed < _jump_max_current):
@@ -298,7 +306,9 @@ func _tick_timers(delta: float) -> void:
 				var pop := _ring_pop
 				_end_dash()
 				if pop:
-					velocity.y = -ring_pop_speed
+					## 輕重力時等比縮小上彈，避免連續穿環一路爬出螢幕
+					var g_scale := sqrt(maxf(_gravity_strength, 1.0) / 2400.0)
+					velocity.y = -ring_pop_speed * g_scale
 
 
 func _end_dash() -> void:
@@ -336,14 +346,26 @@ func _overlapping_gate() -> bool:
 
 func _input_dir() -> int:
 	if watching:
+		auto_running = false
+		auto_flag_wait = false
+		var dx := watch_x - global_position.x
+		return 0 if absf(dx) < 4.0 else (1 if dx > 0.0 else -1)
+	if auto_flag_wait:
 		var dx := watch_x - global_position.x
 		return 0 if absf(dx) < 4.0 else (1 if dx > 0.0 else -1)
 	var x := Input.get_axis("move_left", "move_right")
+	if Input.is_action_pressed("move_left") or Input.is_action_pressed("move_right"):
+		auto_running = false
+		auto_flag_wait = false
+	elif Input.is_action_just_pressed("auto_run"):
+		auto_running = not auto_running
+		if not auto_running:
+			auto_flag_wait = false
 	if x > 0.3:
 		return 1
 	if x < -0.3:
 		return -1
-	return 0
+	return 1 if auto_running else 0
 
 
 ## 光滑牆（no_cling 群組）不能滑牆也不能蹬牆
@@ -395,8 +417,18 @@ func _ready_orb() -> Node:
 
 
 func apply_gravity_mode(strength: float, _inverted: bool = false) -> void:
-	_gravity_strength = strength
-	gravity = strength
+	_gravity_target = strength
+
+
+func _tick_gravity_blend(delta: float) -> void:
+	if absf(_gravity_strength - _gravity_target) < 0.5:
+		_gravity_strength = _gravity_target
+		gravity = _gravity_strength
+		return
+	## 變輕慢一點（漂起來），變重快一點（腳立刻穩）
+	var rate := 2.2 if _gravity_target < _gravity_strength else 5.5
+	_gravity_strength = move_toward(_gravity_strength, _gravity_target, absf(_gravity_target - _gravity_strength) * rate * delta + 80.0 * delta)
+	gravity = _gravity_strength
 
 
 func _try_slow_item() -> void:
@@ -446,7 +478,8 @@ func _check_rings() -> void:
 			GameState.play_sfx("pluck", GameState.next_note() + 12.0)
 			_dash_cooldown_timer = 0.0
 			_air_dash = true
-			_ring_pop = true
+			## 往上輕彈是為了連續穿環維持高度；重重力時關掉，手感才會真的「往下沉」
+			_ring_pop = _gravity_strength < 3000.0
 			_wing_timer = 0.3
 		elif not _ring_missed:
 			_ring_missed = true
@@ -548,6 +581,7 @@ func kill(source: Node = null) -> void:
 
 func respawn_at(pos: Vector2) -> void:
 	global_position = pos
+	_gravity_strength = 2400.0
 	apply_gravity_mode(2400.0)
 	_reset_motion()
 	_hurt_timer = 0.0
@@ -561,6 +595,8 @@ func respawn_at(pos: Vector2) -> void:
 
 
 func _reset_motion() -> void:
+	auto_running = false
+	auto_flag_wait = false
 	velocity = Vector2.ZERO
 	_jumping = false
 	_jump_cancelable = false

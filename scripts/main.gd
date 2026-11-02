@@ -26,6 +26,8 @@ var _tempo_target: float = 120.0
 ## 玩家所在區塊的重力；走進區塊立刻強制轉換（和 bpm 一樣寫在 chunk 上）
 var _gravity_target: float = 2400.0
 var _gravity_applied: float = 2400.0
+## 區塊內更細的重力帶（空中穿越邊界時切換）；有的話優先於 hint.gravity
+var _gravity_zones: Array[Dictionary] = []
 var _level_time: float = 0.0
 var _completed: bool = false
 var _shake: float = 0.0
@@ -103,11 +105,15 @@ func _process(delta: float) -> void:
 			_tempo_target = float(h["bpm"])
 			_gravity_target = float(h.get("gravity", 2400))
 			break
+	for z in _gravity_zones:
+		if px >= float(z["from"]) and px < float(z["to"]):
+			_gravity_target = float(z["gravity"])
+			break
 	_apply_section_gravity()
 	var watching := _watching_flag() != null
 	hud.set_hint("" if _completed or watching else hint)
 	hud.set_watching(watching)
-	hud.set_gravity(_gravity_applied)
+	hud.set_gravity(player.gravity if player else _gravity_applied)
 
 	var b := Conductor.song_beat
 	var dark := 0.0
@@ -174,11 +180,26 @@ func _apply_section_gravity() -> void:
 	player.apply_gravity_mode(_gravity_target)
 	if absf(_gravity_applied - _gravity_target) < 0.5:
 		return
+	var was := _gravity_applied
 	_gravity_applied = _gravity_target
+	## 只有從輕變回正常才提示「恢復」，避免進關／同檔區塊重進時洗版
 	if absf(_gravity_target - 2400.0) < 0.5:
+		if was < 2399.0:
+			hud.show_message("重力恢復", 1.2)
 		return
-	var label := "輕重力" if _gravity_target < 2400.0 else "重重力"
-	hud.show_message("%s　跳起來的滯空不一樣了" % label, 1.8)
+	hud.show_message("%s　%s" % [_gravity_label(_gravity_target), _gravity_tip(_gravity_target)], 1.8)
+
+
+func _gravity_label(strength: float) -> String:
+	if strength < 2400.0:
+		return "輕重力"
+	return "正常"
+
+
+func _gravity_tip(strength: float) -> String:
+	if strength < 2400.0:
+		return "滯空變長，該衝的拍還是要準"
+	return ""
 
 
 func _on_wave_armed(_start_beat: float) -> void:
@@ -244,21 +265,39 @@ func _build_level() -> void:
 	_patterns = data["patterns"]
 	_level_name = data["name"]
 	_stage = data["stage"]
+	_gravity_zones = data["gravity_zones"]
 	level_size = Vector2(width * TILE, height * TILE)
 	for o: Dictionary in data["orbs"]:
 		var orb := RhythmOrb.new()
-		orb.setup(o["pos"], o["notes"], o["tone"])
+		orb.setup(o["pos"], o["notes"], o["tone"], int(o.get("subdiv", 2)))
 		add_child(orb)
 	for o: Dictionary in data["rings"]:
 		var ring := DashRing.new()
 		ring.setup(o["pos"], o["notes"], o["tone"])
 		add_child(ring)
+	## 細分重力帶優先；沒有的區塊才用整段 hint.gravity 畫淡藍光幕
+	var covered: Array[Vector2] = []
+	for z: Dictionary in _gravity_zones:
+		var gz := GravityZone.new()
+		gz.setup(float(z["from"]), float(z["to"]), float(z["gravity"]))
+		add_child(gz)
+		covered.append(Vector2(float(z["from"]), float(z["to"])))
 	for h in _hints:
 		var g := float(h.get("gravity", 2400))
-		if absf(g - 2400.0) > 0.5:
-			var gz := GravityZone.new()
-			gz.setup(float(h["from"]), float(h["to"]), g)
-			add_child(gz)
+		if absf(g - 2400.0) < 0.5:
+			continue
+		var hf := float(h["from"])
+		var ht := float(h["to"])
+		var overlap := false
+		for span in covered:
+			if hf < span.y and ht > span.x:
+				overlap = true
+				break
+		if overlap:
+			continue
+		var gz2 := GravityZone.new()
+		gz2.setup(hf, ht, g)
+		add_child(gz2)
 
 	var solid: Array[PackedByteArray] = []
 	for y in height:

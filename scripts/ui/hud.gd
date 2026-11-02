@@ -13,7 +13,7 @@ void fragment() {
 	COLOR = vec4(0.0, 0.0, 0.02, amount * 0.97 * smoothstep(radius, radius * 2.2, d));
 }
 "
-const CONTROLS_A := [[["←", "→"], "移動"], [["空白鍵"], "跳"], [["C"], "衝刺"]]
+const CONTROLS_A := [[["←", "→"], "移動"], [["空白鍵"], "跳"], [["C"], "衝刺"], [["F"], "自動跑／停"]]
 const CONTROLS_B := [[["↑"], "看示範"], [["R"], "重來"], [["Esc"], "選關"]]
 const TIP_TIME := 6.0
 const TIP_COLOR := Color(1.0, 0.45, 0.5)
@@ -131,23 +131,24 @@ func fade(duration: float) -> void:
 
 func _on_view_draw() -> void:
 	var size := _view.size
+	var safe := UiKit.safe_rect(size)
 	var edge := GameState.color("edge")
 	var done := not _results.is_empty()
 	var lift := 110.0 * ease(_bars, -2.0)
 	if not done and lift < 109.0:
-		_draw_progress(edge, lift)
-		_draw_stats(size, edge, lift)
-		_draw_controls(size, edge, lift)
+		_draw_progress(safe, edge, lift)
+		_draw_stats(safe, edge, lift)
+		_draw_controls(safe, edge, lift)
 	if _bars > 0.0:
 		_draw_bars(size, edge)
-	_draw_beat_bar(size, edge)
+	_draw_beat_bar(safe, edge)
 
 	if _message_timer > 0.0 and not done:
 		_draw_message(size, edge)
 	if _hint != "" and _hint_alpha > 0.0:
-		_draw_hint(size, edge)
+		_draw_hint(safe, edge)
 	if _tip_timer > 0.0 and not done and not _watching:
-		_draw_tip(size)
+		_draw_tip(safe)
 	if done:
 		_draw_results(size, edge)
 
@@ -156,8 +157,8 @@ func _on_view_draw() -> void:
 
 
 ## 左上：關卡編號、名稱和整關縮圖，亮起的部分是已經跑過的距離
-func _draw_progress(edge: Color, lift: float) -> void:
-	var box := Rect2(20, 18 - lift, 380, 72)
+func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
+	var box := Rect2(safe.position.x, safe.position.y - lift, 380, 72)
 	UiKit.panel(_view, box, edge)
 	var idx := GameState.level_index
 	var parts := UiKit.split_name(String(LevelData.LEVELS[idx]["name"]))
@@ -175,9 +176,11 @@ func _draw_progress(edge: Color, lift: float) -> void:
 	_view.draw_circle(Vector2(px, strip.get_center().y), 4.5, Color.WHITE)
 
 
-## 右上：死亡次數（倒下時跳一下）、判定難度、律動條
-func _draw_stats(size: Vector2, edge: Color, lift: float) -> void:
-	var box := Rect2(size.x - 20 - 260, 18 - lift, 260, 72)
+## 右上：死亡次數、判定、律動條；輕重力時多一條浮力度
+func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
+	var lit_g := UiKit.gravity_lightness(_gravity)
+	var box_h := 72.0 + (28.0 if lit_g > 0.02 else 0.0)
+	var box := Rect2(safe.end.x - 260, safe.position.y - lift, 260, box_h)
 	UiKit.panel(_view, box, edge, 0.6 * _death_bump)
 	var p := box.position
 	UiKit.text(_view, p + Vector2(16, 30), -1, "死亡", 13, Color(1, 1, 1, 0.6))
@@ -202,15 +205,23 @@ func _draw_stats(size: Vector2, edge: Color, lift: float) -> void:
 		_view.draw_rect(r, Color(1, 1, 1, 0.1))
 		if k > 0.0:
 			_view.draw_rect(Rect2(r.position, Vector2(r.size.x * k, r.size.y)), edge.lerp(UiKit.GOLD, float(i) / segs))
-	if absf(_gravity - 2400.0) > 0.5:
-		var light := _gravity < 2400.0
-		var gcol := Color(0.45, 0.85, 1.0) if light else Color(1.0, 0.65, 0.3)
-		UiKit.pill(_view, Vector2(p.x + 100, p.y + 8), "輕重力" if light else "重重力", Color(gcol, 0.95), UiKit.INK, 12)
+	if lit_g > 0.02:
+		var glabel := UiKit.gravity_label(_gravity)
+		var gcol := UiKit.FLOAT.lerp(Color(0.75, 0.95, 1.0), lit_g)
+		UiKit.pill(_view, Vector2(p.x + 14, p.y + 68), glabel, Color(gcol, 0.95), UiKit.INK, 12)
+		var bar := Rect2(p.x + 70, p.y + 74, box.size.x - 86, 10)
+		_view.draw_rect(bar, Color(1, 1, 1, 0.08))
+		_view.draw_rect(Rect2(bar.position, Vector2(bar.size.x * lit_g, bar.size.y)), Color(gcol, 0.85))
+		_view.draw_rect(bar, Color(gcol, 0.35), false, 1.0)
 
 
-func _draw_controls(size: Vector2, edge: Color, lift: float) -> void:
-	UiKit.key_hints(_view, 22, size.y - 66 + lift, CONTROLS_A, edge, 0.5, HORIZONTAL_ALIGNMENT_LEFT, 12)
-	UiKit.key_hints(_view, 22, size.y - 36 + lift, CONTROLS_B, edge, 0.5, HORIZONTAL_ALIGNMENT_LEFT, 12)
+func _draw_controls(safe: Rect2, edge: Color, lift: float) -> void:
+	var y0 := safe.end.y + lift
+	if player and player.auto_running:
+		var tip := "旗子前等候 GO…" if player and player.auto_flag_wait else "自動前進中　旗子前會停等 GO　F 停止"
+		UiKit.pill(_view, Vector2(safe.position.x, y0 - 80), tip, edge, UiKit.INK, 12)
+	UiKit.key_hints(_view, safe.position.x, y0 - 42, CONTROLS_A, edge, 0.5, HORIZONTAL_ALIGNMENT_LEFT, 12)
+	UiKit.key_hints(_view, safe.position.x, y0 - 12, CONTROLS_B, edge, 0.5, HORIZONTAL_ALIGNMENT_LEFT, 12)
 
 
 func _draw_bars(size: Vector2, edge: Color) -> void:
@@ -260,14 +271,14 @@ func _draw_message(size: Vector2, edge: Color) -> void:
 
 
 ## 提示用 "\n" 分成兩行：第一行是標題、第二行是操作說明。
-## 太寬的行會縮小字級，背景框跟著最寬的一行，但不超出畫面
-func _draw_hint(size: Vector2, edge: Color) -> void:
+## 太寬的行會縮小字級，背景框跟著最寬的一行，但不超出安全區
+func _draw_hint(safe: Rect2, edge: Color) -> void:
 	var lines := _hint.split("\n", false, 1)
 	var sizes: Array[int] = [24, 17]
 	if lines.size() == 1:
 		sizes = [19]
 	var font := UiKit.font()
-	var max_w := size.x - 96.0
+	var max_w := safe.size.x - 56.0
 	var widest := 0.0
 	for i in lines.size():
 		var w := font.get_string_size(lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1, sizes[i]).x
@@ -275,31 +286,31 @@ func _draw_hint(size: Vector2, edge: Color) -> void:
 			sizes[i] = maxi(12, floori(sizes[i] * max_w / w))
 			w = font.get_string_size(lines[i], HORIZONTAL_ALIGNMENT_LEFT, -1, sizes[i]).x
 		widest = maxf(widest, w)
-	var box_w := minf(size.x - 40.0, widest + 64.0)
-	var top := 104.0 - 8.0 * (1.0 - ease(_hint_alpha, -2.0))
+	var box_w := minf(safe.size.x, widest + 64.0)
+	var top := safe.position.y + 86.0 - 8.0 * (1.0 - ease(_hint_alpha, -2.0))
 	var baselines: Array[float] = []
 	var y := top + 6.0
 	for s in sizes:
 		y += s + 9.0
 		baselines.append(y)
-	var box := Rect2(size.x * 0.5 - box_w * 0.5, top, box_w, y - top + 14.0)
+	var box := Rect2(safe.get_center().x - box_w * 0.5, top, box_w, y - top + 14.0)
 	var a := _hint_alpha
 	UiKit.panel(_view, box, edge, 0.3, a, 10.0)
 	for i in lines.size():
 		var title := i == 0 and lines.size() > 1
 		var col := Color(UiKit.GOLD, a) if title else Color(1, 1, 1, 0.92 * a)
-		UiKit.text(_view, Vector2(0, baselines[i]), size.x, lines[i], sizes[i], col, HORIZONTAL_ALIGNMENT_CENTER)
+		UiKit.text(_view, Vector2(0, baselines[i]), safe.end.x + safe.position.x, lines[i], sizes[i], col, HORIZONTAL_ALIGNMENT_CENTER)
 
 
 ## 下方中央、節拍條上面：倒下的提示卡，從下面滑上來，最後半秒淡出
-func _draw_tip(size: Vector2) -> void:
+func _draw_tip(safe: Rect2) -> void:
 	var t := TIP_TIME - _tip_timer
 	var a := minf(1.0, _tip_timer * 2.0) * minf(1.0, t * 4.0)
 	var rise := 16.0 * (1.0 - ease(minf(1.0, t * 4.0), -2.0))
 	var label := "提示"
 	var pw := UiKit.width_of(label, 13) + 24.0
 	var box_w := pw + 12.0 + UiKit.width_of(_tip, 17) + 44.0
-	var box := Rect2(size.x * 0.5 - box_w * 0.5, size.y - 150.0 + rise, box_w, 50.0)
+	var box := Rect2(safe.get_center().x - box_w * 0.5, safe.end.y - 126.0 + rise, box_w, 50.0)
 	UiKit.panel(_view, box, TIP_COLOR, 0.35, a, 10.0)
 	var x := box.position.x + 22.0
 	var y := box.position.y + 32.0
@@ -308,8 +319,8 @@ func _draw_tip(size: Vector2) -> void:
 
 
 ## 下方中央：拍點從兩側往中間收，收到中央的鼓就是拍點
-func _draw_beat_bar(size: Vector2, edge: Color) -> void:
-	var center := Vector2(size.x * 0.5, size.y - 30.0)
+func _draw_beat_bar(safe: Rect2, edge: Color) -> void:
+	var center := Vector2(safe.get_center().x, safe.end.y - 6.0)
 	var reach := 250.0
 	for side: float in [-1.0, 1.0]:
 		_view.draw_polygon(PackedVector2Array([center + Vector2(side * 20, -1.5), center + Vector2(side * reach, -1.5),
