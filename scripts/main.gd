@@ -32,6 +32,7 @@ var _level_time: float = 0.0
 var _completed: bool = false
 var _shake: float = 0.0
 var _zoom_punch: float = 0.0
+var _camera_ground_y: float = 0.0
 
 
 func _ready() -> void:
@@ -42,6 +43,7 @@ func _ready() -> void:
 	var bg := Background.new()
 	add_child(bg)
 	_build_level()
+	_camera_ground_y = spawn_point.y
 	bg.level_height = level_size.y
 	bg.stage = _stage
 
@@ -75,11 +77,12 @@ func _physics_process(delta: float) -> void:
 	var view := get_viewport_rect().size / camera.zoom
 	var target := player.global_position + Vector2(player.facing * 70.0, -30.0)
 	if level_size.y > LevelData.HEIGHT * TILE:
-		# 連續攀升要預留上層落點視野；普通小跳留在死區內，避免鏡頭上下晃。
-		target.y -= 120.0
-		target.y += clampf(player.velocity.y * 0.14, -90.0, 90.0)
-		var dy := target.y - camera.position.y
-		target.y = camera.position.y + signf(dy) * maxf(absf(dy) - 48.0, 0.0)
+		# 以最近落腳高度為基準，小跳保留下方地形；持續攀升才移動視野。
+		if player.is_on_floor():
+			_camera_ground_y = player.global_position.y
+		target.y = clampf(_camera_ground_y + 20.0,
+			player.global_position.y - view.y * 0.10, player.global_position.y + view.y * 0.12)
+		target.y += clampf(player.velocity.y * 0.08, 0.0, 50.0)
 	elif player.velocity.y > 500.0:
 		target.y += 90.0
 	var rate := 7.0
@@ -87,13 +90,22 @@ func _physics_process(delta: float) -> void:
 	if flag:
 		var focus: Variant = flag.camera_focus()
 		if focus != null:
-			target = focus + Vector2(120.0, -150.0 if level_size.y > LevelData.HEIGHT * TILE else -30.0)
+			target = focus + Vector2(120.0, 20.0 if level_size.y > LevelData.HEIGHT * TILE else -30.0)
 			rate = 5.0
 		else:
 			rate = 3.0
 	target.x = clampf(target.x, view.x * 0.5, maxf(view.x * 0.5, level_size.x - view.x * 0.5))
 	target.y = clampf(target.y, view.y * 0.5, maxf(view.y * 0.5, level_size.y - view.y * 0.5))
-	camera.position = camera.position.lerp(target, 1.0 - exp(-rate * delta))
+	var y_rate := rate
+	if not flag and level_size.y > LevelData.HEIGHT * TILE:
+		y_rate = 5.0 if target.y < camera.position.y else 10.0
+	camera.position.x = lerpf(camera.position.x, target.x, 1.0 - exp(-rate * delta))
+	camera.position.y = lerpf(camera.position.y, target.y, 1.0 - exp(-y_rate * delta))
+	if not flag and level_size.y > LevelData.HEIGHT * TILE:
+		# 平滑追蹤仍有硬性安全範圍，連續接跳也不會把角色推到提示卡後面。
+		camera.position.y = clampf(camera.position.y,
+			player.global_position.y - view.y * 0.28, player.global_position.y + view.y * 0.18)
+		camera.position.y = clampf(camera.position.y, view.y * 0.5, maxf(view.y * 0.5, level_size.y - view.y * 0.5))
 
 	_shake = move_toward(_shake, 0.0, 40.0 * delta)
 	camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
@@ -114,10 +126,7 @@ func _process(delta: float) -> void:
 			_gravity_target = float(h.get("gravity", 2400))
 			player.kill_y = float(h.get("kill_y", level_size.y + 120.0))
 			break
-	for z in _gravity_zones:
-		if px >= float(z["from"]) and px < float(z["to"]):
-			_gravity_target = float(z["gravity"])
-			break
+	_gravity_target = _gravity_at_x(px)
 	_apply_section_gravity()
 	var watching := _watching_flag() != null
 	hud.set_hint("" if _completed or watching else hint)
@@ -240,7 +249,8 @@ func _on_player_died() -> void:
 	tw.tween_interval(0.4)
 	tw.tween_callback(func() -> void:
 		player.respawn_at(player.checkpoint_position)
-		camera.position = player.global_position)
+		camera.position = player.global_position
+		_camera_ground_y = player.global_position.y)
 
 
 func _on_checkpoint_activated(cp: Checkpoint) -> void:
@@ -284,31 +294,18 @@ func _build_level() -> void:
 		var ring := DashRing.new()
 		ring.setup(o["pos"], o["notes"], o["tone"])
 		add_child(ring)
-	## 細分重力帶優先；沒有的區塊才用整段 hint.gravity 畫淡藍光幕
-	var covered: Array[Vector2] = []
-	for z: Dictionary in _gravity_zones:
-		var gz := GravityZone.new()
-		gz.setup(float(z["from"]), float(z["to"]), float(z["gravity"]))
-		gz.zone_height = level_size.y
-		add_child(gz)
-		covered.append(Vector2(float(z["from"]), float(z["to"])))
-	for h in _hints:
-		var g := float(h.get("gravity", 2400))
-		if absf(g - 2400.0) < 0.5:
+	# 相鄰同重力的區塊合成一片光幕，只有實際重力改變才畫邊線。
+	var spans := _gravity_visual_spans()
+	for i in spans.size():
+		var span: Dictionary = spans[i]
+		if float(span["gravity"]) >= 2400.0:
 			continue
-		var hf := float(h["from"])
-		var ht := float(h["to"])
-		var overlap := false
-		for span in covered:
-			if hf < span.y and ht > span.x:
-				overlap = true
-				break
-		if overlap:
-			continue
-		var gz2 := GravityZone.new()
-		gz2.setup(hf, ht, g)
-		gz2.zone_height = level_size.y
-		add_child(gz2)
+		var zone := GravityZone.new()
+		zone.setup(float(span["from"]), float(span["to"]), float(span["gravity"]))
+		zone.zone_height = level_size.y
+		zone.show_left_boundary = i > 0
+		zone.show_right_boundary = i + 1 < spans.size() and float(spans[i + 1]["gravity"]) >= 2400.0
+		add_child(zone)
 
 	var solid: Array[PackedByteArray] = []
 	for y in height:
@@ -407,6 +404,35 @@ func _build_level() -> void:
 		_wave.setup(wave_trigger, wave_trigger - 10.0 * TILE, wave_end, level_size.y)
 		_wave.armed.connect(_on_wave_armed)
 		add_child(_wave)
+
+
+## 與實際角色套用同一套優先序，避免視覺邊界與重力切換不一致。
+func _gravity_at_x(x: float) -> float:
+	for zone: Dictionary in _gravity_zones:
+		if x >= float(zone["from"]) and x < float(zone["to"]):
+			return float(zone["gravity"])
+	for hint: Dictionary in _hints:
+		if x >= float(hint["from"]) and x < float(hint["to"]):
+			return float(hint.get("gravity", 2400.0))
+	return 2400.0
+
+
+func _gravity_visual_spans() -> Array[Dictionary]:
+	var edges: Array[float] = [0.0, level_size.x]
+	for span: Dictionary in _hints + _gravity_zones:
+		for key: String in ["from", "to"]:
+			var x := float(span[key])
+			if not edges.has(x):
+				edges.append(x)
+	edges.sort()
+	var spans: Array[Dictionary] = []
+	for i in range(edges.size() - 1):
+		var gravity := _gravity_at_x((edges[i] + edges[i + 1]) * 0.5)
+		if not spans.is_empty() and is_equal_approx(float(spans[-1]["gravity"]), gravity):
+			spans[-1]["to"] = edges[i + 1]
+		else:
+			spans.append({"from": edges[i], "to": edges[i + 1], "gravity": gravity})
+	return spans
 
 
 func _add_pattern_tile(pat: Dictionary, grid: Array[String], x: int, y: int, run: int) -> void:

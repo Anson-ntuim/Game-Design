@@ -21,6 +21,8 @@ func check(ok: bool, label: String) -> void:
 
 func _run() -> void:
 	await process_frame
+	root.size = Vector2i(1280, 720)
+	root.content_scale_size = Vector2i(1280, 720)
 	# 終點會呼叫正式成績存檔；測試結束後還原原始檔案，避免留下自動回放成績。
 	var save_path := "user://save.cfg"
 	var had_save := FileAccess.file_exists(save_path)
@@ -71,6 +73,18 @@ func _replay_level(index: int) -> bool:
 	player.set_physics_process(false)
 	check(data["height"] > 20, "Tall map bounds")
 	check(level.camera.limit_bottom == data["height"] * 40, "Camera uses tall map bounds")
+	var visual_count := 0
+	for node: Node in level.get_children():
+		if node.get_script() != load("res://scripts/level/gravity_zone.gd"):
+			continue
+		visual_count += 1
+		if node.show_left_boundary:
+			check(not is_equal_approx(level._gravity_at_x(node.from_x - 1), level._gravity_at_x(node.from_x + 1)),
+				"Gravity line without a real transition at left edge")
+		if node.show_right_boundary:
+			check(not is_equal_approx(level._gravity_at_x(node.to_x - 1), level._gravity_at_x(node.to_x + 1)),
+				"Gravity line without a real transition at right edge")
+	check(visual_count == (2 if index == 3 else 1), "Continuous light gravity was not merged")
 	for ghost: Dictionary in data["ghosts"]:
 		var within_map := true
 		for point: Vector2 in ghost["points"]:
@@ -96,6 +110,7 @@ func _replay_level(index: int) -> bool:
 		var reached := false
 		var pending: Array[Dictionary] = []
 		var framed := true
+		var lower_view := true
 		Input.action_press("move_right")
 		player.set_physics_process(true)
 		for frame in range(-30, 1100):
@@ -132,6 +147,10 @@ func _replay_level(index: int) -> bool:
 				pending.append({"frame": frame, "kind": expected_jump})
 			var current_screen: Vector2 = player.get_global_transform_with_canvas().origin
 			framed = framed and current_screen.y > 70.0 and current_screen.y < level.get_viewport_rect().size.y - 30.0
+			if frame >= 0 and not player.is_on_floor():
+				var camera_bottom: float = level.camera.get_screen_center_position().y + 360.0
+				if camera_bottom < level.level_size.y - 5.0:
+					lower_view = lower_view and current_screen.y < 500.0
 
 			if player.control_locked:
 				if level._completed:
@@ -145,6 +164,7 @@ func _replay_level(index: int) -> bool:
 		Input.action_release("dash")
 		player.set_physics_process(false)
 		check(framed, "Camera lost player during traversal: " + section_name)
+		check(lower_view, "Camera hid lower landing space: " + section_name)
 		check(reached, "Stage %d %s did not reach next rest / goal; position %s" % [index + 1, section_name, player.position])
 		if i == chunks.size() - 2:
 			check(level._completed, "Final goal did not trigger completion")
