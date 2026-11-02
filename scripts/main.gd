@@ -324,6 +324,7 @@ func _build_level() -> void:
 	for spec: Dictionary in data["tempo_pads"]:
 		var pad := TempoPad.new()
 		pad.setup(spec["pos"], spec["bpm"], spec["width"])
+		pad.world_bottom = level_size.y
 		pad.triggered.connect(_on_tempo_pad_triggered)
 		add_child(pad)
 	for o: Dictionary in data["orbs"]:
@@ -387,7 +388,7 @@ func _build_level() -> void:
 						while y + tall < height and grid[y + tall][x] == "|":
 							tall += 1
 						var gate := BeatGate.new()
-						gate.setup(top_left, TILE, tall * TILE)
+						gate.setup(top_left, TILE, maxf(tall * TILE, level_size.y + 128.0 - top_left.y))
 						add_child(gate)
 				"P":
 					spawn_point = feet - Vector2(0, Player.BODY_SIZE.y * 0.5 + 1.0)
@@ -550,7 +551,7 @@ func _add_pattern_tile(pat: Dictionary, grid: Array[String], x: int, y: int, run
 			while y + tall < grid.size() and grid[y + tall][x] == c:
 				tall += 1
 			var gate := BeatGate.new()
-			gate.setup(top_left, TILE, tall * TILE, notes)
+			gate.setup(top_left, TILE, maxf(tall * TILE, level_size.y + 128.0 - top_left.y), notes)
 			add_child(gate)
 
 

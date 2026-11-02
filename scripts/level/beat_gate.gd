@@ -17,6 +17,7 @@ var is_open: bool = true
 var _reject_flash: float = 0.0
 var _open_flash: float = 0.0
 var _last_cue_slot: int = -1
+var _visual_height: float = 0.0
 
 
 func setup(top_left: Vector2, width: float, height: float, pattern: String = "x.x.x.x.") -> void:
@@ -87,6 +88,11 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	_visual_height = size.y
+	var camera := get_viewport().get_camera_2d()
+	if camera:
+		var screen_bottom := camera.get_screen_center_position().y + get_viewport_rect().size.y / camera.zoom.y * 0.5
+		_visual_height = maxf(_visual_height, screen_bottom + 128.0 - global_position.y)
 	var cx := size.x * 0.5
 	var b := Conductor.song_beat
 	if is_open:
@@ -101,23 +107,22 @@ func _draw() -> void:
 		var col := Color(OPEN_COLOR.lerp(Color.WHITE, 0.5 * t), 0.2 + 0.75 * t)
 		for side: float in [-1.0, 1.0]:
 			var x := cx + side * d
-			draw_line(Vector2(x, 0), Vector2(x, size.y), col, 3.0)
+			draw_line(Vector2(x, 0), Vector2(x, _visual_height), col, 3.0)
 			draw_line(Vector2(x, 1.5), Vector2(x - side * 9.0, 1.5), col, 3.0)
-			draw_line(Vector2(x, size.y - 1.5), Vector2(x - side * 9.0, size.y - 1.5), col, 3.0)
+			draw_line(Vector2(x, _visual_height - 1.5), Vector2(x - side * 9.0, _visual_height - 1.5), col, 3.0)
 	var cap := Color(0.85, 0.95, 1.0) if is_open else Color(0.55, 0.6, 0.8)
 	draw_rect(Rect2(cx - 14, 0, 28, 4), cap)
-	draw_rect(Rect2(cx - 14, size.y - 4, 28, 4), cap)
 
 
 func _draw_closed(cx: float, b: float) -> void:
 	var until := BeatPattern.until_hit(notes, b)
 	var t := clampf(1.0 - until, 0.0, 1.0)
 	var base := CLOSED_COLOR.lerp(OPEN_COLOR, t).lerp(Color(1.0, 0.35, 0.4), _reject_flash)
-	draw_rect(Rect2(cx - 10, 0, 20, size.y), Color(base, 0.28 + 0.2 * t))
-	draw_rect(Rect2(cx - 3, 0, 6, size.y), Color(base.lerp(Color.WHITE, 0.4 * t), 0.85))
+	draw_rect(Rect2(cx - 10, 0, 20, _visual_height), Color(base, 0.28 + 0.2 * t))
+	draw_rect(Rect2(cx - 3, 0, 6, _visual_height), Color(base.lerp(Color.WHITE, 0.4 * t), 0.85))
 	var scroll := fposmod(b * 40.0, 20.0)
 	var y := -20.0 + scroll
-	while y < size.y:
+	while y < _visual_height:
 		if y > 0.0:
 			draw_line(Vector2(cx - 12, y), Vector2(cx + 12, y), Color(base, 0.35), 2.0)
 		y += 20.0
@@ -128,12 +133,12 @@ func _draw_closed(cx: float, b: float) -> void:
 
 func _draw_open(cx: float, b: float) -> void:
 	var f := _open_flash
-	draw_rect(Rect2(cx - 10, 0, 20, size.y), Color(OPEN_COLOR, 0.07 + 0.5 * f))
+	draw_rect(Rect2(cx - 10, 0, 20, _visual_height), Color(OPEN_COLOR, 0.07 + 0.5 * f))
 	for side: float in [-1.0, 1.0]:
-		draw_line(Vector2(cx + side * 10.0, 0), Vector2(cx + side * 10.0, size.y), Color(OPEN_COLOR, 0.35), 1.5)
+		draw_line(Vector2(cx + side * 10.0, 0), Vector2(cx + side * 10.0, _visual_height), Color(OPEN_COLOR, 0.35), 1.5)
 	if f > 0.0:
 		var g := 10.0 + (1.0 - f) * 26.0
-		draw_rect(Rect2(cx - g, 0, g * 2.0, size.y), Color(1, 1, 1, 0.35 * f))
+		draw_rect(Rect2(cx - g, 0, g * 2.0, _visual_height), Color(1, 1, 1, 0.35 * f))
 	# 往右的衝刺箭頭，跟著半拍往右滑
 	var slide := fposmod(b * 2.0, 1.0) * 8.0
 	var col := Color(1, 1, 1, 0.95)
@@ -148,7 +153,7 @@ func _draw_open(cx: float, b: float) -> void:
 ## 叉叉／箭頭畫在哪些高度：矮的光柱畫在正中間，高的每 120px 一個
 func _marks() -> Array[float]:
 	var out: Array[float] = []
-	var n := maxi(1, roundi(size.y / 120.0))
+	var n := maxi(1, roundi(_visual_height / 120.0))
 	for i in n:
-		out.append(size.y * (i + 0.5) / n)
+		out.append(_visual_height * (i + 0.5) / n)
 	return out

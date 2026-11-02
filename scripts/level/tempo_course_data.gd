@@ -15,7 +15,7 @@ const PATTERNS: Dictionary = {
 
 const CHUNKS: Array[Dictionary] = [
 	{
-		"hint": "變速踏板\n踩藍色板放慢、橘色板加速。音樂、跳躍與機關一起變速，跳躍距離不變",
+		"hint": "強制變速線\n穿藍線放慢、橘線加速。音樂、跳躍與機關一起變速，跳躍距離不變",
 		"row_offset": 20,
 		"rows": [
 			"",
@@ -41,7 +41,7 @@ const CHUNKS: Array[Dictionary] = [
 		],
 	},
 	{
-		"hint": "慢拍入口・90 BPM\n先踩藍板，音樂與世界一起放慢；在長椅存下這個速度",
+		"hint": "慢拍入口・90 BPM\n先穿過藍線，音樂與世界一起放慢；在長椅存下這個速度",
 		"row_offset": 20,
 		"tempo_pads": [[4.5, 16, 90]],
 		"rows": [
@@ -107,7 +107,7 @@ const CHUNKS: Array[Dictionary] = [
 		],
 	},
 	{
-		"hint": "加速入口・150 BPM\n踩橘板後整個世界加快；先在安全地面適應再出發",
+		"hint": "加速入口・150 BPM\n穿過橘線後整個世界加快；先在安全地面適應再出發",
 		"row_offset": 17,
 		"tempo_pads": [[4.5, 16, 150]],
 		"rows": [
@@ -173,7 +173,7 @@ const CHUNKS: Array[Dictionary] = [
 		],
 	},
 	{
-		"hint": "減速入口・96 BPM\n快段後踩藍板換氣，聽清楚輕點與長按的差別",
+		"hint": "減速入口・96 BPM\n快段後穿藍線換氣，聽清楚輕點與長按的差別",
 		"row_offset": 15,
 		"tempo_pads": [[4.5, 16, 96]],
 		"rows": [
@@ -242,7 +242,7 @@ const CHUNKS: Array[Dictionary] = [
 		],
 	},
 	{
-		"hint": "極速入口・168 BPM\n先踩板聽四拍，準備好再進入連環段",
+		"hint": "極速入口・168 BPM\n先穿線聽四拍，準備好再進入連環段",
 		"row_offset": 15,
 		"tempo_pads": [[4.5, 16, 168]],
 		"rows": [
@@ -376,7 +376,7 @@ const CHUNKS: Array[Dictionary] = [
 		],
 	},
 	{
-		"hint": "混速終章入口\n起跑先維持原速；中途踩橘板加速，再踩藍板減速，最後恢復",
+		"hint": "混速終章入口\n起跑先維持原速；中途穿橘線加速，再穿藍線減速，最後恢復",
 		"row_offset": 11,
 		"tempo_pads": [[4.5, 16, 120]],
 		"rows": [
@@ -403,7 +403,7 @@ const CHUNKS: Array[Dictionary] = [
 		],
 	},
 	{
-		"hint": "混速接力\n落地踩板才切速：120 → 156 → 90；連招、落地與變速交替",
+		"hint": "混速接力\n穿線立即切速，空中也生效：120 → 156 → 90；連招、落地與變速交替",
 		"score_beats": 16,
 		"row_offset": 11,
 		"gravity": 2400.0,
@@ -462,7 +462,7 @@ const CHUNKS: Array[Dictionary] = [
 		],
 	},
 	{
-		"hint": "尾奏・回到原速\n踩最後一塊板恢復 120 BPM，再走進終點",
+		"hint": "尾奏・回到原速\n穿最後一條線恢復 120 BPM，再走進終點",
 		"row_offset": 9,
 		"tempo_pads": [[3.5, 16, 120]],
 		"rows": [

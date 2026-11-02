@@ -35,6 +35,8 @@ func _run() -> void:
 		if await _replay_level(index) != true:
 			failures += 1
 			push_error("Stage %d replay aborted" % (index + 1))
+	if await _gate_extent_smoke() != true:
+		failures += 1
 	if await _tempo_features() != true:
 		failures += 1
 	if had_save:
@@ -77,6 +79,9 @@ func _replay_level(index: int) -> bool:
 	player.set_physics_process(false)
 	check(data["height"] > 20, "Tall map bounds")
 	check(level.camera.limit_bottom == data["height"] * 40, "Camera uses tall map bounds")
+	for gate in get_nodes_in_group("beat_gate"):
+		check(gate.global_position.y + gate.size.y >= level.level_size.y + 128.0,
+			"Gate ends before the bottom of the level")
 	var visual_count := 0
 	for node: Node in level.get_children():
 		if node.get_script() != load("res://scripts/level/gravity_zone.gd"):
@@ -270,17 +275,34 @@ func _tempo_features() -> bool:
 			check(absf(float(measured[pad.target_bpm]) - distance) < 1.0, "Player motion does not follow scaled time")
 			Input.action_release("move_right")
 	check(float(measured[168.0]) > float(measured[90.0]) * 1.5, "Fast pad does not move player faster")
-	player.respawn_at(pads[0].global_position - Vector2(0, 180))
-	var count: int = hits[0]
-	for tick in 4:
+	player.respawn_at(pads[0].global_position + Vector2(-40, -180))
+	for tick in 3:
 		await physics_frame
 		await process_frame
-	check(hits[0] == count, "Flying above pad incorrectly triggered it")
+	var count: int = hits[0]
+	Input.action_press("move_right")
+	for tick in 25:
+		await physics_frame
+		await process_frame
+	Input.action_release("move_right")
+	check(hits[0] == count + 1 and not player.is_on_floor(), "Jumping across tempo line did not force speed change")
+	check(absf(conductor.current_bpm - 90) < 0.1, "Airborne crossing has wrong speed")
 	player.respawn_at(pads[0].global_position - Vector2(0, 22.01))
+	count = hits[0]
 	for tick in 10:
 		await physics_frame
 		await process_frame
-	check(hits[0] == count + 1, "Pad should trigger once after leaving and stepping back")
+	check(hits[0] == count, "Staying on tempo line repeatedly triggered it")
+	player.respawn_at(pads[0].global_position + Vector2(-48, -100))
+	for tick in 3:
+		await physics_frame
+		await process_frame
+	count = hits[0]
+	player.position.x = pads[0].position.x + 48
+	for tick in 3:
+		await physics_frame
+		await process_frame
+	check(hits[0] == count + 1, "Fast crossing skipped the tempo line")
 	var before: float = conductor.song_position
 	level.set_world_tempo(168, false)
 	check(absf(conductor.song_position - before) < 0.02, "Changing tempo jumped the beat clock")
@@ -322,4 +344,23 @@ func _tempo_features() -> bool:
 	state._load_records()
 	check(state.records[5]["time"] == 40.0 and state.records[6]["time"] == 50.0, "Records migrated more than once")
 	state.records = original
+	return true
+
+
+func _gate_extent_smoke() -> bool:
+	# 補查其餘四關，包含教學關的直排 | 光柱與舊挑戰關的節奏型光柱。
+	for index in [0, 1, 2, 5]:
+		root.get_node("GameState").level_index = index
+		var level = load("res://scenes/main.tscn").instantiate()
+		root.add_child(level)
+		current_scene = level
+		level.player.set_physics_process(false)
+		level.set_process(false)
+		conductor.set_process(false)
+		for gate in get_nodes_in_group("beat_gate"):
+			check(gate.global_position.y + gate.size.y >= level.level_size.y + 128,
+				"Gate does not extend below level %d" % (index + 1))
+		level.queue_free()
+		await process_frame
+		await process_frame
 	return true

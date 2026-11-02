@@ -45,7 +45,7 @@ const LEVELS: Array[Dictionary] = [
 		"patterns": Demo2Data.PATTERNS, "chunks": Demo2Data.CHUNKS},
 	{"name": "第四關　輕重力", "desc": "浮空階梯、借力登高、寬坑衝刺與重力對照；平台和長椅隨路線逐段上升", "stars": 1,
 		"patterns": Demo6Data.PATTERNS, "chunks": Demo6Data.CHUNKS},
-	{"name": "第五關　變速踏板", "desc": "踩藍板減速、橘板加速：慢拍階梯、快拍光門、極速環橋與混速接力，音樂和世界一起變速", "stars": 2,
+	{"name": "第五關　強制變速線", "desc": "穿藍線減速、橘線加速：慢拍階梯、快拍光門、極速環橋與混速接力，音樂和世界一起變速", "stars": 2,
 		"patterns": TempoCourseData.PATTERNS, "chunks": TempoCourseData.CHUNKS, "tempo_stage": true},
 	{"name": "第六關　挑戰", "desc": "每段都混合音符、衝刺環、光柱、尖刺和節奏地形，一路跑到底", "stars": 3,
 		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true},
