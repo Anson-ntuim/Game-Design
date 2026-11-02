@@ -9,6 +9,7 @@ const LIGHT := 1000.0
 var from_x: float = 0.0
 var to_x: float = 0.0
 var gravity_strength: float = NORMAL
+var zone_height: float = 800.0
 var _phase: float = 0.0
 
 
@@ -35,15 +36,15 @@ func _draw() -> void:
 	if w <= 0.0 or lit <= 0.02:
 		return
 	var col := Color(0.35, 0.75, 1.0, 0.05 + 0.10 * lit)
-	draw_rect(Rect2(0, -40, w, 900), col)
+	draw_rect(Rect2(0, -40, w, zone_height + 100), col)
 	var edge := Color(0.55, 0.9, 1.0, 0.35 + 0.45 * lit)
-	draw_line(Vector2(0, 0), Vector2(0, 800), edge, 2.0 + lit)
-	draw_line(Vector2(w, 0), Vector2(w, 800), edge, 2.0 + lit)
-	var n := maxi(4, int(w / 70.0))
+	draw_line(Vector2(0, 0), Vector2(0, zone_height), edge, 2.0 + lit)
+	draw_line(Vector2(w, 0), Vector2(w, zone_height), edge, 2.0 + lit)
+	var n := maxi(4, int(w / 70.0)) * maxi(1, ceili(zone_height / 800.0))
 	var speed := 0.55 + lit * 0.9
 	for i in n:
-		var x := (i + 0.5) * w / n
+		var x := (fposmod(i * 0.618, 1.0) + 0.5 / n) * w
 		var t := fposmod(_phase * speed + i * 0.37, 1.0)
-		var y := lerpf(720.0, 40.0, t)
+		var y := lerpf(zone_height - 80.0, 40.0, t)
 		var a := 0.12 + 0.45 * lit * sin(t * PI)
 		draw_circle(Vector2(x, y), 2.5 + 3.0 * lit, Color(edge, a))

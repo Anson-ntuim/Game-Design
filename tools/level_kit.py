@@ -83,6 +83,8 @@ def render_patterns(patterns):
 def render_chunk(chunk):
     hint = chunk["hint"].replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
     out = ["\t{", f'\t\t"hint": "{hint}",']
+    if "row_offset" in chunk:
+        out.append(f'\t\t"row_offset": {chunk["row_offset"]},')
     if "bpm" in chunk:
         out.append(f'\t\t"bpm": {chunk["bpm"]},')
     if "gravity" in chunk:

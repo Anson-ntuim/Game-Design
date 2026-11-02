@@ -264,7 +264,7 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
             orb_tones=(12, 15, 19, 17, 22, 24, 27), ring_tones=(19, 24, 27), finale=False, wave=False,
             rests=(), strict=True, blind=None, bpm=None, floor="pit", spikes=(), fixed_spikes=(),
             melody_tones=(0, 3, 7, 10, 12, 15, 19, 22), flow=False, final_rise=0, gravity=None,
-            gravity_flip=None, island_spikes=True, flag=None):
+            gravity_flip=None, island_spikes=True, flag=None, audit_air=False):
     """rests: [(起拍, 迄拍)] 休止；strict = False 搶拍只發出錯音。
     blind: {"notes": 16 格, "strobe": bool} 盲拍區。bpm: 走進這段時換成的速度。
     floor: pit／melody／beat／ground，或有高低差的 [(種類, 高幾格, 起跳幾次)]（見檔頭）。spikes: ground 整排地板尖刺彈出的拍子（要在這幾拍跳起來）；
@@ -284,7 +284,7 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
             orb_tones=orb_tones, ring_tones=ring_tones, finale=finale, wave=wave, rests=rests,
             strict=strict, blind=blind, bpm=bpm, floor=floor, spikes=spikes, fixed_spikes=fixed_spikes,
             melody_tones=melody_tones, flow=flow, final_rise=final_rise, gravity=gravity,
-            gravity_flip=gravity_flip, island_spikes=island_spikes, flag=flag)
+            gravity_flip=gravity_flip, island_spikes=island_spikes, flag=flag, audit_air=audit_air)
     finally:
         sim_player.GRAVITY = _old_g
 
@@ -293,7 +293,7 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
             orb_tones=(12, 15, 19, 17, 22, 24, 27), ring_tones=(19, 24, 27), finale=False, wave=False,
             rests=(), strict=True, blind=None, bpm=None, floor="pit", spikes=(), fixed_spikes=(),
             melody_tones=(0, 3, 7, 10, 12, 15, 19, 22), flow=False, final_rise=0, gravity=None,
-            gravity_flip=None, island_spikes=True, flag=None):
+            gravity_flip=None, island_spikes=True, flag=None, audit_air=False):
     kinds = _floor_kinds(floor)
     if kinds & {"melody", "beat"}:
         assert not any(k == "orb" for (_, k, _) in script), (
@@ -518,6 +518,21 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
         if ev[0] == "dash" and ev[3] >= stand_y - 40.0:
             assert False, (name, "衝刺時還站在／貼近地面", round(ev[1], 2), round(ev[3] / TILE, 2))
     course.verify()
+    if audit_air:
+        # 不能只看「最後有抵達」：每個譜面動作都必須真的觸發，尤其不能把音符按成地面跳。
+        for b, kind, _hold in script:
+            expected = "dash" if kind == "ring" else kind
+            assert any(e[0] == expected and abs(e[1] - b) < 0.05 for e in sim.events), (
+                name, "譜面動作未觸發", b, kind, sim.events)
+        saved = list(course.orbs)
+        for i, orb in enumerate(saved):
+            assert not any(l - 22 <= orb.x <= r + 22 and top > orb.y
+                           for l, top, r, bottom in course.solids), (name, "音符底下有多餘地板", i)
+            course.orbs = saved[:i] + saved[i + 1:]
+            assert course.outcome(script) is not None, (name, "音符拿掉仍可通過", i)
+        course.orbs = saved
+        course.orb_check(True)
+        course.ring_check(True)
     if not rests:
         course.wait_check(flow)
     course.dash_check(flow)

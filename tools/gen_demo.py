@@ -1,4 +1,7 @@
-"""產生 Demo 關卡：scripts/level/demo_1_data.gd ～ demo_4_data.gd。
+"""產生 Demo 關卡：scripts/level/demo_1_data.gd ～ demo_6_data.gd。
+
+注意：資料編號沿用原專案，選單第 4 關 = 資料 6，選單第 6 關 = 資料 5。
+重建這兩關：python3 tools/gen_demo.py 5 6 --write；設計來源為 climbing_courses.py。
 
 第一關一段教一個東西（音符、長按、輕點、光柱、空中衝刺、衝刺環），每段之後放長椅；
 第二關把學過的東西兩兩組合；第三關先各介紹旋律平台、節拍平台、尖刺，後段混在一起，
@@ -195,128 +198,14 @@ def demo4(pat):
     ]
 
 
-## 第五關：黃音符主導的節奏變奏（主題 T·T·L R 升級）
-## L/T 多半用黃音符實現；尖刺極少；坑島不鋪防站樁刺；路線緩升不驟降
-## 譜面：L 長按／T 輕點／R 穿環／D 穿柱／C 一般衝刺；. 半拍
+## 檔案編號沿用舊資料：Demo6Data 是選單第四關，Demo5Data 是選單第六關。
 NORMAL = 2400
 LIGHT = 1000
-## island_spikes=False：不要滿地尖刺；lasers=False：輕點黃音符往上爬時不蓋雷射頂
-S5 = dict(final_rise=0, island_spikes=False, flow=False, lasers=False)
-
-
-def Tap(b):
-    return J(b, T)
-
-
-def oT(b):
-    return O(b, T)
 
 
 def demo5(pat):
-    ## ①→⑧ 對齊節奏草稿；黃音符底下不留多餘島；多段輕重切換
-    return [
-        intro("節奏變奏挑戰\n黃音符為主：有球就走球，底下不一定有平台。"
-              "主題句會升級；路上會多次切換輕／重重力"),
-        ## ① 開場
-        section(pat, "開場Ⅰ", [
-            J(0), oT(1), O(2), D(3), oT(4), O(5),
-            J(7), R(8), oT(9), oT(9.5), O(10),
-        ], "開場Ⅰ\n黃音符串起來；穿環後接二連點——球底下是坑",
-           floor="pit", gravity=NORMAL, **S5),
-        section(pat, "開場Ⅱ", [
-            J(0), oT(1), oT(1.5), O(2), D(3),
-            J(5), R(6), oT(7), oT(7.5), O(8),
-        ], "開場Ⅱ\n二連點 + 穿柱；引導環後繼續輕點",
-           floor="pit", gates=[3], gravity=NORMAL, **S5),
-        bench("長椅"),
-        ## 變輕一次
-        section(pat, "空中變輕", [
-            J(0), O(1), O(2), J(4), oT(5), O(6),
-        ], "空中變輕\n穿過邊界後半變飄；黃音符會飛得更久",
-           floor="pit", gravity=NORMAL, gravity_flip=(3.0, LIGHT), **S5),
-        ## ② 流動（輕重力）
-        section(pat, "流動Ａ", [
-            J(0), R(1), oT(2), O(3),
-            J(4), oT(5), oT(5.5), O(6), D(7),
-            J(8), R(9), R(9.5), oT(10), O(11), D(12),
-            J(13), oT(14), O(15), D(16),
-        ], "流動Ａ・輕\n引導環、黃音符、半拍補能、穿柱",
-           floor="pit", gates=[7, 12, 16], gravity=LIGHT, **S5),
-        bench("長椅　重力恢復"),
-        ## ③ 切分
-        section(pat, "切分Ｂ", [
-            J(0), R(1), R(1.5), D(2), oT(3), O(4),
-            J(6), oT(7), O(8),
-            J(10), R(11), R(11.5), D(12),
-            J(13), oT(14), O(15), D(16),
-        ], "切分Ｂ\n半拍補能後接黃音符",
-           floor="pit", gates=[16], gravity=NORMAL, **S5),
-        ## 再變輕
-        section(pat, "再變輕", [
-            J(0), R(1), oT(2), O(3), J(5), O(6),
-        ], "再變輕\n中段邊界又變飄",
-           floor="pit", gravity=NORMAL, gravity_flip=(2.5, LIGHT), **S5),
-        bench("長椅　喘口氣"),
-        ## ④ 緩衝
-        section(pat, "緩衝", [
-            J(0), O(1),
-            J(2), oT(3), O(4),
-            J(5), oT(6), O(7),
-            J(8), O(9),
-        ], "緩衝\n黃音符放慢——球路為主；下一段再變輕",
-           floor="pit", gravity=NORMAL, **S5),
-        bench("長椅"),
-        ## ⑤ 空中Ｃ + 變重
-        section(pat, "空中Ｃ", [
-            J(0), R(1), R(1.5), D(2),
-            J(4), R(5), R(5.5), D(6),
-            J(8), R(9), R(9.5), D(10), oT(11), O(12),
-            J(13), R(14), oT(15), O(16),
-        ], "空中Ｃ\n輕重力連環；過邊界變重",
-           floor="pit", gates=[6, 10], gravity=LIGHT, gravity_flip=(11.0, NORMAL), **S5),
-        bench("長椅　最後存檔"),
-        section(pat, "安可Ⅰ", FINALE5_A,
-                "安可Ⅰ・主題回歸\n引導環 + 黃音符",
-                floor="pit", gates=[12], gravity=NORMAL, **S5),
-        ## 安可中再切一次輕
-        section(pat, "安可Ⅱ上", FINALE5_B1,
-                "安可Ⅱ・高潮上\n先半拍補能再接黃音符；中段變輕",
-                floor="pit", gates=[8, 17], gravity=NORMAL, gravity_flip=(9.0, LIGHT), **S5),
-        section(pat, "安可Ⅱ下", FINALE5_B2,
-                "安可Ⅱ・高潮下\n輕重力收尾串接",
-                floor="pit", gates=[10], gravity=LIGHT, **S5),
-        section(pat, "終章", FINALE5_C,
-                "終章\n常規重力爆發收束",
-                floor="pit", finale=True, gates=[3], gravity=NORMAL, **S5),
-    ]
-
-
-## 安可：地面跳數−1 = stepped 站次加總
-## 黃音符句與穿環句錯開，中間留落地空拍（避免環貼地／飛頂）
-FINALE5_A = [
-    J(0), R(1), oT(2), O(3),
-    J(5), oT(6), oT(6.5), O(7),
-    J(9), R(10), O(11), D(12),
-    J(13), oT(14), O(15),
-]
-FINALE5_B1 = [
-    J(0), R(1), R(1.5), D(2), oT(3), O(4),
-    J(6), R(7), R(7.5), D(8),
-    J(9), oT(10), oT(10.5), O(11),
-    J(13), R(14), oT(15), O(16), D(17),
-]
-FINALE5_B2 = [
-    J(0), R(1), R(1.5), D(2),
-    J(4), oT(5), O(6),
-    J(8), R(9), R(9.5), D(10),
-    J(13), R(14), R(14.5), D(15),
-]
-FINALE5_C = [
-    J(0), R(1), O(2), D(3),
-    J(5), R(6), R(6.5), D(7),
-    J(9), oT(10), oT(10.5), O(11),
-    J(14), R(15), R(15.5), D(16),
-]
+    from climbing_courses import variations
+    return variations(pat)
 
 
 ## 第四關的安可：6 小節不停的長段落，起跳、衝刺、光柱都在正拍（只有輕點音符排在半拍）。
@@ -338,35 +227,8 @@ FINALE4_FLOOR = [
 
 
 def demo6(pat):
-    ## 輕重力展示：短、好過；有對拍音符的段落會自動放旗，純跳躍段不放
-    S6 = dict(final_rise=0, island_spikes=False, flow=False, lasers=False)
-    return [
-        intro("輕重力體驗\n這關重點：重力變輕，跳起來會飄比較久。有黃音符的段落，先站旗子旁對拍出發"),
-        section(pat, "先感受飄", [
-            J(0), J(2), J(4), J(6),
-        ], "先感受飄\n小島之間只跳——同樣按住空白鍵，人會在空中多停一會兒",
-           floor="pit", gravity=LIGHT, **S6),
-        bench("長椅"),
-        section(pat, "黃音符・輕", [
-            J(0), O(1), O(2),
-        ], "黃音符・輕\n長按兩顆黃球過坑；球底下是空的",
-           floor="pit", gravity=LIGHT, **S6),
-        bench("長椅"),
-        section(pat, "空中衝刺・輕", [
-            J(0), D(1), J(3), D(4),
-        ], "空中衝刺・輕\n飄起來後按 C 衝過寬一點的坑",
-           floor="pit", gravity=LIGHT, **S6),
-        bench("長椅"),
-        section(pat, "輕重對照", [
-            J(0), O(1), J(3), O(4),
-        ], "輕重對照\n前半常規重力，過邊界變飄——同一動作手感會變",
-           floor="pit", gravity=NORMAL, gravity_flip=(2.0, LIGHT), **S6),
-        bench("長椅　最後存檔"),
-        section(pat, "小結", [
-            J(0), O(1), D(2), J(4), O(5),
-        ], "小結\n黃音符接一下衝刺，感受輕重力就過關",
-           floor="pit", finale=True, gravity=LIGHT, **S6),
-    ]
+    from climbing_courses import low_gravity
+    return low_gravity(pat)
 
 
 LEVELS = {
@@ -375,9 +237,9 @@ LEVELS = {
     3: (demo3, "Demo3Data", "Demo 第三關・節奏地形：旋律平台、節拍平台、尖刺，後段一路跑到底不能停。"),
     4: (demo4, "Demo4Data", "Demo 第四關・挑戰：每段都混合音符、衝刺環、光柱和節奏地形，最後 48 拍高高低低一路跑到底。"),
     5: (demo5, "Demo5Data",
-        "Demo 第五關・黃音符節奏變奏：T·T·L R 升級；多次輕重切換；球底下少留平台。"),
+        "選單第六關・節奏變奏：短點、環橋、節拍階梯、空中光門、風井與綜合收束。"),
     6: (demo6, "Demo6Data",
-        "Demo 輕重力展示：感受飄、黃音符、空中衝刺、輕重對照；有黃音符的段落先對旗出發。"),
+        "選單第四關・輕重力：浮空階梯、借力上升、橫越風廊、常規重力落點與登頂。"),
 }
 
 

@@ -1,6 +1,7 @@
 class_name LevelData
 extends RefCounted
-## 關卡由多個「區塊」左右拼接而成，每個區塊高 20 格（地面頂端在第 16 列）。
+## 關卡由多個「區塊」左右拼接而成，每段預設高 20 格；row_offset 可把整段放在不同高度。
+## row_offset 同時位移地形、音符、示範路徑與存檔點，下一段的起點要接上上一段落點。
 ## 圖例：
 ##   #  實心地形            %  光滑牆（不能滑牆/蹬牆，逼玩家用節奏能力通過）
 ##   =  單向平台（可從下方穿過）
@@ -42,11 +43,11 @@ const LEVELS: Array[Dictionary] = [
 		"patterns": Demo3Data.PATTERNS, "chunks": Demo3Data.CHUNKS, "stage": true},
 	{"name": "第三關　組合", "desc": "把學過的串起來：音符補衝刺、長短交替、音符接光牆，最後衝刺環接音符", "stars": 3,
 		"patterns": Demo2Data.PATTERNS, "chunks": Demo2Data.CHUNKS},
-	{"name": "第四關　輕重力", "desc": "展示輕重力：感受飄、黃音符、空中衝刺與輕重對照；有黃音符的段落先對旗出發", "stars": 1,
+	{"name": "第四關　輕重力", "desc": "浮空階梯、借力登高、寬坑衝刺與重力對照；平台和長椅隨路線逐段上升", "stars": 1,
 		"patterns": Demo6Data.PATTERNS, "chunks": Demo6Data.CHUNKS},
 	{"name": "第五關　挑戰", "desc": "每段都混合音符、衝刺環、光柱、尖刺和節奏地形，一路跑到底", "stars": 3,
 		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true},
-	{"name": "第六關　節奏變奏", "desc": "黃音符為主；多次輕重切換；有球走球、底下少留平台；環可引導或補能", "stars": 2,
+	{"name": "第六關　節奏變奏", "desc": "短點旋律、補能環橋、交替階梯、空中光門與雙音風井，六段不同任務一路登頂", "stars": 2,
 		"patterns": Demo5Data.PATTERNS, "chunks": Demo5Data.CHUNKS},
 ]
 
@@ -54,8 +55,11 @@ const LEVELS: Array[Dictionary] = [
 ## 把指定關卡的所有區塊拼成一張完整的字元地圖，並回傳提示範圍與音符
 static func build(level: int) -> Dictionary:
 	var info: Dictionary = LEVELS[level]
+	var height := HEIGHT
+	for chunk: Dictionary in info["chunks"]:
+		height = maxi(height, int(chunk.get("row_offset", 0)) + chunk["rows"].size())
 	var grid: Array[String] = []
-	for r in HEIGHT:
+	for r in height:
 		grid.append("")
 	var hints: Array[Dictionary] = []
 	var orbs: Array[Dictionary] = []
@@ -71,43 +75,47 @@ static func build(level: int) -> Dictionary:
 	var x_offset := 0
 	for chunk: Dictionary in info["chunks"]:
 		var rows: Array = chunk["rows"]
+		var row_offset := int(chunk.get("row_offset", 0))
+		var y_offset := row_offset * TILE
 		var lines: Array[String] = []
 		var w := 0
-		for r in HEIGHT:
-			var line: String = rows[r] if r < rows.size() else ""
+		for r in height:
+			var local_row := r - row_offset
+			var line: String = rows[local_row] if local_row >= 0 and local_row < rows.size() else ""
 			lines.append(line)
 			w = maxi(w, line.length())
-		for r in HEIGHT:
+		for r in height:
 			grid[r] += lines[r].rpad(w)
 		hints.append({"from": x_offset * TILE, "to": (x_offset + w) * TILE, "text": chunk.get("hint", ""),
-			"bpm": float(chunk.get("bpm", 120)), "gravity": float(chunk.get("gravity", 2400))})
+			"bpm": float(chunk.get("bpm", 120)), "gravity": float(chunk.get("gravity", 2400)),
+			"kill_y": (row_offset + rows.size()) * TILE + 120.0})
 		for o: Array in chunk.get("orbs", []):
 			orbs.append({
-				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE),
+				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE + y_offset),
 				"notes": o[2],
 				"tone": float(o[3]) if o.size() > 3 else 12.0,
 				"subdiv": int(o[4]) if o.size() > 4 else 2,
 			})
 		for o: Array in chunk.get("rings", []):
 			rings.append({
-				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE),
+				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE + y_offset),
 				"notes": o[2],
 				"tone": float(o[3]) if o.size() > 3 else 19.0,
 			})
 		for o: Array in chunk.get("dual_orbs", []):
 			dual_orbs.append({
-				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE),
+				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE + y_offset),
 				"notes3": o[2],
 				"notes4": o[3],
 				"tone": float(o[4]) if o.size() > 4 else 12.0,
 			})
 		for o: Array in chunk.get("slow_items", []):
 			slow_items.append({
-				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE),
+				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE + y_offset),
 			})
 		for o: Array in chunk.get("gravity_switches", []):
 			gravity_switches.append({
-				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE),
+				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE + y_offset),
 				"id": String(o[2]),
 				"label": String(o[3]) if o.size() > 3 else "切換重力道路",
 			})
@@ -121,7 +129,7 @@ static func build(level: int) -> Dictionary:
 		for b: Array in chunk.get("path_blocks", []):
 			path_blocks.append({
 				"rect": Rect2(
-					(x_offset + float(b[0])) * TILE, float(b[1]) * TILE,
+					(x_offset + float(b[0])) * TILE, float(b[1]) * TILE + y_offset,
 					float(b[2]) * TILE, float(b[3]) * TILE),
 				"id": String(b[4]),
 			})
@@ -129,7 +137,7 @@ static func build(level: int) -> Dictionary:
 		if not g.is_empty():
 			var pts := PackedVector2Array()
 			for i in range(0, g.size() - 1, 2):
-				pts.append(Vector2(x_offset * TILE + float(g[i]), float(g[i + 1])))
+				pts.append(Vector2(x_offset * TILE + float(g[i]), float(g[i + 1]) + y_offset))
 			ghosts.append({"from": x_offset * TILE, "to": (x_offset + w) * TILE, "points": pts})
 		var steps: Array[Dictionary] = []
 		for s: Array in chunk.get("plan", []):
@@ -137,7 +145,7 @@ static func build(level: int) -> Dictionary:
 		plans.append(steps)
 		x_offset += w
 	return {
-		"grid": grid, "width": x_offset, "height": HEIGHT, "hints": hints, "orbs": orbs, "rings": rings, "ghosts": ghosts,
+		"grid": grid, "width": x_offset, "height": height, "hints": hints, "orbs": orbs, "rings": rings, "ghosts": ghosts,
 		"plans": plans, "dual_orbs": dual_orbs, "slow_items": slow_items, "gravity_switches": gravity_switches,
 		"gravity_zones": gravity_zones, "path_blocks": path_blocks,
 		"patterns": info["patterns"], "name": info["name"], "stage": info.get("stage", false),

@@ -233,7 +233,7 @@ static func draw_minimap(ci: CanvasItem, level: int, rect: Rect2, edge: Color, a
 	var info := minimap(level)
 	var tex: ImageTexture = info["tex"]
 	var cols := float(info["cols"])
-	var src := Rect2(0, 6, cols, 14)
+	var src := Rect2(0, 6, cols, tex.get_height() - 6)
 	ci.draw_rect(rect, Color(INK, 0.7 * alpha))
 	if progress < 0.0:
 		ci.draw_texture_rect_region(tex, rect, src, Color(edge.lerp(Color.WHITE, 0.25), 0.85 * alpha))

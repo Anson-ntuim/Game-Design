@@ -36,6 +36,8 @@ var _zoom_punch: float = 0.0
 
 func _ready() -> void:
 	Engine.time_scale = 1.0
+	# 角色與機關先更新，鏡頭最後才追蹤物理解算後的位置。
+	process_physics_priority = 10
 	add_to_group("main")
 	var bg := Background.new()
 	add_child(bg)
@@ -70,16 +72,22 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	var view := get_viewport_rect().size
+	var view := get_viewport_rect().size / camera.zoom
 	var target := player.global_position + Vector2(player.facing * 70.0, -30.0)
-	if player.velocity.y > 500.0:
+	if level_size.y > LevelData.HEIGHT * TILE:
+		# 連續攀升要預留上層落點視野；普通小跳留在死區內，避免鏡頭上下晃。
+		target.y -= 120.0
+		target.y += clampf(player.velocity.y * 0.14, -90.0, 90.0)
+		var dy := target.y - camera.position.y
+		target.y = camera.position.y + signf(dy) * maxf(absf(dy) - 48.0, 0.0)
+	elif player.velocity.y > 500.0:
 		target.y += 90.0
 	var rate := 7.0
 	var flag := _watching_flag()
 	if flag:
 		var focus: Variant = flag.camera_focus()
 		if focus != null:
-			target = focus + Vector2(120.0, -30.0)
+			target = focus + Vector2(120.0, -150.0 if level_size.y > LevelData.HEIGHT * TILE else -30.0)
 			rate = 5.0
 		else:
 			rate = 3.0
@@ -104,6 +112,7 @@ func _process(delta: float) -> void:
 			hint = h["text"]
 			_tempo_target = float(h["bpm"])
 			_gravity_target = float(h.get("gravity", 2400))
+			player.kill_y = float(h.get("kill_y", level_size.y + 120.0))
 			break
 	for z in _gravity_zones:
 		if px >= float(z["from"]) and px < float(z["to"]):
@@ -280,6 +289,7 @@ func _build_level() -> void:
 	for z: Dictionary in _gravity_zones:
 		var gz := GravityZone.new()
 		gz.setup(float(z["from"]), float(z["to"]), float(z["gravity"]))
+		gz.zone_height = level_size.y
 		add_child(gz)
 		covered.append(Vector2(float(z["from"]), float(z["to"])))
 	for h in _hints:
@@ -297,6 +307,7 @@ func _build_level() -> void:
 			continue
 		var gz2 := GravityZone.new()
 		gz2.setup(hf, ht, g)
+		gz2.zone_height = level_size.y
 		add_child(gz2)
 
 	var solid: Array[PackedByteArray] = []
