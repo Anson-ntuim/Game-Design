@@ -6,6 +6,8 @@ signal beat(beat_index: int)
 signal measure(measure_index: int)
 signal section_changed(section_index: int)
 
+const REFERENCE_BPM := 120.0
+
 @export var bpm: float = 120.0
 @export var beats_per_measure: int = 4
 @export var measures_per_section: int = 4
@@ -18,6 +20,15 @@ var current_beat: int = -1
 ## 播放倍率（變速關）：音樂、音效、物理一起加快，像把錄音帶轉快。
 ## 拍子和物理的比例不變，所以關卡照 120 BPM 設計、驗證就好；song_position 是「歌曲裡的秒數」。
 var rate: float = 1.0
+var world_rate: float = 1.0
+var custom_music: bool = false
+var track_name: String = "內建音樂"
+var _gameplay: bool = true
+var _builtin_stream: AudioStream
+var _custom_epoch: float = 0.0
+var _custom_loop_start: float = 0.0
+var _custom_loop_end: float = 0.0
+var _seek_guard_until: int = 0
 var _base_rate: float = 1.0
 var _slow_mul: float = 1.0
 var _slow_beats_left: float = 0.0
@@ -32,7 +43,7 @@ var song_position: float:
 		if not _running:
 			return 0.0
 		return _anchor_position + float(Time.get_ticks_usec() - _anchor_usec) / 1000000.0 * rate \
-			- first_beat_offset - user_offset
+			- first_beat_offset - user_offset * rate
 
 ## 目前聽到的速度
 var current_bpm: float:
@@ -66,11 +77,16 @@ func _ready() -> void:
 		var stream := load(music_path) as AudioStream
 		if stream:
 			_enable_loop(stream)
+			_builtin_stream = stream
 			_player.stream = stream
 			_stream_length = stream.get_length()
 
 
-func start() -> void:
+func start(gameplay: bool = true) -> void:
+	_gameplay = gameplay
+	_custom_epoch = 0.0
+	_seek_guard_until = 0
+	_configure_custom_loop()
 	sec_per_beat = 60.0 / bpm
 	_loop_count = 0
 	_last_raw_position = 0.0
@@ -108,7 +124,8 @@ func _apply_rate() -> void:
 		_anchor_usec = now
 	rate = _base_rate * _slow_mul
 	_player.pitch_scale = rate
-	Engine.time_scale = rate
+	world_rate = bpm / REFERENCE_BPM * rate
+	Engine.time_scale = world_rate if _gameplay else 1.0
 
 
 func stop() -> void:
@@ -124,7 +141,19 @@ func _process(_delta: float) -> void:
 	_duck = move_toward(_duck, duck_target, real_dt * 10.0)
 	_player.volume_db = linear_to_db(1.0 - 0.8 * _duck)
 	var predicted := _anchor_position + real_dt * rate
-	if not _clock_only:
+	if custom_music:
+		# 在完整八拍（短曲用四拍）邊界接回第一拍，保留節拍連續性。
+		var duration := _custom_loop_end - _custom_loop_start
+		if duration > 0.0 and predicted - _custom_epoch >= _custom_loop_end:
+			var skipped := maxi(1, floori((predicted - _custom_epoch - _custom_loop_start) / duration))
+			_custom_epoch += skipped * duration
+			_seek_guard_until = now + 150000
+			var target := maxf(_custom_loop_start, predicted - _custom_epoch)
+			if _player.playing:
+				_player.seek(target)
+			else:
+				_player.play(target)
+	if not _clock_only and now >= _seek_guard_until:
 		var measured := _measured_position(now)
 		var error := measured - predicted
 		if absf(error) > 0.08:
@@ -143,6 +172,8 @@ func _measured_position(now_usec: int) -> float:
 	if raw + 1.0 < _last_raw_position:
 		_loop_count += 1
 	_last_raw_position = raw
+	if custom_music:
+		return _custom_epoch + raw - _output_latency * rate
 	return _loop_count * _stream_length + raw - _output_latency * rate
 
 
@@ -163,6 +194,40 @@ func _emit_beats() -> void:
 			measure.emit(m)
 			if m % measures_per_section == 0:
 				section_changed.emit(floori(float(m) / measures_per_section))
+
+
+func set_music(stream: AudioStream, source_bpm: float, offset: float, name: String) -> void:
+	stop()
+	custom_music = true
+	bpm = clampf(source_bpm, 40.0, 240.0)
+	sec_per_beat = 60.0 / bpm
+	first_beat_offset = clampf(offset, 0.0, maxf(stream.get_length() - 4.0 * sec_per_beat, 0.0))
+	track_name = name
+	_player.stream = stream
+	_player.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
+	_stream_length = stream.get_length()
+	_configure_custom_loop()
+
+
+func restore_builtin_music() -> void:
+	stop()
+	custom_music = false
+	bpm = REFERENCE_BPM
+	sec_per_beat = 60.0 / bpm
+	first_beat_offset = 0.0
+	track_name = "內建音樂"
+	_player.stream = _builtin_stream
+	_stream_length = _builtin_stream.get_length() if _builtin_stream else 0.0
+
+
+func _configure_custom_loop() -> void:
+	if not custom_music:
+		return
+	_custom_loop_start = first_beat_offset
+	var available := maxf(_stream_length - _custom_loop_start, sec_per_beat)
+	var cycle := 8.0 if available >= sec_per_beat * 8.0 else 4.0
+	var beats := maxf(1.0, floorf(available / (sec_per_beat * cycle)) * cycle)
+	_custom_loop_end = minf(_stream_length, _custom_loop_start + beats * sec_per_beat)
 
 
 func _enable_loop(stream: AudioStream) -> void:

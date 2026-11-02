@@ -111,7 +111,7 @@ func play_sfx(id: String, semitones: float = 0.0, volume_db: float = -3.0) -> vo
 	var p := _sfx_players[_sfx_next]
 	_sfx_next = (_sfx_next + 1) % _sfx_players.size()
 	p.stream = stream
-	p.pitch_scale = pow(2.0, semitones / 12.0) * Conductor.rate
+	p.pitch_scale = pow(2.0, semitones / 12.0) * Conductor.world_rate
 	p.volume_db = volume_db
 	p.play()
 
@@ -300,6 +300,7 @@ func _setup_input() -> void:
 	_add_action("easier", [KEY_Q], [JOY_BUTTON_LEFT_SHOULDER])
 	_add_action("harder", [KEY_E], [JOY_BUTTON_RIGHT_SHOULDER])
 	_add_action("calibrate", [KEY_O], [JOY_BUTTON_RIGHT_STICK])
+	_add_action("music_setup", [KEY_M], [])
 
 
 func _add_action(action: String, keys: Array, buttons: Array, axes: Array = []) -> void:

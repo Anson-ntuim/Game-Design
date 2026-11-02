@@ -193,9 +193,10 @@ func _on_measure(_m: int) -> void:
 	if _tempo_pad_mode:
 		return
 	var now := Conductor.current_bpm
-	if absf(now - _tempo_target) > 0.5 and not _completed:
-		Conductor.set_rate(_tempo_target / Conductor.bpm)
-		hud.show_message(("加速！" if _tempo_target > now else "減速") + "　BPM %d" % roundi(_tempo_target), 1.6)
+	var actual_target := _tempo_target / Conductor.REFERENCE_BPM * Conductor.bpm
+	if absf(now - actual_target) > 0.5 and not _completed:
+		Conductor.set_rate(_tempo_target / Conductor.REFERENCE_BPM)
+		hud.show_message(("加速！" if actual_target > now else "減速") + "　BPM %d" % roundi(actual_target), 1.6)
 
 
 func shake(amount: float) -> void:
@@ -214,12 +215,14 @@ func _on_tempo_pad_triggered(bpm: float) -> void:
 func set_world_tempo(bpm: float, announce: bool = true) -> void:
 	if not _tempo_pad_mode or _completed:
 		return
-	var changed := absf(Conductor.current_bpm - bpm) > 0.5
-	var accelerating := bpm > Conductor.current_bpm
-	Conductor.set_rate(clampf(bpm / Conductor.bpm, 0.6, 1.4))
+	var multiplier := clampf(bpm / Conductor.REFERENCE_BPM, 0.6, 1.4)
+	var actual_bpm := Conductor.bpm * multiplier
+	var changed := absf(Conductor.current_bpm - actual_bpm) > 0.5
+	var accelerating := actual_bpm > Conductor.current_bpm
+	Conductor.set_rate(multiplier)
 	if announce and changed:
 		GameState.play_sfx("cue", 7.0 if accelerating else -5.0, -7.0)
-		hud.show_message(("加速！" if accelerating else "減速") + "　%d BPM" % roundi(bpm), 1.5)
+		hud.show_message(("加速！" if accelerating else "減速") + "　%d BPM" % roundi(actual_bpm), 1.5)
 
 
 func _apply_section_gravity() -> void:
@@ -287,7 +290,7 @@ func _on_player_died() -> void:
 
 func _on_checkpoint_activated(cp: Checkpoint) -> void:
 	if _tempo_pad_mode:
-		_checkpoint_tempo_bpm = Conductor.bpm * Conductor._base_rate
+		_checkpoint_tempo_bpm = Conductor.REFERENCE_BPM * Conductor._base_rate
 	for other in _checkpoints:
 		if other != cp:
 			other.active = false

@@ -607,7 +607,7 @@ func _reset_motion() -> void:
 
 func _hit_stop(duration: float) -> void:
 	Engine.time_scale = 0.05
-	get_tree().create_timer(duration, true, false, true).timeout.connect(func() -> void: Engine.time_scale = Conductor.rate)
+	get_tree().create_timer(duration, true, false, true).timeout.connect(func() -> void: Engine.time_scale = Conductor.world_rate)
 
 
 func _update_visuals(delta: float) -> void:

@@ -51,7 +51,9 @@ func _draw() -> void:
 	var color := Color(1.0, 0.58, 0.25) if target_bpm > 120 else Color(0.35, 0.8, 1.0)
 	if is_equal_approx(target_bpm, 120.0):
 		color = Color(0.6, 1.0, 0.72)
-	var active := absf(Conductor.current_bpm - target_bpm) < 0.5
+	var multiplier := target_bpm / Conductor.REFERENCE_BPM
+	var actual_bpm := Conductor.bpm * multiplier
+	var active := absf(Conductor.current_bpm - actual_bpm) < 0.5
 	var top := -global_position.y - 128.0
 	var bottom := world_bottom - global_position.y + 128.0
 	var camera := get_viewport().get_camera_2d()
@@ -65,7 +67,7 @@ func _draw() -> void:
 	for y in range(int(top), int(bottom), 96):
 		draw_polyline(PackedVector2Array([Vector2(-8, y - 7), Vector2(1, y), Vector2(-8, y + 7)]),
 			Color(color, 0.65), 2.0, true)
-	var label := "→ %d BPM" % roundi(target_bpm)
+	var label := "→ %.2f× · %d BPM" % [multiplier, roundi(actual_bpm)]
 	UiKit.pill(self, Vector2(16, -86), label, color, UiKit.INK, 14)
 	if active:
 		draw_line(Vector2(0, top), Vector2(0, bottom), Color(1, 1, 1, 0.5), 1.0)

@@ -28,6 +28,7 @@ func _run() -> void:
 	var had_save := FileAccess.file_exists(save_path)
 	var saved_bytes := FileAccess.get_file_as_bytes(save_path) if had_save else PackedByteArray()
 	conductor = root.get_node("Conductor")
+	conductor.restore_builtin_music()
 	var levels = load("res://scripts/level/level_data.gd")
 	for index: int in [0, 1, 2, 5]:
 		check(levels.build(index)["height"] == 20, "Existing flat level height changed")

@@ -217,10 +217,11 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 
 
 func _draw_controls(safe: Rect2, edge: Color, lift: float) -> void:
-	if tempo_mode:
+	if tempo_mode or Conductor.custom_music:
 		var color := UiKit.GOLD if Conductor.rate > 1.0 else UiKit.FLOAT
-		UiKit.pill(_view, Vector2(safe.end.x - 240, safe.end.y - 90 + lift),
-			"%d BPM　速度 %.2f×" % [roundi(Conductor.current_bpm), Conductor.rate], color, UiKit.INK, 13)
+		var label := "%d BPM　歌曲 %.2f×　世界 %.2f×" % [roundi(Conductor.current_bpm), Conductor.rate, Conductor.world_rate]
+		UiKit.pill(_view, Vector2(safe.end.x - UiKit.width_of(label, 13) - 24, safe.end.y - 90 + lift),
+			label, color, UiKit.INK, 13)
 	var y0 := safe.end.y + lift
 	if player and player.auto_running:
 		var tip := "旗子前等候 GO…" if player and player.auto_flag_wait else "自動前進中　旗子前會停等 GO　F 停止"

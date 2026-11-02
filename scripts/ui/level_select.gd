@@ -16,6 +16,8 @@ var _fade: float = 0.0
 var _starting: bool = false
 var _guide: MechanicGuide
 var _calibrator: LatencyCalibrator
+var _music_setup: MusicSetup
+var _music_button: Button
 
 
 func _ready() -> void:
@@ -36,12 +38,19 @@ func _ready() -> void:
 	_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_view)
 	_view.draw.connect(_on_view_draw)
+	_music_button = Button.new()
+	_music_button.name = "MusicSettings"
+	_music_button.text = "音樂設定（M）"
+	_music_button.custom_minimum_size = Vector2(170, 40)
+	_music_button.add_theme_font_override("font", UiKit.font())
+	_music_button.pressed.connect(_open_music_setup)
+	_view.add_child(_music_button)
 	UiKit.clear_minimaps()
 	for i in LevelData.LEVELS.size():
 		UiKit.minimap(i)
 
 	GameState.reset_stats()
-	Conductor.start()
+	Conductor.start(false)
 
 
 func _process(delta: float) -> void:
@@ -51,7 +60,12 @@ func _process(delta: float) -> void:
 	_diff_bump = move_toward(_diff_bump, 0.0, delta * 4.0)
 	_slide = lerpf(_slide, float(_selected), 1.0 - exp(-12.0 * delta))
 	_view.queue_redraw()
-	if _starting or is_instance_valid(_guide) or is_instance_valid(_calibrator):
+	_music_button.position = UiKit.safe_rect(_view.size).position
+	_music_button.tooltip_text = "目前音樂：" + Conductor.track_name
+	if _starting or is_instance_valid(_guide) or is_instance_valid(_calibrator) or is_instance_valid(_music_setup):
+		return
+	if Input.is_action_just_pressed("music_setup"):
+		_open_music_setup()
 		return
 	if Input.is_action_just_pressed("guide"):
 		_open_guide()
@@ -103,7 +117,7 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo or _starting \
-			or is_instance_valid(_guide) or is_instance_valid(_calibrator):
+			or is_instance_valid(_guide) or is_instance_valid(_calibrator) or is_instance_valid(_music_setup):
 		return
 	var idx := key.physical_keycode - KEY_1
 	if idx >= 0 and idx < LevelData.LEVELS.size():
@@ -115,6 +129,13 @@ func _open_guide() -> void:
 	_guide = MechanicGuide.new()
 	add_child(_guide)
 	GameState.play_sfx("pluck", GameState.next_note() + 7.0, -6.0)
+
+
+func _open_music_setup() -> void:
+	if is_instance_valid(_music_setup):
+		return
+	_music_setup = MusicSetup.new()
+	add_child(_music_setup)
 
 
 func _open_calibrator() -> void:
@@ -162,6 +183,9 @@ func _on_view_draw() -> void:
 	if GameState.SKINS.size() > 1:
 		hints.insert(1, [["↑", "↓"], "造型"])
 	UiKit.key_hints(_view, safe.get_center().x, safe.end.y - 20, hints, edge, 0.9)
+	if Conductor.custom_music:
+		UiKit.text(_view, safe.position + Vector2(0, 64), 330,
+			"%.1f BPM · %s" % [Conductor.bpm, Conductor.track_name.left(22)], 13, UiKit.FLOAT)
 	## 目前音訊偏移，方便確認有沒有校正過
 	if absf(GameState.audio_offset_ms) >= 0.5:
 		var off := "延遲 %+.0f ms" % GameState.audio_offset_ms

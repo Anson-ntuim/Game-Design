@@ -94,7 +94,7 @@ func _process(delta: float) -> void:
 func _register_tap() -> void:
 	var b := Conductor.song_beat
 	var nearest := roundf(b)
-	var err_sec := (b - nearest) * Conductor.sec_per_beat
+	var err_sec := (b - nearest) * Conductor.sec_per_beat / maxf(Conductor.rate, 0.01)
 	_last_err_ms = err_sec * 1000.0
 	_last_flash = 1.0
 	if absf(err_sec) > MAX_ERR_SEC:
