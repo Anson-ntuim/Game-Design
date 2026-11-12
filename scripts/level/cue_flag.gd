@@ -82,18 +82,23 @@ func _ghost_at(t: float) -> Vector2:
 
 
 ## 示範角色的動作幀：路徑上這一小段的位移比跑步快很多就是衝刺，沒有上下位移就是在地上跑
+## 示範固定用完整幀循環，不受低畫質 player_frames 定格影響
 func _ghost_pose(t: float) -> String:
 	if t >= ghost_end():
-		return Player.idle_pose(Conductor.song_beat)
+		return _demo_cycle_pose("idle", Conductor.song_beat)
 	var i := clampi(floori(t / GHOST_STEP), 0, ghost.size() - 2)
 	var v := (ghost[i + 1] - ghost[i]) / GHOST_STEP
 	if absf(v.x) > 230.0:
 		return "dash_1"
 	if absf(v.y) < 0.5:
-		return Player.run_pose(start_beat + t)
+		return _demo_cycle_pose("run", start_beat + t)
 	if absf(v.y) < Player.APEX_SPEED * Conductor.sec_per_beat:
 		return "apex_0"
 	return "jump_0" if v.y < 0.0 else "fall_0"
+
+
+func _demo_cycle_pose(prefix: String, beat: float) -> String:
+	return "%s_%d" % [prefix, mini(floori(fposmod(beat, 1.0) * 6.0), 5)]
 
 
 func _player() -> Player:
@@ -159,7 +164,7 @@ func _in_start_zone(p: Player) -> bool:
 	return not p.control_locked and x >= section_from and x <= position.x + 60.0
 
 
-## 自動跑：跑到旗子前停住等 3、2、1，GO 再繼續往右
+## 自動跑：跑到旗子前停住等 3、2、1，GO 直接繼續往右（不必先跳才能離開）
 func _tick_auto_flag(b: float, p: Player, near: bool) -> void:
 	if not p.auto_running:
 		_clear_auto_wait(p)
@@ -178,8 +183,11 @@ func _tick_auto_flag(b: float, p: Player, near: bool) -> void:
 		return
 	p.auto_flag_wait = true
 	p.watch_x = position.x
-	if b + 0.02 >= _auto_go_at and absf(p.global_position.x - position.x) < 16.0:
+	if b + 0.02 >= _auto_go_at:
+		## GO 當下解除等候並保持自動跑，不要求站在旗心或先起跳
 		_clear_auto_wait(p)
+		_auto_can_stop = false
+		p.auto_running = true
 
 
 func _clear_auto_wait(p: Player) -> void:
@@ -253,6 +261,7 @@ func _draw() -> void:
 		draw_arc(Vector2(0, -47), 20.0 + (1.0 - flash) * 24.0, 0.0, TAU, 32, Color(COLOR, flash), 3.0, true)
 	if _prompt > 0.0:
 		_draw_prompt()
+	## 示範角色是關卡提示，不隨低畫質關掉（quality ghost 只影響其他裝飾）
 	if state == State.WATCH and ghost.size() > 1:
 		var t := b - start_beat
 		if t >= 0.0 and t <= ghost_end() + 0.3:

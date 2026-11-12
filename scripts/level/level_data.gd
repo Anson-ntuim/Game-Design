@@ -36,22 +36,69 @@ const MOVER_TRAVEL_TILES := 6
 ##   blind 盲拍區（字元所在欄往右 cols 格）：x 的半拍畫面變暗；strobe = true 整段暗、每拍閃一下
 ## 各關的節奏型與區塊在 demo_*_data.gd（tools/gen_demo.py 產生）。
 
+## 關卡只顯示編號；name／desc 留給舊 UI 相容，畫面以 index+1 為準
 const LEVELS: Array[Dictionary] = [
-	{"name": "第一關　基礎教學", "desc": "音符、長按、輕點、光柱、空中衝刺、衝刺環，一段學一樣，每段後面都有長椅", "stars": 1,
+	{"name": "01", "desc": "", "stars": 1,
 		"patterns": Demo1Data.PATTERNS, "chunks": Demo1Data.CHUNKS},
-	{"name": "第二關　節奏地形", "desc": "旋律平台、節拍平台、尖刺先各學一段，後面混在一起，一路跑到底不能停", "stars": 2,
+	{"name": "02", "desc": "", "stars": 2,
 		"patterns": Demo3Data.PATTERNS, "chunks": Demo3Data.CHUNKS, "stage": true},
-	{"name": "第三關　組合", "desc": "把學過的串起來：音符補衝刺、長短交替、音符接光牆，最後衝刺環接音符", "stars": 3,
+	{"name": "03", "desc": "", "stars": 3,
 		"patterns": Demo2Data.PATTERNS, "chunks": Demo2Data.CHUNKS},
-	{"name": "第四關　輕重力", "desc": "浮空階梯、借力登高、寬坑衝刺與重力對照；平台和長椅隨路線逐段上升", "stars": 1,
+	{"name": "04", "desc": "", "stars": 1,
 		"patterns": Demo6Data.PATTERNS, "chunks": Demo6Data.CHUNKS},
-	{"name": "第五關　強制變速線", "desc": "穿藍線減速、橘線加速：慢拍階梯、快拍光門、極速環橋與混速接力，音樂和世界一起變速", "stars": 2,
+	{"name": "05", "desc": "", "stars": 2,
 		"patterns": TempoCourseData.PATTERNS, "chunks": TempoCourseData.CHUNKS, "tempo_stage": true},
-	{"name": "第六關　挑戰", "desc": "每段都混合音符、衝刺環、光柱、尖刺和節奏地形，一路跑到底", "stars": 3,
+	{"name": "06", "desc": "", "stars": 3,
 		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true},
-	{"name": "第七關　節奏變奏", "desc": "八段完整變奏：開場、流動、切分、緩衝、空中、雙安可與終章；部分段落切換輕重力", "stars": 3,
-		"patterns": Demo5Data.PATTERNS, "chunks": Demo5Data.CHUNKS},
 ]
+
+## 同一種機關（含不同按法）在整條關卡線上，前幾次才保留提示文字
+const MECHANIC_HINT_LIMIT := 2
+
+
+static func level_code(index: int) -> String:
+	return "%02d" % (index + 1)
+
+
+## 機關種類：可在 chunk 寫 mechanic；否則用提示標題（長椅／終點會正規化）
+static func mechanic_key(chunk: Dictionary) -> String:
+	var explicit := String(chunk.get("mechanic", "")).strip_edges()
+	if explicit != "":
+		return explicit
+	var text := String(chunk.get("hint", "")).strip_edges()
+	if text == "":
+		return ""
+	var title := text.split("\n")[0].strip_edges()
+	## 長椅／終點無論標題怎麼寫都算同一機關
+	if title.find("長椅") >= 0:
+		return "bench"
+	if title.begins_with("終點") or title.begins_with("抵達") or title.find("終點") >= 0:
+		return "goal"
+	return title
+
+
+## 統計到 level 之前，各機關已出現幾次（含更早關卡）
+static func _mechanic_counts_before(level: int) -> Dictionary:
+	var seen: Dictionary = {}
+	for i in mini(maxi(level, 0), LEVELS.size()):
+		for chunk: Dictionary in LEVELS[i]["chunks"]:
+			var key := mechanic_key(chunk)
+			if key == "":
+				continue
+			seen[key] = int(seen.get(key, 0)) + 1
+	return seen
+
+
+## 關卡各段落標題（hint 第一行）
+static func section_titles(level: int) -> PackedStringArray:
+	var out: PackedStringArray = []
+	if level < 0 or level >= LEVELS.size():
+		return out
+	for chunk: Dictionary in LEVELS[level]["chunks"]:
+		var text := String(chunk.get("hint", "")).strip_edges()
+		var title := text.split("\n")[0] if not text.is_empty() else "（無標題）"
+		out.append(title)
+	return out
 
 
 ## 把指定關卡的所有區塊拼成一張完整的字元地圖，並回傳提示範圍與音符
@@ -76,6 +123,7 @@ static func build(level: int) -> Dictionary:
 	## 和 hints 一一對應
 	var plans: Array = []
 	var x_offset := 0
+	var mechanic_seen: Dictionary = _mechanic_counts_before(level)
 	for chunk: Dictionary in info["chunks"]:
 		var rows: Array = chunk["rows"]
 		var row_offset := int(chunk.get("row_offset", 0))
@@ -89,7 +137,16 @@ static func build(level: int) -> Dictionary:
 			w = maxi(w, line.length())
 		for r in height:
 			grid[r] += lines[r].rpad(w)
-		hints.append({"from": x_offset * TILE, "to": (x_offset + w) * TILE, "text": chunk.get("hint", ""),
+		## 同一機關前 MECHANIC_HINT_LIMIT 次保留提示，之後清空（區塊節奏／重力仍照常）
+		var hint_text := String(chunk.get("hint", ""))
+		var mkey := mechanic_key(chunk)
+		if mkey != "":
+			var seen_n := int(mechanic_seen.get(mkey, 0))
+			if seen_n >= MECHANIC_HINT_LIMIT:
+				hint_text = ""
+			mechanic_seen[mkey] = seen_n + 1
+		hints.append({"from": x_offset * TILE, "to": (x_offset + w) * TILE, "text": hint_text,
+			"mechanic": mkey,
 			"bpm": float(chunk.get("bpm", 120)), "gravity": float(chunk.get("gravity", 2400)),
 			"score_beats": float(chunk.get("score_beats", 0)),
 			"subdivision_cue": bool(chunk.get("subdivision_cue", false)),
@@ -157,6 +214,6 @@ static func build(level: int) -> Dictionary:
 		"grid": grid, "width": x_offset, "height": height, "hints": hints, "orbs": orbs, "rings": rings, "ghosts": ghosts,
 		"plans": plans, "dual_orbs": dual_orbs, "slow_items": slow_items, "gravity_switches": gravity_switches,
 		"gravity_zones": gravity_zones, "path_blocks": path_blocks,
-		"patterns": info["patterns"], "name": info["name"], "stage": info.get("stage", false),
+		"patterns": info["patterns"], "name": level_code(level), "stage": info.get("stage", false),
 		"tempo_pads": tempo_pads, "tempo_stage": bool(info.get("tempo_stage", false)),
 	}

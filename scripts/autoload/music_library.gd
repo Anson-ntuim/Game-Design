@@ -24,13 +24,23 @@ func _ready() -> void:
 	if settings.load(SETTINGS_PATH) != OK or not bool(settings.get_value("active", "enabled", false)):
 		return
 	var name := String(settings.get_value("active", "name", ""))
+	if not FileAccess.file_exists(AUDIO_PATH):
+		push_warning("自訂音樂設定存在，但找不到音訊檔：%s" % AUDIO_PATH)
+		return
 	var bytes := FileAccess.get_file_as_bytes(AUDIO_PATH)
-	if bytes.is_empty() or bytes.size() > MAX_BYTES or _fingerprint(bytes) != String(settings.get_value("active", "hash", "")):
+	if bytes.is_empty() or bytes.size() > MAX_BYTES:
+		push_warning("自訂音樂音訊檔無法讀取")
+		return
+	if _fingerprint(bytes) != String(settings.get_value("active", "hash", "")):
+		push_warning("自訂音樂檔與存檔指紋不符，略過自動載入")
 		return
 	var stream := decode(bytes, name)
-	if stream:
-		Conductor.set_music(stream, float(settings.get_value("active", "bpm", 120)),
-			float(settings.get_value("active", "offset", 0)), name)
+	if stream == null:
+		push_warning("自訂音樂解碼失敗：%s" % name)
+		return
+	Conductor.set_music(stream, float(settings.get_value("active", "bpm", 120)),
+		float(settings.get_value("active", "offset", 0)), name)
+	Conductor.rhythm_sections = _load_sections(settings, String(settings.get_value("active", "hash", "")))
 
 
 func import_path(path: String) -> void:
@@ -103,12 +113,16 @@ func apply_draft(bpm: float, offset: float) -> bool:
 	if draft_stream.get_length() - offset < 4.0 * 60.0 / bpm:
 		failed.emit("第 1 拍後至少要保留一小節，請將第 1 拍位置往前調整")
 		return false
-	var file := FileAccess.open(AUDIO_PATH + ".tmp", FileAccess.WRITE)
+	## 直接覆寫正式檔（避免 rename 在目標已存在時失敗，導致「已套用」卻沒進存檔）
+	var file := FileAccess.open(AUDIO_PATH, FileAccess.WRITE)
 	if file == null:
-		failed.emit("無法保存音樂，請檢查儲存空間")
+		failed.emit("無法保存音樂到本機（%s）" % AUDIO_PATH)
 		return false
 	file.store_buffer(draft_bytes)
 	file.close()
+	if not FileAccess.file_exists(AUDIO_PATH) or FileAccess.get_file_as_bytes(AUDIO_PATH).size() != draft_bytes.size():
+		failed.emit("音樂檔寫入後驗證失敗，請換個位置或檢查磁碟空間")
+		return false
 	var settings := ConfigFile.new()
 	settings.load(SETTINGS_PATH)
 	var active := {"enabled": true, "name": draft_name, "hash": draft_hash, "bpm": bpm, "offset": offset}
@@ -116,14 +130,12 @@ func apply_draft(bpm: float, offset: float) -> bool:
 		settings.set_value("active", key, active[key])
 	settings.set_value(draft_hash, "bpm", bpm)
 	settings.set_value(draft_hash, "offset", offset)
-	if settings.save(SETTINGS_PATH + ".tmp") != OK:
-		failed.emit("無法保存歌曲校正")
-		return false
-	if DirAccess.rename_absolute(ProjectSettings.globalize_path(AUDIO_PATH + ".tmp"), ProjectSettings.globalize_path(AUDIO_PATH)) != OK \
-		or DirAccess.rename_absolute(ProjectSettings.globalize_path(SETTINGS_PATH + ".tmp"), ProjectSettings.globalize_path(SETTINGS_PATH)) != OK:
-		failed.emit("無法完成保存，請重新選擇音樂")
+	_store_sections(settings, draft_hash, draft_result.get("sections", []))
+	if settings.save(SETTINGS_PATH) != OK:
+		failed.emit("無法保存歌曲校正設定")
 		return false
 	Conductor.set_music(draft_stream, bpm, offset, draft_name)
+	Conductor.rhythm_sections = draft_result.get("sections", [])
 	active_changed.emit()
 	return true
 
@@ -135,7 +147,36 @@ func restore_builtin() -> void:
 	settings.set_value("active", "enabled", false)
 	settings.save(SETTINGS_PATH)
 	Conductor.restore_builtin_music()
+	Conductor.rhythm_sections = []
 	active_changed.emit()
+
+
+func _store_sections(settings: ConfigFile, song_hash: String, sections: Array) -> void:
+	settings.set_value(song_hash, "section_count", sections.size())
+	for i in sections.size():
+		var s: Dictionary = sections[i]
+		var key := "section_%d" % i
+		settings.set_value(song_hash, key + "_feel", String(s.get("feel", "")))
+		settings.set_value(song_hash, key + "_start", float(s.get("start", 0.0)))
+		settings.set_value(song_hash, key + "_end", float(s.get("end", 0.0)))
+		settings.set_value(song_hash, key + "_density", float(s.get("density", 0.0)))
+		settings.set_value(song_hash, key + "_energy", float(s.get("energy", 0.0)))
+
+
+func _load_sections(settings: ConfigFile, song_hash: String) -> Array:
+	var n := int(settings.get_value(song_hash, "section_count", 0))
+	var out: Array = []
+	for i in n:
+		var key := "section_%d" % i
+		out.append({
+			"index": i,
+			"feel": String(settings.get_value(song_hash, key + "_feel", "穩")),
+			"start": float(settings.get_value(song_hash, key + "_start", 0.0)),
+			"end": float(settings.get_value(song_hash, key + "_end", 0.0)),
+			"density": float(settings.get_value(song_hash, key + "_density", 0.0)),
+			"energy": float(settings.get_value(song_hash, key + "_energy", 0.0)),
+		})
+	return out
 
 
 static func decode(bytes: PackedByteArray, name: String) -> AudioStream:

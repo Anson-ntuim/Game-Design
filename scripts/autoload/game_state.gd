@@ -20,22 +20,90 @@ const SKINS: Array[Dictionary] = [
 ## 簡單比半拍（120 BPM 時 15 幀）還寬，提早或晚半拍也算準；音符和衝刺環最多往前找兩個半拍格，所以不能超過 30 幀。
 ## 每拍都開的光柱另外限制在打開間隔的 40%（beat_gate.gd），不然會一直開著
 const DIFFICULTIES: Array[Dictionary] = [
-	{"name": "簡單", "early": 20, "late": 20},
-	{"name": "普通", "early": 7, "late": 8},
+	{"name": "簡單", "early": 26, "late": 26},
+	{"name": "普通", "early": 10, "late": 11},
 	{"name": "困難", "early": 4, "late": 5},
 	{"name": "自由", "early": 0, "late": 0, "free": true},
 ]
 const JUDGE_FPS := 60.0
+## 畫質：不鎖幀，用減少動畫／特效量來減輕負擔（瀏覽器預設「中」）
+## anim：演出強度 0~1；player_frames：跑／待機循環幀數；player_trail：衝刺殘影數
+## detail：背景層級；*_redraw_every：裝飾層隔幾幀重畫
+const QUALITIES: Array[Dictionary] = [
+	{
+		"name": "低", "max_fps": 0, "physics_tps": 120, "anim": 0.12,
+		"player_frames": 1, "player_trail": 0,
+		"bg_motes": 4, "bg_eq_spacing": 110.0, "bg_moon_glow": 0, "bg_stage": false,
+		"bg_redraw_every": 3, "terrain_redraw_every": 3, "confetti": 0,
+		"ghost": false, "shake": false, "edge_lights": false, "detail": 0,
+	},
+	{
+		"name": "中", "max_fps": 0, "physics_tps": 120, "anim": 0.5,
+		"player_frames": 2, "player_trail": 2,
+		"bg_motes": 12, "bg_eq_spacing": 72.0, "bg_moon_glow": 1, "bg_stage": false,
+		"bg_redraw_every": 2, "terrain_redraw_every": 2, "confetti": 8,
+		"ghost": true, "shake": true, "edge_lights": true, "detail": 1,
+	},
+	{
+		"name": "高", "max_fps": 0, "physics_tps": 120, "anim": 1.0,
+		"player_frames": 6, "player_trail": 7,
+		"bg_motes": 36, "bg_eq_spacing": 46.0, "bg_moon_glow": 4, "bg_stage": true,
+		"bg_redraw_every": 1, "terrain_redraw_every": 1, "confetti": 26,
+		"ghost": true, "shake": true, "edge_lights": true, "detail": 2,
+	},
+]
+signal quality_changed(index: int)
+signal visual_theme_changed(index: int)
+
+## 只保留心動之城：背景用分層素材；前景平台維持程式霓虹色塊（不貼平台圖集）
+const VISUAL_THEMES: Array[Dictionary] = [
+	{
+		"id": "heartbeat_city", "name": "心動之城", "kind": "layered",
+		"blurb": "粉彩城市分層場景",
+		"terrain_pure": false,
+		## wrap: cover＝天空整張鋪滿；mirror＝遠／近城左右鏡像無限捲
+		"layers": [
+			{"path": "res://assets/themes/heartbeat_city/bg/sky.png", "parallax": 0.0, "anchor": "fill", "wrap": "cover"},
+			{"path": "res://assets/themes/heartbeat_city/bg/city_far.png", "parallax": 0.22, "anchor": "bottom", "wrap": "mirror", "height_frac": 0.42, "alpha": 0.95},
+			{"path": "res://assets/themes/heartbeat_city/bg/city_near.png", "parallax": 0.48, "anchor": "bottom", "wrap": "mirror", "height_frac": 0.50, "alpha": 0.88},
+		],
+		"palettes": [
+			{
+				"bg_top": Color("2a1840"), "bg_bottom": Color("c4789a"), "far": Color("8a4a78"),
+				"mid": Color("5c2e55"), "ground": Color("3d2648"), "edge": Color("ffb4d4"),
+			},
+			{
+				"bg_top": Color("1e2048"), "bg_bottom": Color("6a8fd4"), "far": Color("4a6aaa"),
+				"mid": Color("2a3560"), "ground": Color("2c2848"), "edge": Color("a8d4ff"),
+			},
+			{
+				"bg_top": Color("301828"), "bg_bottom": Color("e8a070"), "far": Color("b86858"),
+				"mid": Color("6a3840"), "ground": Color("402838"), "edge": Color("ffd0a0"),
+			},
+			{
+				"bg_top": Color("241838"), "bg_bottom": Color("78c0b8"), "far": Color("489090"),
+				"mid": Color("2e4850"), "ground": Color("2c3040"), "edge": Color("a8ffe0"),
+			},
+		],
+	},
+]
 
 var deaths: int = 0
 var skin: int = 0
 var difficulty: int = 1
+## 0=低 1=中 2=高；未存檔時桌面預設高、網頁預設中
+var quality: int = 2
+## 整體風格索引（目前固定心動之城）
+var visual_theme: int = 0
 ## 音訊延遲校正（毫秒）。正＝聲音比畫面晚，負＝聲音比畫面早。範圍約 ±300ms
 var audio_offset_ms: float = 0.0
 const AUDIO_OFFSET_MIN := -300.0
 const AUDIO_OFFSET_MAX := 300.0
 var _skin_textures: Dictionary = {}
+var _theme_textures: Dictionary = {}
 var level_index: int = 0
+## 進關時跳到的段落索引（0＝從頭）；進關後由 main 消費
+var start_section: int = 0
 ## 0~1，跟著音樂段落（4 小節）逐漸升高、段落開頭歸零，用來加強背景特效
 var groove: float = 0.0
 var _note_step: int = 0
@@ -78,6 +146,7 @@ func _ready() -> void:
 	_setup_input()
 	_load_records()
 	_apply_audio_offset()
+	_apply_quality()
 	Conductor.section_changed.connect(_on_section_changed)
 	for i in 12:
 		var p := AudioStreamPlayer.new()
@@ -203,6 +272,165 @@ func set_difficulty(index: int) -> void:
 	_save()
 
 
+func set_prefer_reference_tempo(on: bool, persist: bool = true) -> void:
+	Conductor.set_prefer_reference_tempo(on)
+	if persist:
+		_save()
+
+
+func set_quality(index: int, persist: bool = true) -> void:
+	var next := clampi(index, 0, QUALITIES.size() - 1)
+	var changed := next != quality
+	quality = next
+	_apply_quality()
+	if changed:
+		quality_changed.emit(quality)
+	if persist:
+		_save()
+
+
+func set_visual_theme(index: int, persist: bool = true) -> void:
+	var next := posmod(index, VISUAL_THEMES.size())
+	var changed := next != visual_theme
+	visual_theme = next
+	## 換風格時色盤從頭過渡，避免殘留上一主題的色相
+	_palette_from = _palette_to
+	_palette_to = 0
+	_palette_t = 0.0
+	if changed:
+		visual_theme_changed.emit(visual_theme)
+	if persist:
+		_save()
+
+
+func current_theme() -> Dictionary:
+	return VISUAL_THEMES[visual_theme]
+
+
+func theme_name(index: int = -1) -> String:
+	var i := visual_theme if index < 0 else clampi(index, 0, VISUAL_THEMES.size() - 1)
+	return String(VISUAL_THEMES[i]["name"])
+
+
+func theme_is_procedural(index: int = -1) -> bool:
+	var i := visual_theme if index < 0 else clampi(index, 0, VISUAL_THEMES.size() - 1)
+	return String(VISUAL_THEMES[i].get("kind", "procedural")) == "procedural"
+
+
+func theme_terrain_pure(index: int = -1) -> bool:
+	var i := visual_theme if index < 0 else clampi(index, 0, VISUAL_THEMES.size() - 1)
+	return bool(VISUAL_THEMES[i].get("terrain_pure", false))
+
+
+## 地板／浮台／立柱：以碰撞形狀判斷，避免方塊地面被當成柱子、細高牆被貼地板
+func theme_platform_role_for(rect: Rect2) -> String:
+	var w := rect.size.x
+	var h := rect.size.y
+	## 很薄＝單向平台
+	if h <= 22.0 and w >= 40.0:
+		return "one_way"
+	## 細高＝立柱／牆
+	if w < 56.0 and h > w * 1.15:
+		return "tall"
+	if h > w * 1.35 and w < 160.0:
+		return "tall"
+	## 夠寬的可走面＝地板拼接
+	if w >= 100.0:
+		return "floor"
+	## 短平台／踏腳＝浮台
+	return "ledge"
+
+
+func theme_platform_kit_path(key: String) -> String:
+	var kit: Variant = current_theme().get("platform_kit", null)
+	if kit is Dictionary and (kit as Dictionary).has(key):
+		return String((kit as Dictionary)[key])
+	return ""
+
+
+## 依地形長寬比挑選平台素材路徑；支援 platforms 為分類 Dictionary 或舊版 Array
+func theme_platform_path_for(rect: Rect2) -> String:
+	var plats: Variant = current_theme().get("platforms", null)
+	if plats == null:
+		return ""
+	var bucket := theme_platform_role_for(rect)
+	var paths: Array = []
+	if plats is Dictionary:
+		var d: Dictionary = plats
+		var order: Array[String] = [bucket, "floor", "long", "ledge", "mid", "island", "one_way", "tall"]
+		for key in order:
+			if d.has(key) and not (d[key] as Array).is_empty():
+				paths = d[key] as Array
+				break
+	elif plats is Array:
+		paths = plats as Array
+		if paths.is_empty():
+			return ""
+		var aspect := rect.size.x / maxf(1.0, rect.size.y)
+		var idx := 0
+		if aspect < 0.6 and paths.size() > 2:
+			idx = 2
+		elif aspect < 1.6 and paths.size() > 1:
+			idx = 1
+		elif aspect > 3.5 and paths.size() > 3:
+			idx = 3
+		return String(paths[idx])
+	if paths.is_empty():
+		return ""
+	var h: int = absi(hash(Vector2i(roundi(rect.position.x / 40.0), roundi(rect.position.y / 40.0))))
+	return String(paths[h % paths.size()])
+
+
+func theme_texture(path: String) -> Texture2D:
+	if path == "":
+		return null
+	if not _theme_textures.has(path):
+		_theme_textures[path] = load(path) if ResourceLoader.exists(path) else null
+	return _theme_textures[path]
+
+
+func active_palettes() -> Array:
+	var theme: Dictionary = current_theme()
+	if theme.has("palettes"):
+		return theme["palettes"] as Array
+	return palettes
+
+
+func quality_settings() -> Dictionary:
+	return QUALITIES[quality]
+
+
+func quality_flag(key: String, default: bool = true) -> bool:
+	return bool(QUALITIES[quality].get(key, default))
+
+
+func quality_int(key: String, default: int = 0) -> int:
+	return int(QUALITIES[quality].get(key, default))
+
+
+func quality_float(key: String, default: float = 0.0) -> float:
+	return float(QUALITIES[quality].get(key, default))
+
+
+## 演出強度 0~1：低畫質幾乎靜止，高畫質全開（脈動、標題彈跳、鏡頭 punch…）
+func anim_amount() -> float:
+	return quality_float("anim", 1.0)
+
+
+## 依畫質決定這一幀要不要重畫裝飾層（背景／地形光）；玩法物件仍每幀更新
+func should_redraw_decor(every_key: String = "bg_redraw_every") -> bool:
+	var every := maxi(1, quality_int(every_key, 1))
+	return every <= 1 or Engine.get_process_frames() % every == 0
+
+
+func _apply_quality() -> void:
+	var q: Dictionary = QUALITIES[quality]
+	## 不鎖幀：效能靠減少動畫與裝飾密度，手感維持 120 物理步
+	Engine.max_fps = 0
+	Engine.physics_ticks_per_second = int(q.get("physics_tps", 120))
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
+
+
 ## 判定窗（秒）：在 x 拍前多久按下還算準
 func judge_early() -> float:
 	return int(DIFFICULTIES[difficulty]["early"]) / JUDGE_FPS
@@ -242,7 +470,10 @@ func _save() -> void:
 	cfg.set_value("settings", "level_order_version", 2)
 	cfg.set_value("settings", "skin", skin)
 	cfg.set_value("settings", "difficulty", difficulty)
+	cfg.set_value("settings", "quality", quality)
+	cfg.set_value("settings", "visual_theme", visual_theme)
 	cfg.set_value("settings", "audio_offset_ms", audio_offset_ms)
+	cfg.set_value("settings", "prefer_reference_tempo", Conductor.prefer_reference_tempo)
 	for k: int in records:
 		cfg.set_value("level_%d" % k, "time", records[k]["time"])
 		cfg.set_value("level_%d" % k, "deaths", records[k]["deaths"])
@@ -251,11 +482,16 @@ func _save() -> void:
 
 func _load_records() -> void:
 	var cfg := ConfigFile.new()
+	var default_quality := 1 if OS.has_feature("web") else 2
 	if cfg.load(SAVE_PATH) != OK:
+		quality = default_quality
 		return
 	skin = clampi(int(cfg.get_value("settings", "skin", 0)), 0, SKINS.size() - 1)
 	difficulty = clampi(int(cfg.get_value("settings", "difficulty", 1)), 0, DIFFICULTIES.size() - 1)
+	quality = clampi(int(cfg.get_value("settings", "quality", default_quality)), 0, QUALITIES.size() - 1)
+	visual_theme = 0
 	audio_offset_ms = clampf(float(cfg.get_value("settings", "audio_offset_ms", 0.0)), AUDIO_OFFSET_MIN, AUDIO_OFFSET_MAX)
+	Conductor.prefer_reference_tempo = bool(cfg.get_value("settings", "prefer_reference_tempo", false))
 	var order_version := int(cfg.get_value("settings", "level_order_version", 1))
 	records.clear()
 	for section in cfg.get_sections():
@@ -270,13 +506,22 @@ func _load_records() -> void:
 
 
 func color(key: String) -> Color:
-	var a: Color = palettes[_palette_from][key]
-	var b: Color = palettes[_palette_to][key]
+	var pals := active_palettes()
+	var n := pals.size()
+	if n <= 0:
+		return Color.WHITE
+	var from_i := posmod(_palette_from, n)
+	var to_i := posmod(_palette_to, n)
+	var a: Color = pals[from_i][key]
+	var b: Color = pals[to_i][key]
 	return a.lerp(b, smoothstep(0.0, 1.0, _palette_t))
 
 
 func _on_section_changed(section: int) -> void:
-	var idx := section % palettes.size()
+	var n := active_palettes().size()
+	if n <= 0:
+		return
+	var idx := section % n
 	if idx == _palette_to:
 		return
 	_palette_from = _palette_to
@@ -299,6 +544,10 @@ func _setup_input() -> void:
 	_add_action("use_item", [KEY_V], [JOY_BUTTON_X])
 	_add_action("easier", [KEY_Q], [JOY_BUTTON_LEFT_SHOULDER])
 	_add_action("harder", [KEY_E], [JOY_BUTTON_RIGHT_SHOULDER])
+	_add_action("quality_down", [KEY_BRACKETLEFT, KEY_MINUS], [])
+	_add_action("quality_up", [KEY_BRACKETRIGHT, KEY_EQUAL], [])
+	_add_action("section_prev", [KEY_COMMA, KEY_PAGEUP], [])
+	_add_action("section_next", [KEY_PERIOD, KEY_PAGEDOWN], [])
 	_add_action("calibrate", [KEY_O], [JOY_BUTTON_RIGHT_STICK])
 	_add_action("music_setup", [KEY_M], [])
 

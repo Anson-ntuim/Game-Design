@@ -23,6 +23,10 @@ var rate: float = 1.0
 var world_rate: float = 1.0
 var custom_music: bool = false
 var track_name: String = "內建音樂"
+## 自訂音樂整首歌的節奏段落（疏／穩／密／爆／切分…），供對拍與 HUD 顯示
+var rhythm_sections: Array = []
+## 開：把歌曲 BPM 對齊到 REFERENCE_BPM，關卡手感接近原設計速度（歌曲變調變速）
+var prefer_reference_tempo: bool = false
 var _gameplay: bool = true
 var _builtin_stream: AudioStream
 var _custom_epoch: float = 0.0
@@ -82,12 +86,37 @@ func _ready() -> void:
 			_stream_length = stream.get_length()
 
 
-func start(gameplay: bool = true) -> void:
+## from_beginning=false：沿用目前播放位置（過關進下一關／回選關時自訂音樂不要重頭）
+func start(gameplay: bool = true, from_beginning: bool = true) -> void:
 	_gameplay = gameplay
-	_custom_epoch = 0.0
 	_seek_guard_until = 0
 	_configure_custom_loop()
 	sec_per_beat = 60.0 / bpm
+	_slow_mul = 1.0
+	_slow_beats_left = 0.0
+	duck_target = 0.0
+	_duck = 0.0
+	_player.volume_db = 0.0
+	var keep := custom_music and not from_beginning and _player.stream != null \
+		and _player.playing and _stream_length > 0.0
+	if keep:
+		var raw := _player.get_playback_position()
+		_custom_epoch = 0.0
+		## 對齊到目前聽到的位置，節拍時計不跳回 0
+		var song_pos := raw
+		if _custom_loop_end > _custom_loop_start and song_pos >= _custom_loop_end:
+			song_pos = _custom_loop_start + fposmod(song_pos - _custom_loop_start, _custom_loop_end - _custom_loop_start)
+		_loop_count = 0
+		_last_raw_position = raw
+		_start_usec = Time.get_ticks_usec()
+		_anchor_position = song_pos - _output_latency * rate
+		_anchor_usec = _start_usec
+		_running = true
+		current_beat = floori(song_beat) - 1
+		## 位置接著播，倍率回到「正常／推薦」基準（避免上一關 2 倍速帶進下一關）
+		set_rate(recommended_rate())
+		return
+	_custom_epoch = 0.0
 	_loop_count = 0
 	_last_raw_position = 0.0
 	current_beat = -1
@@ -95,19 +124,39 @@ func start(gameplay: bool = true) -> void:
 	_anchor_position = -_output_latency if _clock_only else 0.0
 	_anchor_usec = _start_usec
 	_running = true
-	_slow_mul = 1.0
-	_slow_beats_left = 0.0
-	set_rate(1.0)
-	duck_target = 0.0
-	_duck = 0.0
-	_player.volume_db = 0.0
+	set_rate(recommended_rate())
 	if _player.stream:
 		_player.play(0.0)
+
+
+func is_music_playing() -> bool:
+	return _player != null and _player.playing
 
 
 func set_rate(r: float) -> void:
 	_base_rate = r
 	_apply_rate()
+
+
+## 讓世界速度接近 120 BPM 設計手感所需的播放倍率
+func recommended_rate() -> float:
+	if not prefer_reference_tempo or not custom_music:
+		return 1.0
+	return clampf(REFERENCE_BPM / maxf(bpm, 1.0), 0.5, 2.0)
+
+
+## 目標「世界 BPM」（關卡設計速度）→ 實際 set_rate 值
+func rate_for_world_bpm(world_bpm: float) -> float:
+	var target := clampf(world_bpm, 40.0, 240.0)
+	if prefer_reference_tempo and custom_music:
+		return clampf(target / maxf(bpm, 1.0), 0.5, 2.0)
+	return clampf(target / REFERENCE_BPM, 0.5, 2.0)
+
+
+func set_prefer_reference_tempo(on: bool) -> void:
+	prefer_reference_tempo = on
+	if _running:
+		set_rate(recommended_rate())
 
 
 func apply_slow(factor: float, duration_beats: float) -> void:
@@ -216,8 +265,21 @@ func restore_builtin_music() -> void:
 	sec_per_beat = 60.0 / bpm
 	first_beat_offset = 0.0
 	track_name = "內建音樂"
+	rhythm_sections = []
 	_player.stream = _builtin_stream
 	_stream_length = _builtin_stream.get_length() if _builtin_stream else 0.0
+
+
+## 依歌曲時間回傳目前節奏段落（沒有自訂分析時回空 Dictionary）
+func rhythm_section_at(song_time: float = -1.0) -> Dictionary:
+	if rhythm_sections.is_empty():
+		return {}
+	var t := song_position + first_beat_offset if song_time < 0.0 else song_time
+	for s in rhythm_sections:
+		var d: Dictionary = s
+		if t >= float(d.get("start", 0.0)) and t < float(d.get("end", 0.0)):
+			return d
+	return rhythm_sections[rhythm_sections.size() - 1]
 
 
 func _configure_custom_loop() -> void:

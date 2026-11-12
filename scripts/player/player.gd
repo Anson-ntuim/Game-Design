@@ -136,6 +136,8 @@ var _stop_timer: float = 0.0
 var _start_timer: float = 0.0
 var _was_running: bool = false
 var _hurtbox: Area2D
+## 低畫質時略過不變的重畫（節點位移仍由引擎帶動）
+var _draw_key: String = ""
 
 
 func _ready() -> void:
@@ -197,7 +199,7 @@ func _physics_process(delta: float) -> void:
 
 	if _dash_timer > 0.0:
 		velocity = Vector2(_dash_dir * dash_speed, 0.0)
-		_trail.append(global_position)
+		_append_trail()
 		_check_rings()
 		move_and_slide()
 		for i in get_slide_collision_count():
@@ -499,7 +501,7 @@ func _begin_jump(speed: float, max_time: float, cancelable: bool, kind: String) 
 	velocity.y = -speed
 	_jump_buffer = 0.0
 	_coyote = 0.0
-	_squash = Vector2(0.75, 1.3)
+	_set_squash(Vector2(0.75, 1.3))
 
 
 func _wall_jump() -> void:
@@ -556,12 +558,33 @@ func _check_hurtbox() -> void:
 
 
 func _on_landed() -> void:
-	_squash = Vector2(1.3, 0.75)
+	_set_squash(Vector2(1.3, 0.75))
 	_jump_cancelable = false
-	_land_timer = LAND_POSE_TIME
+	## 低畫質略過落地過渡幀，少換貼圖
+	_land_timer = LAND_POSE_TIME if pose_frames() > 1 else 0.0
 	_drum_timer = 0.0
 	_stop_timer = 0.0
 	_start_timer = 0.0
+
+
+func _set_squash(target: Vector2) -> void:
+	var amount := GameState.anim_amount()
+	if amount < 0.2:
+		_squash = Vector2.ONE
+		return
+	_squash = Vector2.ONE.lerp(target, amount)
+
+
+func _append_trail() -> void:
+	var cap := GameState.quality_int("player_trail", 7)
+	if cap <= 0:
+		return
+	## 中畫質隔幀採樣，減少陣列與重畫
+	if cap <= 3 and Engine.get_physics_frames() % 2 == 1:
+		return
+	_trail.append(global_position)
+	while _trail.size() > cap:
+		_trail.remove_at(0)
 
 
 ## 碰到尖刺、活塞、雷射、掉坑或被音浪吞沒：直接倒下，由主場景送回長椅（source = 碰到的機關，掉坑是 null）
@@ -611,11 +634,16 @@ func _hit_stop(duration: float) -> void:
 
 
 func _update_visuals(delta: float) -> void:
-	_squash = _squash.lerp(Vector2.ONE, 1.0 - exp(-14.0 * delta))
+	var anim := GameState.anim_amount()
+	if anim < 0.2:
+		_squash = Vector2.ONE
+	else:
+		_squash = _squash.lerp(Vector2.ONE, 1.0 - exp(-14.0 * delta))
+	var frames := pose_frames()
 	if _dash_timer <= 0.0:
 		# 空中也要更新：邊跑邊跳落地不算起跑，原地跳起來落地也不算停步
 		var running := absf(velocity.x) > 10.0
-		if is_on_floor() and _was_on_floor and running != _was_running:
+		if frames > 1 and is_on_floor() and _was_on_floor and running != _was_running:
 			if running:
 				_start_timer = START_POSE_TIME
 				_stop_timer = 0.0
@@ -623,15 +651,31 @@ func _update_visuals(delta: float) -> void:
 				_stop_timer = STOP_POSE_TIME
 				_start_timer = 0.0
 		_was_running = running
+	var trail_cap := GameState.quality_int("player_trail", 7)
 	if _dash_timer <= 0.0 and not _trail.is_empty():
 		_trail.remove_at(0)
-	while _trail.size() > 7:
+	while _trail.size() > trail_cap:
 		_trail.remove_at(0)
+
+	## 低畫質姿態幾乎不動：只在狀態改變時重畫，省掉每幀貼圖切換
+	var blink := _invincible_timer > 0.0 and fmod(_invincible_timer, 0.12) < 0.06
+	var key := "%s|%d|%d|%.2f|%.2f|%d|%d" % [
+		_pose() if GameState.skin_frame("idle_0") != null else "static",
+		facing, _trail.size(), _squash.x, _squash.y,
+		1 if blink else 0,
+		1 if (_wing_timer > 0.0 or _fail_puff > 0.0) else 0,
+	]
+	if frames <= 1 and anim < 0.25 and key == _draw_key \
+			and _squash.distance_squared_to(Vector2.ONE) < 0.0004 \
+			and _trail.is_empty() and _wing_timer <= 0.0 and _fail_puff <= 0.0:
+		return
+	_draw_key = key
 	queue_redraw()
 
 
 func _draw() -> void:
 	var animated := GameState.skin_frame("idle_0") != null
+	var anim := GameState.anim_amount()
 	var feet := Vector2(0, BODY_SIZE.y * 0.5)
 	for i in _trail.size():
 		var p := to_local(_trail[i])
@@ -645,7 +689,7 @@ func _draw() -> void:
 	if _invincible_timer > 0.0 and fmod(_invincible_timer, 0.12) < 0.06:
 		alpha = 0.3
 
-	if _wing_timer > 0.0:
+	if _wing_timer > 0.0 and anim >= 0.25:
 		var wa := _wing_timer / 0.3 * 0.7
 		draw_set_transform(Vector2(0, -6), 0.0, Vector2(1.0, 0.55))
 		draw_circle(Vector2(-18, 0), 16.0, Color(1, 1, 1, wa * 0.5))
@@ -659,23 +703,25 @@ func _draw() -> void:
 		draw_skin(self, GameState.skin, feet, Vector2(s.x * dir, s.y), 0.0, Color(1, 1, 1, alpha), pose)
 	else:
 		# 圖片造型沒有動作幀：用拍點彈跳、跑步小跳、空中和衝刺的傾斜讓它動起來
+		var juice := anim
 		var b := Conductor.song_beat
 		if _dash_timer > 0.0:
-			tilt = 0.35
+			tilt = 0.35 * juice
 		elif not is_on_floor():
-			tilt = clampf(velocity.y / max_fall_speed, -1.0, 1.0) * 0.18
+			tilt = clampf(velocity.y / max_fall_speed, -1.0, 1.0) * 0.18 * juice
 		elif absf(velocity.x) > 10.0:
-			feet.y -= absf(sin(b * TAU)) * 4.0
-			tilt = 0.1 + sin(b * TAU) * 0.06
-		else:
-			var pulse := Conductor.pulse(6.0)
+			feet.y -= absf(sin(b * TAU)) * 4.0 * juice
+			tilt = (0.1 + sin(b * TAU) * 0.06) * juice
+		elif juice >= 0.25:
+			var pulse := Conductor.pulse(6.0) * juice
 			s *= Vector2(1.0 + 0.04 * pulse, 1.0 - 0.06 * pulse)
 		draw_skin(self, GameState.skin, feet, Vector2(s.x * facing, s.y), tilt * facing, Color(1, 1, 1, alpha))
 
-	if _fail_puff > 0.0:
+	if _fail_puff > 0.0 and anim >= 0.25:
 		var t := 1.0 - _fail_puff / 0.35
-		for i in 3:
-			var px := (i - 1) * 12.0
+		var puffs := 3 if anim >= 0.75 else 1
+		for i in puffs:
+			var px := (i - (puffs - 1) * 0.5) * 12.0
 			draw_circle(Vector2(px, 22.0 + t * 10.0), 5.0 * (1.0 - t) + 2.0, Color(0.6, 0.6, 0.65, 0.7 * (1.0 - t)))
 
 
@@ -684,6 +730,8 @@ func _pose() -> String:
 	if _hurt_timer > 0.0:
 		return "hurt_0"
 	if _dash_timer > 0.0:
+		if pose_frames() <= 1:
+			return "dash_1"
 		if dash_time - _dash_timer < DASH_EDGE_TIME:
 			return "dash_0"
 		return "dash_2" if _dash_timer < DASH_EDGE_TIME else "dash_1"
@@ -691,14 +739,14 @@ func _pose() -> String:
 		var moving := absf(velocity.x) > 10.0
 		# 剛碰到地面的這一幀 _on_landed 還沒跑（下一個物理幀才偵測）
 		if not _was_on_floor:
-			return "land_0"
-		if _land_timer > 0.0:
+			return "land_0" if pose_frames() > 1 else ("run_0" if moving else "idle_0")
+		if _land_timer > 0.0 and pose_frames() > 1:
 			var step := floori((LAND_POSE_TIME - _land_timer) / LAND_STEP)
 			if step < (2 if moving else 3):
 				return "land_%d" % step
-		if _stop_timer > 0.0:
+		if _stop_timer > 0.0 and pose_frames() > 1:
 			return "stop_0" if _stop_timer > STOP_POSE_TIME * 0.5 else "stop_1"
-		if _start_timer > 0.0:
+		if _start_timer > 0.0 and pose_frames() > 1:
 			return "start_0"
 		if moving:
 			return run_pose(Conductor.song_beat)
@@ -706,20 +754,33 @@ func _pose() -> String:
 	if _wall_sliding:
 		return "wall_0"
 	if _drum_timer > 0.0:
+		if pose_frames() <= 1:
+			return "orb_1"
 		return "orb_0" if _drum_timer > DRUM_POSE_TIME - DRUM_WINDUP else "orb_1"
 	if absf(velocity.y) < APEX_SPEED:
 		return "apex_0"
 	return "jump_0" if velocity.y < 0.0 else "fall_0"
 
 
-## 一拍跑完一輪 6 幀（左右各一步），第 0、3 幀腳著地，所以每半拍踩在拍子上
+## 依畫質決定跑／待機循環要播幾幀（低＝定格、中＝2、高＝6）
+static func pose_frames() -> int:
+	return clampi(GameState.quality_int("player_frames", 6), 1, 6)
+
+
+## 一拍跑完一輪（高畫質 6 幀）；低畫質定格 run_0，中畫質兩幀交替
 static func run_pose(beat: float) -> String:
-	return "run_%d" % mini(floori(fposmod(beat, 1.0) * 6.0), 5)
+	var n := pose_frames()
+	if n <= 1:
+		return "run_0"
+	return "run_%d" % mini(floori(fposmod(beat, 1.0) * float(n)), n - 1)
 
 
-## 一拍 6 張的原地律動：拍點那張蹲到最低、閉眼，之後站起、預備、再往下
+## 一拍原地律動；幀數隨畫質縮減
 static func idle_pose(beat: float) -> String:
-	return "idle_%d" % mini(floori(fposmod(beat, 1.0) * 6.0), 5)
+	var n := pose_frames()
+	if n <= 1:
+		return "idle_0"
+	return "idle_%d" % mini(floori(fposmod(beat, 1.0) * float(n)), n - 1)
 
 
 ## 畫角色本體（腳底在 feet、面向右，body_scale.x 給負的就面向左）；選關畫面預覽也用這個。

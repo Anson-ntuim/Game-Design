@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="橫向捲軸節奏天國"
-run/main_scene="res://scenes/level_select.tscn"
+run/main_scene="res://scenes/home.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://icon.svg"
 
@@ -43,3 +43,4 @@ common/physics_ticks_per_second=120
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.04, 0.05, 0.1, 1)

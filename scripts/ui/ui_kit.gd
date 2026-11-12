@@ -71,6 +71,25 @@ static func title_font() -> Font:
 	return font(0.9)
 
 
+## 網頁字型是精簡子集：自訂歌檔名等未收錄的字改成 '.'，避免方框亂碼。
+## Web 上 Font.has_char 對缺字常回 true，改以 get_glyph_index != 0 判斷。
+static func safe_text(s: String, f: Font = null) -> String:
+	if s.is_empty():
+		return s
+	if f == null:
+		f = font()
+	var out := ""
+	for i in s.length():
+		var code := s.unicode_at(i)
+		if code == 10 or code == 13 or code == 9 or code == 32:
+			out += String.chr(code)
+		elif f.get_glyph_index(16, code, 0) != 0:
+			out += String.chr(code)
+		else:
+			out += "."
+	return out
+
+
 static func width_of(s: String, size: int, f: Font = null) -> float:
 	return (f if f else font()).get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 

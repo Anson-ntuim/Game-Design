@@ -1,38 +1,38 @@
 class_name MusicSetup
 extends CanvasLayer
-## 選歌、離線 BPM 偵測、試聽對拍與每首歌的第一拍校正。
+## 精簡自訂音樂：選歌 → 聽 → 不準就打拍子 → 看結果 → 套用。
 
 signal closed
 
 var _root: Control
 var _status: Label
-var _source: Label
-var _confidence: Label
+var _result: Label
 var _progress: ProgressBar
-var _bpm: SpinBox
-var _offset: SpinBox
-var _seek: HSlider
-var _time_label: Label
-var _beat_view: Control
-var _apply: Button
 var _play: Button
-var _tap_bpm: Button
-var _metronome: CheckButton
+var _apply: Button
+var _bpm_label: Label
+var _bpm_buttons: Array[Button] = []
+var _offset_buttons: Array[Button] = []
 var _preview: AudioStreamPlayer
 var _click: AudioStreamPlayer
 var _dialog: FileDialog
 var _file_callback: Variant
 var _picker: Variant
+## Web：JumpMusicPicker 已注入（不依賴 get_interface 一定成功）
+var _web_picker_ok: bool = false
 var _playing: bool = false
 var _preview_from: float = 0.0
 var _preview_usec: int = 0
-var _last_click: int = -999
+var _bpm: float = 120.0
+var _offset_sec: float = 0.0
 var _tap_times: Array[float] = []
 var _flash: float = 0.0
-var _updating_seek: bool = false
-var _seeking: bool = false
 var _finishing: bool = false
 var _applied: bool = false
+var _beat_view: Control
+var _last_click: int = -999
+const BPM_MIN := 40.0
+const BPM_MAX := 240.0
 
 
 func _ready() -> void:
@@ -52,13 +52,11 @@ func _ready() -> void:
 	MusicLibrary.progress.connect(_on_progress)
 	MusicLibrary.analyzed.connect(_on_analyzed)
 	MusicLibrary.failed.connect(_on_error)
+	## 延後掛選檔，避免 Web bridge／內嵌腳本例外把整頁卡死
 	if OS.has_feature("web"):
-		var bridge := Engine.get_singleton("JavaScriptBridge")
-		bridge.eval(FileAccess.get_file_as_string("res://scripts/web/music_picker.js"), true)
-		_picker = bridge.get_interface("JumpMusicPicker")
-		_file_callback = bridge.create_callback(_web_file_selected)
+		call_deferred("_setup_web_picker")
 	if Conductor.custom_music:
-		_status.text = "讀取已保存的歌曲與校正…"
+		_status.text = "讀取已保存的歌曲…"
 		MusicLibrary.load_active_draft()
 	else:
 		MusicLibrary.draft_stream = null
@@ -77,126 +75,90 @@ func _build_ui() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 24)
+		margin.add_theme_constant_override("margin_" + side, 36)
 	_root.add_child(margin)
 	var panel := PanelContainer.new()
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.035, 0.045, 0.11)
 	style.border_color = UiKit.FLOAT
 	style.set_border_width_all(1)
-	style.set_content_margin_all(22)
+	style.set_content_margin_all(28)
 	panel.add_theme_stylebox_override("panel", style)
 	var theme := Theme.new()
 	theme.default_font = UiKit.font()
-	theme.default_font_size = 16
+	theme.default_font_size = 17
 	panel.theme = theme
 	margin.add_child(panel)
 	var body := VBoxContainer.new()
-	body.add_theme_constant_override("separation", 12)
+	body.add_theme_constant_override("separation", 16)
 	panel.add_child(body)
-	var header := HBoxContainer.new()
-	body.add_child(header)
-	var title := _label(header, "自訂音樂與節拍校正", 25)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var title := _label(body, "自訂音樂", 28)
 	title.add_theme_color_override("font_color", UiKit.GOLD)
-	_button(header, "返回選關", _finish, "CloseMusic")
-	var files := HBoxContainer.new()
-	body.add_child(files)
-	_button(files, "選擇音樂", _choose_file, "ImportMusic")
-	_button(files, "恢復內建音樂", _restore_builtin, "BuiltinMusic")
-	_source = _label(files, "WAV / MP3 / OGG　最多 32 MB", 15)
-	_source.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_source.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	_source.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_status = _label(body, "選擇歌曲後會自動偵測 BPM；音樂只在你的裝置／瀏覽器內處理。", 15)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	body.add_child(row)
+	_button(row, "選擇音樂", _choose_file, "ImportMusic")
+	_button(row, "恢復內建", _restore_builtin, "BuiltinMusic")
+	_button(row, "返回", _finish, "CloseMusic")
+
+	_status = _label(body, "選一首歌，聽看看拍點準不準。不準就跟著鼓點按空白鍵。", 16)
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
 	_progress = ProgressBar.new()
 	_progress.max_value = 1.0
 	_progress.show_percentage = false
-	_progress.custom_minimum_size.y = 6
+	_progress.custom_minimum_size.y = 8
 	_progress.visible = false
 	body.add_child(_progress)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	body.add_child(scroll)
-	var content := VBoxContainer.new()
-	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	content.add_theme_constant_override("separation", 12)
-	scroll.add_child(content)
-	var bpm_row := HBoxContainer.new()
-	content.add_child(bpm_row)
-	_label(bpm_row, "歌曲 BPM", 16).custom_minimum_size.x = 120
-	_bpm = SpinBox.new()
-	_bpm.name = "SongBpm"
-	_bpm.min_value = 40
-	_bpm.max_value = 240
-	_bpm.step = 0.1
-	_bpm.value = 120
-	_bpm.custom_minimum_size.x = 150
-	bpm_row.add_child(_bpm)
-	_bpm.value_changed.connect(_settings_changed)
-	_button(bpm_row, "÷ 2", func() -> void: _bpm.value *= 0.5, "HalfBpm")
-	_button(bpm_row, "× 2", func() -> void: _bpm.value *= 2.0, "DoubleBpm")
-	_confidence = _label(content, "可手動修正 BPM；一拍聽起來太快或太慢時，試試半速／倍速。", 14)
-	_confidence.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	var offset_row := HBoxContainer.new()
-	content.add_child(offset_row)
-	_label(offset_row, "第 1 拍位置", 16).custom_minimum_size.x = 120
-	_offset = SpinBox.new()
-	_offset.name = "FirstBeatMs"
-	_offset.min_value = 0
-	_offset.max_value = 600000
-	_offset.step = 5
-	_offset.suffix = " ms"
-	_offset.custom_minimum_size.x = 150
-	offset_row.add_child(_offset)
-	_offset.value_changed.connect(_settings_changed)
-	_button(offset_row, "−10 ms", func() -> void: _offset.value -= 10)
-	_button(offset_row, "+10 ms", func() -> void: _offset.value += 10)
-	_button(offset_row, "此刻設為第 1 拍", _set_first_beat, "SetFirstBeat")
-	var explanation := _label(content, "BPM 決定拍速；第 1 拍位置決定拍點落在哪裡。裝置延遲沿用選關畫面的 O 校正。", 14)
-	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
 	_beat_view = Control.new()
-	_beat_view.custom_minimum_size.y = 100
-	_beat_view.clip_contents = true
+	_beat_view.custom_minimum_size = Vector2(0, 110)
 	_beat_view.draw.connect(_draw_beat)
-	content.add_child(_beat_view)
-	_seek = HSlider.new()
-	_seek.name = "MusicSeek"
-	_seek.max_value = 1
-	_seek.step = 0.05
-	_seek.custom_minimum_size.y = 28
-	_seek.drag_started.connect(func() -> void: _seeking = true)
-	_seek.drag_ended.connect(func(changed: bool) -> void:
-		_seeking = false
-		if changed:
-			_seek_to(_seek.value))
-	_seek.value_changed.connect(func(value: float) -> void:
-		if not _updating_seek and not _seeking:
-			_seek_to(value))
-	content.add_child(_seek)
-	_time_label = _label(content, "0:00 / 0:00", 14)
-	var transport := HBoxContainer.new()
-	content.add_child(transport)
-	_play = _button(transport, "試聽", _toggle_preview, "PreviewMusic")
+	body.add_child(_beat_view)
+
+	_result = _label(body, "尚未分析", 20)
+	_result.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0))
+	_result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
+	var bpm_row := HBoxContainer.new()
+	bpm_row.add_theme_constant_override("separation", 8)
+	body.add_child(bpm_row)
+	_bpm_label = _label(bpm_row, "BPM 120.0", 18)
+	_bpm_label.custom_minimum_size.x = 120
+	_bpm_buttons.append(_button(bpm_row, "÷2", func() -> void: _nudge_bpm_factor(0.5), "BpmHalf"))
+	_bpm_buttons.append(_button(bpm_row, "×2", func() -> void: _nudge_bpm_factor(2.0), "BpmDouble"))
+	_bpm_buttons.append(_button(bpm_row, "−1", func() -> void: _nudge_bpm(-1.0), "BpmMinus1"))
+	_bpm_buttons.append(_button(bpm_row, "+1", func() -> void: _nudge_bpm(1.0), "BpmPlus1"))
+	_bpm_buttons.append(_button(bpm_row, "−0.1", func() -> void: _nudge_bpm(-0.1), "BpmMinusFine"))
+	_bpm_buttons.append(_button(bpm_row, "+0.1", func() -> void: _nudge_bpm(0.1), "BpmPlusFine"))
+
+	var offset_row := HBoxContainer.new()
+	offset_row.add_theme_constant_override("separation", 8)
+	body.add_child(offset_row)
+	var offset_title := _label(offset_row, "第 1 拍", 16)
+	offset_title.custom_minimum_size.x = 72
+	_offset_buttons.append(_button(offset_row, "−10 ms", func() -> void: _nudge_offset_ms(-10.0), "OffsetMinus10"))
+	_offset_buttons.append(_button(offset_row, "+10 ms", func() -> void: _nudge_offset_ms(10.0), "OffsetPlus10"))
+	_offset_buttons.append(_button(offset_row, "−1 ms", func() -> void: _nudge_offset_ms(-1.0), "OffsetMinus1"))
+	_offset_buttons.append(_button(offset_row, "+1 ms", func() -> void: _nudge_offset_ms(1.0), "OffsetPlus1"))
+	_set_tune_enabled(false)
+
+	var tip_text := "空白鍵對拍　÷2／×2 調 BPM　←→ 微調 BPM　Enter 套用　Esc 返回"
+	if OS.has_feature("web"):
+		tip_text = "選檔層可拖放。空白鍵對拍　÷2／×2／± 調 BPM　Enter 套用　Esc 返回"
+	var tip := _label(body, tip_text, 14)
+	tip.add_theme_color_override("font_color", UiKit.FLOAT)
+
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 12)
+	body.add_child(actions)
+	_play = _button(actions, "試聽", _toggle_preview, "PreviewMusic")
 	_play.disabled = true
-	_button(transport, "從頭重播", func() -> void: _start_preview(0.0), "RestartPreview")
-	_button(transport, "對拍（空白鍵）", _tap, "TapBeat")
-	_metronome = CheckButton.new()
-	_metronome.text = "播放拍點提示音"
-	_metronome.button_pressed = true
-	transport.add_child(_metronome)
-	_tap_bpm = _button(content, "跟著歌曲鼓點按至少 4 次，可用敲擊速度校正 BPM", _use_tap_bpm, "UseTapBpm")
-	_tap_bpm.disabled = true
-	var footer := HBoxContainer.new()
-	body.add_child(footer)
-	var note := _label(footer, "原速音樂 1×；世界速度依歌曲 BPM 調整，變速線再乘倍率。", 14)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_button(footer, "取消", _finish, "CancelMusic")
-	_apply = _button(footer, "套用並返回", _apply_music, "ApplyMusic")
+	_apply = _button(actions, "套用這首歌", _apply_music, "ApplyMusic")
 	_apply.disabled = true
+	_apply.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 
 func _label(parent: Node, text: String, size: int) -> Label:
@@ -212,23 +174,70 @@ func _button(parent: Node, text: String, callback: Callable, node_name: String =
 	button.text = text
 	if node_name != "":
 		button.name = node_name
-	button.custom_minimum_size.y = 38
+	button.custom_minimum_size.y = 42
 	button.pressed.connect(callback)
 	parent.add_child(button)
 	return button
 
 
+func _setup_web_picker() -> void:
+	## 優先用 index.html 已注入的 JumpMusicPicker；否則再 eval 內嵌腳本
+	_web_picker_ok = false
+	_picker = null
+	if not OS.has_feature("web") or not is_inside_tree():
+		return
+	var bridge: Variant = Engine.get_singleton("JavaScriptBridge")
+	if bridge == null:
+		_status.text = "此瀏覽器沒有選檔橋接，請用桌面版或換瀏覽器"
+		return
+	_file_callback = bridge.create_callback(_web_file_selected)
+	var ready := bool(bridge.eval("typeof JumpMusicPicker !== 'undefined'", true))
+	if not ready:
+		var code := FileAccess.get_file_as_string("res://scripts/web/music_picker.js")
+		if code.is_empty():
+			code = MusicPickerEmbed.SOURCE
+		if not code.strip_edges().is_empty():
+			bridge.eval(code, true)
+		ready = bool(bridge.eval("typeof JumpMusicPicker !== 'undefined'", true))
+	_web_picker_ok = ready
+	_picker = bridge.get_interface("JumpMusicPicker")
+	if not _web_picker_ok:
+		_status.text = "選檔元件未就緒：請確認上傳最新 Web 包，或改用新分頁／桌面版"
+
+
+func _open_web_picker() -> bool:
+	if not _web_picker_ok:
+		_setup_web_picker()
+	if not _web_picker_ok:
+		return false
+	var bridge: Variant = Engine.get_singleton("JavaScriptBridge")
+	_file_callback = bridge.create_callback(_web_file_selected)
+	var win: Variant = bridge.get_interface("window")
+	if win != null:
+		win._JumpMusicGodotCb = _file_callback
+		bridge.eval("JumpMusicPicker.open(window._JumpMusicGodotCb)", true)
+		return true
+	if _picker != null:
+		_picker.open(_file_callback)
+		return true
+	return false
+
+
 func _choose_file() -> void:
 	_pause_preview()
 	if OS.has_feature("web"):
-		_picker.open(_file_callback)
+		## itch iframe 裡不能只靠程式 click；picker 會開 HTML 遮罩讓玩家直接點／拖放
+		if not _open_web_picker():
+			_on_error("網頁選檔元件未載入。請重新匯出 Web（需含 music_picker.js），或改用桌面版／新分頁開啟")
+			return
+		_status.text = "請在跳出的選檔層選擇或拖入音樂…"
 		return
 	if not is_instance_valid(_dialog):
 		_dialog = FileDialog.new()
 		_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 		_dialog.access = FileDialog.ACCESS_FILESYSTEM
 		_dialog.use_native_dialog = true
-		_dialog.filters = PackedStringArray(["*.wav;WAV 音樂", "*.mp3;MP3 音樂", "*.ogg;OGG Vorbis"])
+		_dialog.filters = PackedStringArray(["*.wav;WAV", "*.mp3;MP3", "*.ogg;OGG"])
 		_dialog.file_selected.connect(func(path: String) -> void: MusicLibrary.import_path(path))
 		add_child(_dialog)
 	_dialog.popup_centered_ratio(0.75)
@@ -250,9 +259,9 @@ func _web_file_selected(args: Array) -> void:
 func _on_progress(value: float, message: String) -> void:
 	_progress.visible = true
 	_progress.value = value
-	_status.text = message + "　%d%%" % roundi(value * 100)
+	_status.text = "%s　%d%%" % [message, roundi(value * 100)]
 	_apply.disabled = true
-	_report(message)
+	_set_tune_enabled(false)
 
 
 func _on_analyzed(result: Dictionary) -> void:
@@ -261,48 +270,101 @@ func _on_analyzed(result: Dictionary) -> void:
 	_playing = false
 	_preview.stream = MusicLibrary.draft_stream
 	_preview_from = 0.0
-	_clear_taps()
-	_bpm.value = float(result["bpm"])
-	_offset.max_value = maxf(0, _preview.stream.get_length() * 1000 - 100)
-	_offset.value = float(result["offset"]) * 1000
-	_seek.max_value = _preview.stream.get_length()
-	_source.text = MusicLibrary.draft_name
-	var confidence := float(result.get("confidence", 0))
-	_confidence.text = "自動偵測：%.1f BPM　可信度：%s" % [float(result["bpm"]), "高" if confidence > 0.6 else ("中" if confidence > 0.3 else "低，請試聽並校正")]
-	_status.text = String(result.get("notice", "按試聽，再跟著歌曲鼓點按空白鍵；聽提示音有沒有對準。"))
-	_apply.disabled = false
-	_play.text = "試聽"
+	_tap_times.clear()
+	_bpm = clampf(float(result.get("bpm", 120.0)), BPM_MIN, BPM_MAX)
+	_offset_sec = maxf(0.0, float(result.get("offset", 0.0)))
 	_play.disabled = false
-	_report("音樂分析完成：%s，%.1f BPM，第 1 拍 %.0f ms" % [MusicLibrary.draft_name, _bpm.value, _offset.value])
+	_play.text = "試聽"
+	_apply.disabled = false
+	_set_tune_enabled(true)
+	_show_result("自動偵測完成")
+	_status.text = "試聽後可 ÷2／×2 或 ± 微調 BPM；拍點不準再空白鍵校正，或調第 1 拍。"
+	_start_preview(0.0)
 
 
 func _on_error(message: String) -> void:
 	_progress.visible = false
 	_status.text = message
 	_apply.disabled = MusicLibrary.draft_stream == null or MusicLibrary.busy
-	_report(message)
+	_set_tune_enabled(MusicLibrary.draft_stream != null and not MusicLibrary.busy)
 
 
-func _report(message: String) -> void:
-	if _picker:
-		_picker.report(message)
+func _set_tune_enabled(on: bool) -> void:
+	for b in _bpm_buttons:
+		b.disabled = not on
+	for b in _offset_buttons:
+		b.disabled = not on
+	_refresh_bpm_label()
 
 
-func _settings_changed(_value: float) -> void:
-	_last_click = floori((_preview_time(false) - _offset.value / 1000) / (60.0 / _bpm.value)) if _playing else -999
+func _refresh_bpm_label() -> void:
+	if is_instance_valid(_bpm_label):
+		_bpm_label.text = "BPM %.1f" % _bpm
+
+
+func _nudge_bpm(delta: float) -> void:
+	if MusicLibrary.draft_stream == null:
+		return
+	_set_bpm(_bpm + delta, "手動微調 BPM")
+
+
+func _nudge_bpm_factor(factor: float) -> void:
+	if MusicLibrary.draft_stream == null:
+		return
+	var next := _bpm * factor
+	if next < BPM_MIN or next > BPM_MAX:
+		_status.text = "BPM 只能在 %.0f～%.0f 之間" % [BPM_MIN, BPM_MAX]
+		return
+	var prefix := "BPM ×2" if is_equal_approx(factor, 2.0) else ("BPM ÷2" if is_equal_approx(factor, 0.5) else "BPM 調整")
+	_set_bpm(next, prefix)
+
+
+func _set_bpm(value: float, prefix: String) -> void:
+	_bpm = clampf(snappedf(value, 0.1), BPM_MIN, BPM_MAX)
+	_tap_times.clear()
+	_show_result(prefix)
+	_status.text = "目前 %.1f BPM。聽起來是半拍／雙拍就用 ÷2／×2。" % _bpm
+	_refresh_bpm_label()
+	GameState.play_sfx("pluck", GameState.next_note(), -10.0)
+
+
+func _nudge_offset_ms(delta_ms: float) -> void:
+	if MusicLibrary.draft_stream == null:
+		return
+	var length := _preview.stream.get_length() if _preview.stream else 0.0
+	_offset_sec = clampf(_offset_sec + delta_ms / 1000.0, 0.0, maxf(0.0, length - 0.1))
+	_show_result("第 1 拍微調")
+	_status.text = "第 1 拍 %.0f ms。跟著提示音聽是否對上鼓點。" % (_offset_sec * 1000.0)
+	GameState.play_sfx("pluck", GameState.next_note() - 3.0, -10.0)
+
+
+func _show_result(prefix: String) -> void:
+	var name := MusicLibrary.draft_name if MusicLibrary.draft_name != "" else "未命名"
+	name = UiKit.safe_text(name)
+	var sections: Array = MusicLibrary.draft_result.get("sections", [])
+	var feel := ""
+	if not sections.is_empty():
+		var feels: PackedStringArray = []
+		for s in sections:
+			var f := String((s as Dictionary).get("feel", ""))
+			if f != "" and feels.find(f) < 0:
+				feels.append(f)
+		if not feels.is_empty():
+			feel = "\n節奏變化：" + "、".join(feels)
+	_result.text = "%s\n%s\nBPM %.1f　第 1 拍 %.0f ms%s" % [prefix, name, _bpm, _offset_sec * 1000.0, feel]
+	_refresh_bpm_label()
 
 
 func _start_preview(position: float) -> void:
 	if MusicLibrary.busy or _preview.stream == null:
 		return
-	_preview_from = clampf(position, 0.0, _preview.stream.get_length() - 0.01)
+	_preview_from = clampf(position, 0.0, maxf(0.0, _preview.stream.get_length() - 0.01))
 	_preview_usec = Time.get_ticks_usec()
 	_preview.pitch_scale = 1.0
 	_preview.play(_preview_from)
 	_playing = true
 	_play.text = "暫停"
 	_last_click = -999
-	_clear_taps()
 
 
 func _pause_preview() -> void:
@@ -317,15 +379,7 @@ func _toggle_preview() -> void:
 	if _playing:
 		_pause_preview()
 	else:
-		_start_preview(0.0 if _preview_from >= _seek.max_value - 0.1 else _preview_from)
-
-
-func _seek_to(position: float) -> void:
-	if _playing:
-		_start_preview(position)
-	else:
-		_preview_from = position
-	_clear_taps()
+		_start_preview(_preview_from)
 
 
 func _preview_time(audible: bool = true) -> float:
@@ -334,42 +388,32 @@ func _preview_time(audible: bool = true) -> float:
 		time += float(Time.get_ticks_usec() - _preview_usec) / 1000000.0
 	if audible and _playing:
 		time -= AudioServer.get_output_latency() + GameState.audio_offset_ms / 1000.0
-	return clampf(time, 0.0, _seek.max_value)
-
-
-func _set_first_beat() -> void:
-	if _preview.stream:
-		_offset.value = _preview_time() * 1000
-		_status.text = "已將目前聽到的位置設為第 1 拍，可用 ±10 ms 微調。"
+	var length := _preview.stream.get_length() if _preview.stream else 0.0
+	return clampf(time, 0.0, maxf(0.0, length))
 
 
 func _tap() -> void:
 	if not _playing:
-		_status.text = "請先按試聽，再跟著歌曲鼓點對拍。"
+		_status.text = "請先按試聽，再跟著鼓點打拍。"
 		return
 	var time := _preview_time()
 	if not _tap_times.is_empty() and (time <= _tap_times[-1] or time - _tap_times[-1] > 2.0):
-		_clear_taps()
+		_tap_times.clear()
 	_tap_times.append(time)
 	if _tap_times.size() > 16:
 		_tap_times.pop_front()
-	var period := 60.0 / _bpm.value
-	var offset := _offset.value / 1000
-	var error := time - offset - roundf((time - offset) / period) * period
-	_offset.value = maxf(0.0, offset + error * 0.35) * 1000
+	var period := 60.0 / maxf(_bpm, 1.0)
+	var error := time - _offset_sec - roundf((time - _offset_sec) / period) * period
+	_offset_sec = maxf(0.0, _offset_sec + error * 0.4)
 	_flash = 1.0
-	_status.text = "已對拍 %d 次　%s %.0f ms" % [_tap_times.size(), "晚" if error > 0 else "早", absf(error) * 1000]
-	_report(_status.text)
+	## 敲夠次數時用間隔估 BPM
 	var tapped := _tapped_bpm()
-	_tap_bpm.disabled = tapped <= 0
-	if tapped > 0:
-		_tap_bpm.text = "敲擊推估 %.1f BPM（按此套用）" % tapped
-
-
-func _clear_taps() -> void:
-	_tap_times.clear()
-	_tap_bpm.disabled = true
-	_tap_bpm.text = "跟著歌曲鼓點按至少 4 次，可用敲擊速度校正 BPM"
+	if tapped > 0.0:
+		_bpm = tapped
+		_refresh_bpm_label()
+	_status.text = "已打 %d 拍　相對提示音 %s %.0f ms" % [
+		_tap_times.size(), "晚" if error > 0.0 else "早", absf(error) * 1000.0]
+	_show_result("校正結果")
 
 
 func _tapped_bpm() -> float:
@@ -383,70 +427,23 @@ func _tapped_bpm() -> float:
 	if intervals.size() < 3:
 		return 0.0
 	intervals.sort()
-	return clampf(60.0 / intervals[intervals.size() / 2], 40.0, 240.0)
-
-
-func _use_tap_bpm() -> void:
-	var value := _tapped_bpm()
-	if value > 0:
-		_bpm.value = snappedf(value, 0.1)
-		_status.text = "已套用敲擊 BPM，再對幾拍確認第一拍位置。"
-
-
-func _input(event: InputEvent) -> void:
-	if event is InputEventKey and event.echo:
-		return
-	if event.is_action_pressed("back"):
-		get_viewport().set_input_as_handled()
-		_finish()
-	elif event.is_action_pressed("jump") and not get_viewport().gui_get_focus_owner() is LineEdit:
-		get_viewport().set_input_as_handled()
-		_tap()
-
-
-func _process(_delta: float) -> void:
-	_flash = move_toward(_flash, 0.0, 0.06)
-	var time := _preview_time()
-	if _playing and time >= _seek.max_value - 0.02:
-		_pause_preview()
-	if not _seeking:
-		_updating_seek = true
-		_seek.value = time
-		_updating_seek = false
-	_time_label.text = "%d:%02d / %d:%02d" % [int(time) / 60, int(time) % 60, int(_seek.max_value) / 60, int(_seek.max_value) % 60]
-	if _playing:
-		var beat := floori((_preview_time(false) - _offset.value / 1000) / (60.0 / _bpm.value))
-		if beat != _last_click:
-			_last_click = beat
-			if beat >= 0 and _metronome.button_pressed:
-				_click.pitch_scale = 1.5 if posmod(beat, 4) == 0 else 1.0
-				_click.play()
-	_beat_view.queue_redraw()
-
-
-func _draw_beat() -> void:
-	var beat := (_preview_time() - _offset.value / 1000) / (60.0 / _bpm.value)
-	var phase := fposmod(beat, 1.0)
-	var pulse := exp(-phase * 8)
-	var center := Vector2(48, 48)
-	_beat_view.draw_circle(center, 20 + pulse * 8, UiKit.FLOAT.lerp(UiKit.GOLD, _flash))
-	_beat_view.draw_arc(center, lerpf(44.0, 20.0, phase), 0, TAU, 48, UiKit.GOLD, 2, true)
-	UiKit.text(_beat_view, Vector2(110, 32), _beat_view.size.x - 120,
-		"等待第 1 拍" if beat < 0 else "第 %d 拍　%.1f BPM" % [floori(beat) + 1, _bpm.value], 20, Color.WHITE)
-	UiKit.text(_beat_view, Vector2(110, 63), _beat_view.size.x - 120,
-		"世界基準 %.2f×　歌曲原速 1×　空白鍵跟著歌曲鼓點對拍" % (_bpm.value / 120.0), 14, UiKit.FLOAT)
+	return clampf(60.0 / intervals[intervals.size() / 2], BPM_MIN, BPM_MAX)
 
 
 func _apply_music() -> void:
-	if MusicLibrary.apply_draft(_bpm.value, _offset.value / 1000):
-		_report("自訂音樂已套用：%.1f BPM，第 1 拍 %.0f ms" % [_bpm.value, _offset.value])
+	if MusicLibrary.apply_draft(_bpm, _offset_sec):
+		_show_result("已套用")
+		_status.text = "這首歌會用在關卡裡；過關後音樂會接著播，不會重頭。"
 		_applied = true
 		_finish()
+	else:
+		_apply.disabled = MusicLibrary.draft_stream == null or MusicLibrary.busy
 
 
 func _restore_builtin() -> void:
 	MusicLibrary.restore_builtin()
-	_report("已恢復內建音樂")
+	_status.text = "已恢復內建音樂"
+	_result.text = "內建音樂　120 BPM"
 	_applied = true
 	_finish()
 
@@ -460,12 +457,72 @@ func _finish() -> void:
 	if not _applied:
 		MusicLibrary.draft_stream = null
 		MusicLibrary.draft_bytes = PackedByteArray()
-	Conductor.start(false)
+	Conductor.start(false, true)
 	closed.emit()
 	queue_free()
 
 
 func _exit_tree() -> void:
 	MusicLibrary.cancel_analysis()
-	if _picker:
-		_picker.cancel()
+	if OS.has_feature("web"):
+		var bridge: Variant = Engine.get_singleton("JavaScriptBridge")
+		if bridge != null:
+			bridge.eval(
+				"try{if(window.JumpMusicPicker&&JumpMusicPicker.cancel)JumpMusicPicker.cancel();}catch(e){}",
+				true)
+	_picker = null
+	_web_picker_ok = false
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _finishing:
+		return
+	if event.is_action_pressed("back"):
+		get_viewport().set_input_as_handled()
+		_finish()
+	elif event.is_action_pressed("confirm") and not _apply.disabled:
+		get_viewport().set_input_as_handled()
+		_apply_music()
+	elif event.is_action_pressed("jump") and not get_viewport().gui_get_focus_owner() is LineEdit:
+		get_viewport().set_input_as_handled()
+		_tap()
+	elif MusicLibrary.draft_stream != null:
+		if event.is_action_pressed("move_left") or event.is_action_pressed("easier"):
+			get_viewport().set_input_as_handled()
+			_nudge_bpm(-1.0)
+		elif event.is_action_pressed("move_right") or event.is_action_pressed("harder"):
+			get_viewport().set_input_as_handled()
+			_nudge_bpm(1.0)
+		elif event.is_action_pressed("up"):
+			get_viewport().set_input_as_handled()
+			_nudge_bpm_factor(2.0)
+		elif event.is_action_pressed("down"):
+			get_viewport().set_input_as_handled()
+			_nudge_bpm_factor(0.5)
+
+
+func _process(_delta: float) -> void:
+	_flash = move_toward(_flash, 0.0, 0.06)
+	if _playing and _preview.stream and _preview_time(false) >= _preview.stream.get_length() - 0.05:
+		_pause_preview()
+	if _playing:
+		var beat := floori((_preview_time(false) - _offset_sec) / (60.0 / maxf(_bpm, 1.0)))
+		if beat != _last_click and beat >= 0:
+			_last_click = beat
+			_click.pitch_scale = 1.5 if posmod(beat, 4) == 0 else 1.0
+			_click.play()
+	_beat_view.queue_redraw()
+
+
+func _draw_beat() -> void:
+	var beat := (_preview_time() - _offset_sec) / (60.0 / maxf(_bpm, 1.0))
+	var phase := fposmod(beat, 1.0)
+	var pulse := exp(-phase * 8.0) if _playing else 0.0
+	var center := Vector2(56, 55)
+	_beat_view.draw_circle(center, 22 + pulse * 10 + _flash * 6, UiKit.FLOAT.lerp(UiKit.GOLD, _flash))
+	_beat_view.draw_arc(center, lerpf(48.0, 22.0, phase), 0, TAU, 48, UiKit.GOLD, 2.5, true)
+	var msg := "等待歌曲…" if MusicLibrary.draft_stream == null \
+		else ("等待第 1 拍" if beat < 0 else "第 %d 拍" % (floori(beat) + 1))
+	UiKit.text(_beat_view, Vector2(120, 36), _beat_view.size.x - 140, msg, 22, Color.WHITE)
+	UiKit.text(_beat_view, Vector2(120, 68), _beat_view.size.x - 140,
+		"%.1f BPM　跟著鼓點按空白鍵校正" % _bpm, 15, UiKit.FLOAT)

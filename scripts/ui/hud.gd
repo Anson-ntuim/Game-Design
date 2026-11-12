@@ -13,8 +13,8 @@ void fragment() {
 	COLOR = vec4(0.0, 0.0, 0.02, amount * 0.97 * smoothstep(radius, radius * 2.2, d));
 }
 "
-const CONTROLS_A := [[["←", "→"], "移動"], [["空白鍵"], "跳"], [["C"], "衝刺"], [["F"], "自動跑／停"]]
-const CONTROLS_B := [[["↑"], "看示範"], [["R"], "重來"], [["Esc"], "選關"]]
+const CONTROLS_A := [[["←", "→"], "移動"], [["空白鍵"], "跳"], [["C", "Shift"], "衝刺"], [["F"], "自動跑／停"]]
+const CONTROLS_B := [[["↑"], "看示範"], [["[", "]"], "畫質"], [["R"], "重來"], [["Esc"], "選關"]]
 const TIP_TIME := 6.0
 const TIP_COLOR := Color(1.0, 0.45, 0.5)
 
@@ -157,14 +157,12 @@ func _on_view_draw() -> void:
 		_view.draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, _fade))
 
 
-## 左上：關卡編號、名稱和整關縮圖，亮起的部分是已經跑過的距離
+## 左上：關卡編號和整關縮圖，亮起的部分是已經跑過的距離
 func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
-	var box := Rect2(safe.position.x, safe.position.y - lift, 380, 72)
+	var box := Rect2(safe.position.x, safe.position.y - lift, 320, 72)
 	UiKit.panel(_view, box, edge)
 	var idx := GameState.level_index
-	var parts := UiKit.split_name(String(LevelData.LEVELS[idx]["name"]))
-	var pw := UiKit.pill(_view, box.position + Vector2(14, 10), "%02d" % (idx + 1), edge, UiKit.INK, 13)
-	UiKit.text(_view, box.position + Vector2(22 + pw, 28), box.size.x - pw - 40, parts[1], 17, Color.WHITE)
+	UiKit.pill(_view, box.position + Vector2(14, 10), LevelData.level_code(idx), edge, UiKit.INK, 13)
 	var info := UiKit.minimap(idx)
 	var progress := 0.0
 	if player:
@@ -222,9 +220,15 @@ func _draw_controls(safe: Rect2, edge: Color, lift: float) -> void:
 		var label := "%d BPM　歌曲 %.2f×　世界 %.2f×" % [roundi(Conductor.current_bpm), Conductor.rate, Conductor.world_rate]
 		UiKit.pill(_view, Vector2(safe.end.x - UiKit.width_of(label, 13) - 24, safe.end.y - 90 + lift),
 			label, color, UiKit.INK, 13)
+		if Conductor.custom_music and not Conductor.rhythm_sections.is_empty():
+			var sec: Dictionary = Conductor.rhythm_section_at()
+			if not sec.is_empty():
+				var feel := "節奏　%s" % String(sec.get("feel", "穩"))
+				UiKit.pill(_view, Vector2(safe.end.x - UiKit.width_of(feel, 13) - 24, safe.end.y - 118 + lift),
+					feel, UiKit.FLOAT, UiKit.INK, 13)
 	var y0 := safe.end.y + lift
 	if player and player.auto_running:
-		var tip := "旗子前等候 GO…" if player and player.auto_flag_wait else "自動前進中　旗子前會停等 GO　F 停止"
+		var tip := "旗子前等候 GO…" if player and player.auto_flag_wait else "自動前進中　GO 後直接出發　F 停止"
 		UiKit.pill(_view, Vector2(safe.position.x, y0 - 80), tip, edge, UiKit.INK, 12)
 	UiKit.key_hints(_view, safe.position.x, y0 - 42, CONTROLS_A, edge, 0.5, HORIZONTAL_ALIGNMENT_LEFT, 12)
 	UiKit.key_hints(_view, safe.position.x, y0 - 12, CONTROLS_B, edge, 0.5, HORIZONTAL_ALIGNMENT_LEFT, 12)
@@ -257,12 +261,11 @@ func _draw_message(size: Vector2, edge: Color) -> void:
 	var c := Vector2(size.x * 0.5, size.y * 0.42)
 	var font_size := 42
 	var text := _message
-	var full := String(LevelData.LEVELS[GameState.level_index]["name"])
-	if _message == full:
-		var parts := UiKit.split_name(full)
-		text = parts[1]
-		font_size = 50
-		var tag := "STAGE %02d　%s" % [GameState.level_index + 1, parts[0]]
+	var code := LevelData.level_code(GameState.level_index)
+	if _message == code or _message == String(LevelData.LEVELS[GameState.level_index].get("name", "")):
+		text = code
+		font_size = 56
+		var tag := "STAGE"
 		var tw := UiKit.width_of(tag, 15) + 26.0
 		UiKit.pill(_view, Vector2(c.x - tw * 0.5, c.y - font_size * 0.64 - 40), tag, Color(edge, a), UiKit.INK, 15)
 	var w := UiKit.width_of(text, font_size, UiKit.title_font())
@@ -373,8 +376,7 @@ func _draw_results(size: Vector2, edge: Color) -> void:
 	_view.draw_set_transform(Vector2(cx, p.y + 62), 0.0, Vector2(hs, hs))
 	UiKit.bold_text(_view, Vector2(-hw * 0.5, 20), -1, head, 56, Color(UiKit.GOLD, k), edge)
 	_view.draw_set_transform(Vector2.ZERO)
-	var parts := UiKit.split_name(String(LevelData.LEVELS[GameState.level_index]["name"]))
-	UiKit.text(_view, Vector2(p.x, p.y + 114), box.size.x, "STAGE %02d　%s　%s" % [GameState.level_index + 1, parts[0], parts[1]],
+	UiKit.text(_view, Vector2(p.x, p.y + 114), box.size.x, "STAGE %s" % LevelData.level_code(GameState.level_index),
 		15, Color(edge.lerp(Color.WHITE, 0.3), k), HORIZONTAL_ALIGNMENT_CENTER)
 
 	var tiles := [
@@ -420,9 +422,12 @@ func _draw_results(size: Vector2, edge: Color) -> void:
 
 
 func _draw_confetti(size: Vector2, edge: Color, k: float) -> void:
+	var count := GameState.quality_int("confetti", 26)
+	if count <= 0:
+		return
 	var f := UiKit.font()
 	var glyphs := ["♪", "♫", "♩"]
-	for i in 26:
+	for i in count:
 		var seed_x := fposmod(sin(i * 12.9898) * 43758.5453, 1.0)
 		var speed := 50.0 + 60.0 * fposmod(sin(i * 78.233) * 12345.678, 1.0)
 		var x := seed_x * size.x + sin(_results_t * 1.5 + i) * 16.0

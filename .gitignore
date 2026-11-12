@@ -2,3 +2,7 @@
 .godot/
 /android/
 /build/
+
+# OS / Python
+.DS_Store
+__pycache__/

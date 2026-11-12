@@ -16,7 +16,7 @@
      flow = True 時不允許例外
 """
 
-from sim_player import TILE, SPB, ground
+from sim_player import TILE, SPB, DASH_TIME, ground
 from design import show, TAP, FULL
 from gen_level3 import (
     START, Chunk, Course, Gate, Laser, LASER_HALF, place_notes, place_pump_piston, place_crate,
@@ -264,7 +264,8 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
             orb_tones=(12, 15, 19, 17, 22, 24, 27), ring_tones=(19, 24, 27), finale=False, wave=False,
             rests=(), strict=True, blind=None, bpm=None, floor="pit", spikes=(), fixed_spikes=(),
             melody_tones=(0, 3, 7, 10, 12, 15, 19, 22), flow=False, final_rise=0, gravity=None,
-            gravity_flip=None, island_spikes=True, flag=None, audit_air=False, require_ring_use=True, compact_islands=False, score_beats=None):
+            gravity_flip=None, island_spikes=True, flag=None, audit_air=False, require_ring_use=True,
+            compact_islands=False, score_beats=None, orb_footholds=False):
     """rests: [(起拍, 迄拍)] 休止；strict = False 搶拍只發出錯音。
     blind: {"notes": 16 格, "strobe": bool} 盲拍區。bpm: 走進這段時換成的速度。
     floor: pit／melody／beat／ground，或有高低差的 [(種類, 高幾格, 起跳幾次)]（見檔頭）。spikes: ground 整排地板尖刺彈出的拍子（要在這幾拍跳起來）；
@@ -273,7 +274,8 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
     gravity: 模擬／寫入區塊的重力（px/s²）；None = 用 sim_player 預設 2400
     gravity_flip: (拍, 另一重力) — 以該拍的 x 為界，後半改成另一重力（給空中穿越切換）
     island_spikes: False 時坑島不鋪「落地後彈出」的防站樁尖刺（第五關用黃音符主導時關掉）
-    flag: 是否放起跳旗。None = 自動：只要段落裡有要對拍的音符／環／光柱，或 flow／休止／尖刺／消失平台，就放旗"""
+    flag: 是否放起跳旗。None = 自動：只要段落裡有要對拍的音符／環／光柱，或 flow／休止／尖刺／消失平台，就放旗
+    orb_footholds: True 時黃球附近不鋪站台（含近地擦觸），靠踩球前進；有地面起跳的落點仍保留"""
     import sim_player
     _old_g = sim_player.GRAVITY
     if gravity is not None:
@@ -284,7 +286,9 @@ def section(pat, name, script, hint, *, gates=(), pistons=(), crates=(), lasers=
             orb_tones=orb_tones, ring_tones=ring_tones, finale=finale, wave=wave, rests=rests,
             strict=strict, blind=blind, bpm=bpm, floor=floor, spikes=spikes, fixed_spikes=fixed_spikes,
             melody_tones=melody_tones, flow=flow, final_rise=final_rise, gravity=gravity,
-            gravity_flip=gravity_flip, island_spikes=island_spikes, flag=flag, audit_air=audit_air, require_ring_use=require_ring_use, compact_islands=compact_islands, score_beats=score_beats)
+            gravity_flip=gravity_flip, island_spikes=island_spikes, flag=flag, audit_air=audit_air,
+            require_ring_use=require_ring_use, compact_islands=compact_islands, score_beats=score_beats,
+            orb_footholds=orb_footholds)
     finally:
         sim_player.GRAVITY = _old_g
 
@@ -293,7 +297,8 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
             orb_tones=(12, 15, 19, 17, 22, 24, 27), ring_tones=(19, 24, 27), finale=False, wave=False,
             rests=(), strict=True, blind=None, bpm=None, floor="pit", spikes=(), fixed_spikes=(),
             melody_tones=(0, 3, 7, 10, 12, 15, 19, 22), flow=False, final_rise=0, gravity=None,
-            gravity_flip=None, island_spikes=True, flag=None, audit_air=False, require_ring_use=True, compact_islands=False, score_beats=None):
+            gravity_flip=None, island_spikes=True, flag=None, audit_air=False, require_ring_use=True,
+            compact_islands=False, score_beats=None, orb_footholds=False):
     kinds = _floor_kinds(floor)
     if kinds & {"melody", "beat"}:
         assert not any(k == "orb" for (_, k, _) in script), (
@@ -337,14 +342,17 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
                 if previous and previous[-1] in ("orb", "ring", "dash"):
                     # 空中連招的落點多留一格接住實際碰撞／幀邊界誤差；短跳缺口仍維持窄邊。
                     c0 -= 1
-            ## 只有「正上方有夠高的黃音符、且這裡不起跳」才不蓋島（有球走球）
-            ## 近地擦觸／起跳前緩衝落點仍保留，否則會掉進虛空
+            ## 正上方有黃音符、且這裡不起跳 → 不蓋島（有球走球）
+            ## 預設近地擦觸仍保留；orb_footholds 連近地也不鋪，靠踩球前進
             if i > 0 and i < len(spans) - 1:
                 has_jump = any(b0 - 0.02 <= jb <= b1 + 0.12 for jb in jumps)
-                air_orbs = any(
+                near_orbs = any(
+                    c0 * TILE - 24 <= o.x <= (c1 + 1) * TILE + 24
+                    for o in course.orbs)
+                high_orbs = any(
                     c0 * TILE - 24 <= o.x <= (c1 + 1) * TILE + 24 and o.y < 16 * TILE - 100
                     for o in course.orbs)
-                if not has_jump and air_orbs:
+                if not has_jump and (high_orbs or (orb_footholds and near_orbs)):
                     continue
             if not compact_islands and islands and c0 <= islands[-1][1] + 2:
                 ## 中間若跳過球路假島，兩端不要併成一條大道
@@ -428,6 +436,14 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
             # 牆面要在角色往下掉、腳還高過島面的範圍內，跳過去才落得上島；提早 0.12 秒起跳整條弧線前移約 37px
             x_down = max(x for (b, x, y) in sim.log if last < b < last + 2.5 and y + 22 <= top * TILE - 2)
             lc = int((x_down - 28) // TILE)
+            # 空中連衝結尾：落點對齊最後一下衝刺末端，避免衝完還要再滑一大段才踩得到
+            if script and script[-1][1] in ("dash", "ring"):
+                b_dash = float(script[-1][0])
+                dash_end = b_dash + DASH_TIME / SPB
+                xs = [x for (b, x, y) in sim.log if b_dash - 0.02 <= b <= dash_end + 0.04]
+                if xs:
+                    # 島面伸進衝刺後段約 1.5 格，三下都按到時人已經在島上
+                    lc = min(lc, int((xs[-1] - 60) // TILE))
             assert not mid or lc > mid[-1][1] + 1, ("墊高的終點島和前一個落腳處重疊", name)
         ch.fill(lc, lc, top, 19, "%")
         tail_col = max(lc + 7, int(x_at(sim, score_beats) // TILE) + 3) if score_beats else lc + 7

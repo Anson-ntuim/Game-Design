@@ -2,7 +2,7 @@ extends Node2D
 ## 主場景：依 LevelData 建出整個關卡，負責鏡頭、存檔點、死亡重生與過關。
 
 const TILE := LevelData.TILE
-const SELECT_SCENE := "res://scenes/level_select.tscn"
+const SELECT_SCENE := "res://scenes/home.tscn"
 
 var player: Player
 var camera: Camera2D
@@ -36,6 +36,9 @@ var _camera_ground_y: float = 0.0
 var _score_cue_slot: int = -99999
 var _tempo_pad_mode: bool = false
 var _checkpoint_tempo_bpm: float = 120.0
+## 各段落建議重生點
+var _section_spawns: Array[Vector2] = []
+var _section_index: int = 0
 
 
 func _ready() -> void:
@@ -73,8 +76,15 @@ func _ready() -> void:
 
 	GameState.reset_stats()
 	Conductor.measure.connect(_on_measure)
-	Conductor.start()
-	hud.show_message(_level_name, 2.0)
+	## 自訂音樂若已在播（剛過關進下一關），從頭重播會打斷曲子
+	var restart_music := not (Conductor.custom_music and Conductor.is_music_playing())
+	Conductor.start(true, restart_music)
+	var start_sec := clampi(GameState.start_section, 0, maxi(0, _hints.size() - 1))
+	GameState.start_section = 0
+	if start_sec > 0:
+		_warp_to_section(start_sec, true)
+	else:
+		hud.show_message(_level_name, 2.0)
 
 
 func _physics_process(delta: float) -> void:
@@ -112,10 +122,18 @@ func _physics_process(delta: float) -> void:
 		camera.position.y = clampf(camera.position.y, view.y * 0.5, maxf(view.y * 0.5, level_size.y - view.y * 0.5))
 
 	_shake = move_toward(_shake, 0.0, 40.0 * delta)
-	camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
+	if GameState.quality_flag("shake", true) and _shake > 0.0:
+		camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
+	else:
+		camera.offset = Vector2.ZERO
 	_zoom_punch = move_toward(_zoom_punch, 0.0, 3.0 * delta)
-	var z := 1.0 + 0.025 * _zoom_punch * (0.4 + GameState.groove)
-	camera.zoom = Vector2(z, z)
+	## 素材主題不用鏡頭 zoom punch：zoom 會整層縮放，遠城／近城看起來像被水平抽動
+	if GameState.theme_is_procedural():
+		var punch := 0.025 * _zoom_punch * (0.4 + GameState.groove) * GameState.anim_amount()
+		var z := 1.0 + punch
+		camera.zoom = Vector2(z, z)
+	else:
+		camera.zoom = Vector2.ONE
 
 
 func _process(delta: float) -> void:
@@ -125,8 +143,10 @@ func _process(delta: float) -> void:
 	var subdivision_cue := false
 	var section_duck := 0.0
 	var px := player.global_position.x
-	for h in _hints:
+	for i in _hints.size():
+		var h: Dictionary = _hints[i]
 		if px >= float(h["from"]) and px < float(h["to"]):
+			_section_index = i
 			hint = h["text"]
 			subdivision_cue = bool(h.get("subdivision_cue", false))
 			section_duck = float(h.get("music_duck", 0.0))
@@ -156,6 +176,17 @@ func _process(delta: float) -> void:
 		if z.contains(px) and z.resting(b):
 			duck = 1.0
 	Conductor.duck_target = duck
+
+	var quality_step := 0
+	if Input.is_action_just_pressed("quality_down"):
+		quality_step = -1
+	elif Input.is_action_just_pressed("quality_up"):
+		quality_step = 1
+	if quality_step != 0:
+		var q := clampi(GameState.quality + quality_step, 0, GameState.QUALITIES.size() - 1)
+		if q != GameState.quality:
+			GameState.set_quality(q)
+			hud.show_message("畫質　%s" % String(GameState.QUALITIES[q]["name"]), 1.2)
 
 	if Input.is_action_just_pressed("back"):
 		get_tree().change_scene_to_file(SELECT_SCENE)
@@ -193,9 +224,10 @@ func _on_measure(_m: int) -> void:
 	if _tempo_pad_mode:
 		return
 	var now := Conductor.current_bpm
-	var actual_target := _tempo_target / Conductor.REFERENCE_BPM * Conductor.bpm
+	var new_rate := Conductor.rate_for_world_bpm(_tempo_target)
+	var actual_target := Conductor.bpm * new_rate
 	if absf(now - actual_target) > 0.5 and not _completed:
-		Conductor.set_rate(_tempo_target / Conductor.REFERENCE_BPM)
+		Conductor.set_rate(new_rate)
 		hud.show_message(("加速！" if actual_target > now else "減速") + "　BPM %d" % roundi(actual_target), 1.6)
 
 
@@ -215,11 +247,11 @@ func _on_tempo_pad_triggered(bpm: float) -> void:
 func set_world_tempo(bpm: float, announce: bool = true) -> void:
 	if not _tempo_pad_mode or _completed:
 		return
-	var multiplier := clampf(bpm / Conductor.REFERENCE_BPM, 0.6, 1.4)
-	var actual_bpm := Conductor.bpm * multiplier
+	var new_rate := Conductor.rate_for_world_bpm(bpm)
+	var actual_bpm := Conductor.bpm * new_rate
 	var changed := absf(Conductor.current_bpm - actual_bpm) > 0.5
 	var accelerating := actual_bpm > Conductor.current_bpm
-	Conductor.set_rate(multiplier)
+	Conductor.set_rate(new_rate)
 	if announce and changed:
 		GameState.play_sfx("cue", 7.0 if accelerating else -5.0, -7.0)
 		hud.show_message(("加速！" if accelerating else "減速") + "　%d BPM" % roundi(actual_bpm), 1.5)
@@ -309,6 +341,65 @@ func _on_goal_reached() -> void:
 		"new_record": new_record, "best_time": float(best["time"]), "best_deaths": int(best["deaths"]),
 		"has_next": GameState.level_index + 1 < LevelData.LEVELS.size(),
 	})
+
+
+func _warp_to_section(index: int, silent: bool = false) -> void:
+	if _hints.is_empty() or not player:
+		return
+	var i := clampi(index, 0, _hints.size() - 1)
+	_section_index = i
+	var target := spawn_point
+	if i < _section_spawns.size():
+		target = _section_spawns[i]
+	var h: Dictionary = _hints[i]
+	player.respawn_at(target)
+	player.checkpoint_position = target
+	camera.position = target
+	_camera_ground_y = target.y
+	_gravity_applied = -1.0
+	_gravity_target = float(h.get("gravity", 2400.0))
+	_apply_section_gravity()
+	player.kill_y = float(h.get("kill_y", level_size.y + 120.0))
+	if _tempo_pad_mode:
+		_checkpoint_tempo_bpm = float(h.get("bpm", 120.0))
+		set_world_tempo(_checkpoint_tempo_bpm, false)
+	var title := String(h.get("text", "")).split("\n")[0]
+	if silent:
+		hud.show_message("%s\nDEV → %s" % [_level_name, title], 2.2)
+	else:
+		hud.show_message("DEV %d／%d　%s" % [i + 1, _hints.size(), title], 1.4)
+		GameState.play_sfx("cue", 5.0, -8.0)
+
+
+func _compute_section_spawns(grid: Array[String], width: int, height: int) -> void:
+	_section_spawns.clear()
+	for hi in _hints.size():
+		var h: Dictionary = _hints[hi]
+		var x0 := clampi(int(float(h["from"]) / TILE), 0, maxi(0, width - 1))
+		var x1 := clampi(int(float(h["to"]) / TILE), x0 + 1, width)
+		var found := Vector2.ZERO
+		var has := false
+		for x in range(x0, x1):
+			for y in range(height):
+				if x >= grid[y].length():
+					continue
+				var c := grid[y][x]
+				if c == "C" or c == "P":
+					var feet := Vector2(x * TILE + TILE * 0.5, (y + 1) * TILE)
+					found = feet - Vector2(0, Player.BODY_SIZE.y * 0.5 + 1.0)
+					has = true
+					break
+			if has:
+				break
+		if not has:
+			var x := mini(x0 + 3, x1 - 1)
+			for y in range(height):
+				if x < grid[y].length() and (grid[y][x] == "#" or grid[y][x] == "%"):
+					var feet := Vector2(x * TILE + TILE * 0.5, y * TILE)
+					found = feet - Vector2(0, Player.BODY_SIZE.y * 0.5 + 1.0)
+					has = true
+					break
+		_section_spawns.append(found if has else spawn_point)
 
 
 func _build_level() -> void:
@@ -448,6 +539,7 @@ func _build_level() -> void:
 		_wave.setup(wave_trigger, wave_trigger - 10.0 * TILE, wave_end, level_size.y)
 		_wave.armed.connect(_on_wave_armed)
 		add_child(_wave)
+	_compute_section_spawns(grid, width, height)
 
 
 ## 與實際角色套用同一套優先序，避免視覺邊界與重力切換不一致。

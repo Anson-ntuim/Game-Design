@@ -174,7 +174,7 @@ const CHUNKS: Array[Dictionary] = [
 		],
 	},
 	{
-		"hint": "橫越風廊\n這次不爬高：起跳後下一拍按 C，越過寬坑；沒有黃音符",
+		"hint": "橫越風廊\n這次不爬高：起跳後下一拍按 C／Shift，越過寬坑；沒有黃音符",
 		"row_offset": 15,
 		"gravity": 1000.0,
 		"plan": [
@@ -303,7 +303,7 @@ const CHUNKS: Array[Dictionary] = [
 		],
 	},
 	{
-		"hint": "登頂\n長按起跳、下一拍黃音符、再下一拍 C；先升高，再向前飛到終點平台",
+		"hint": "登頂\n長按起跳、下一拍黃音符、再下一拍按 C／Shift；先升高，再向前飛到終點平台",
 		"row_offset": 11,
 		"gravity": 1000.0,
 		"orbs": [

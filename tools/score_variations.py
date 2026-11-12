@@ -88,7 +88,7 @@ def build(pat):
     chunks = []
     row = 30
     changes = []
-    start = intro("第七關・節奏變奏\n八段完整譜面，120 BPM；旗子按 ↑ 看整段示範。空白鍵長／短跳，C 穿環或衝刺")
+    start = intro("第七關・節奏變奏\n八段完整譜面，120 BPM；旗子按 ↑ 看整段示範。空白鍵長／短跳，C／Shift 穿環或衝刺")
     start["row_offset"] = row
     chunks.append(start)
     rises = [2, 2, 2, 0, 2, 2, 3, 2]
