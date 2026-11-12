@@ -157,10 +157,17 @@ func _on_view_draw() -> void:
 		_view.draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, _fade))
 
 
+func _soft_city_style() -> bool:
+	return GameState.level_index == 0 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
+
+
 ## 左上：關卡編號和整關縮圖，亮起的部分是已經跑過的距離
 func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
 	var box := Rect2(safe.position.x, safe.position.y - lift, 320, 72)
-	UiKit.panel(_view, box, edge)
+	if _soft_city_style():
+		UiKit.soft_panel(_view, box)
+	else:
+		UiKit.panel(_view, box, edge)
 	var idx := GameState.level_index
 	UiKit.pill(_view, box.position + Vector2(14, 10), LevelData.level_code(idx), edge, UiKit.INK, 13)
 	var info := UiKit.minimap(idx)
@@ -180,7 +187,10 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 	var lit_g := UiKit.gravity_lightness(_gravity)
 	var box_h := 72.0 + (28.0 if lit_g > 0.02 else 0.0)
 	var box := Rect2(safe.end.x - 260, safe.position.y - lift, 260, box_h)
-	UiKit.panel(_view, box, edge, 0.6 * _death_bump)
+	if _soft_city_style():
+		UiKit.soft_panel(_view, box)
+	else:
+		UiKit.panel(_view, box, edge, 0.6 * _death_bump)
 	var p := box.position
 	UiKit.text(_view, p + Vector2(16, 30), -1, "死亡", 13, Color(1, 1, 1, 0.6))
 	var s := 1.0 + 0.4 * _death_bump
@@ -230,8 +240,11 @@ func _draw_controls(safe: Rect2, edge: Color, lift: float) -> void:
 	if player and player.auto_running:
 		var tip := "旗子前等候 GO…" if player and player.auto_flag_wait else "自動前進中　GO 後直接出發　F 停止"
 		UiKit.pill(_view, Vector2(safe.position.x, y0 - 80), tip, edge, UiKit.INK, 12)
-	UiKit.key_hints(_view, safe.position.x, y0 - 42, CONTROLS_A, edge, 0.5, HORIZONTAL_ALIGNMENT_LEFT, 12)
-	UiKit.key_hints(_view, safe.position.x, y0 - 12, CONTROLS_B, edge, 0.5, HORIZONTAL_ALIGNMENT_LEFT, 12)
+	var soft := _soft_city_style()
+	UiKit.key_hints(_view, safe.position.x, y0 - 42, CONTROLS_A, edge, 0.5,
+		HORIZONTAL_ALIGNMENT_LEFT, 12, soft)
+	UiKit.key_hints(_view, safe.position.x, y0 - 12, CONTROLS_B, edge, 0.5,
+		HORIZONTAL_ALIGNMENT_LEFT, 12, soft)
 
 
 func _draw_bars(size: Vector2, edge: Color) -> void:
@@ -304,10 +317,16 @@ func _draw_hint(safe: Rect2, edge: Color) -> void:
 		baselines.append(y)
 	var box := Rect2(safe.get_center().x - box_w * 0.5, top, box_w, y - top + 14.0)
 	var a := _hint_alpha
-	UiKit.panel(_view, box, edge, 0.3, a, 10.0)
+	var soft_city := _soft_city_style()
+	if soft_city:
+		UiKit.soft_panel(_view, box, a)
+	else:
+		UiKit.panel(_view, box, edge, 0.3, a, 10.0)
 	for i in lines.size():
 		var title := i == 0 and lines.size() > 1
-		var col := Color(UiKit.GOLD, a) if title else Color(1, 1, 1, 0.92 * a)
+		var title_col := Color("ffe0a3") if soft_city else UiKit.GOLD
+		var body_col := Color("fff5f0") if soft_city else Color.WHITE
+		var col := Color(title_col, a) if title else Color(body_col, 0.92 * a)
 		UiKit.text(_view, Vector2(0, baselines[i]), safe.end.x + safe.position.x, lines[i], sizes[i], col, HORIZONTAL_ALIGNMENT_CENTER)
 
 
@@ -331,10 +350,14 @@ func _draw_tip(safe: Rect2) -> void:
 func _draw_beat_bar(safe: Rect2, edge: Color) -> void:
 	var center := Vector2(safe.get_center().x, safe.end.y - 6.0)
 	var reach := 250.0
+	var soft := _soft_city_style()
+	var line_color := Color("ebc4d7") if soft else Color.WHITE
+	var beat_edge := Color("e5a1bf") if soft else edge
 	for side: float in [-1.0, 1.0]:
 		_view.draw_polygon(PackedVector2Array([center + Vector2(side * 20, -1.5), center + Vector2(side * reach, -1.5),
 			center + Vector2(side * reach, 1.5), center + Vector2(side * 20, 1.5)]),
-			PackedColorArray([Color(1, 1, 1, 0.3), Color(1, 1, 1, 0), Color(1, 1, 1, 0), Color(1, 1, 1, 0.3)]))
+			PackedColorArray([Color(line_color, 0.3), Color(line_color, 0),
+				Color(line_color, 0), Color(line_color, 0.3)]))
 	var b := Conductor.song_beat
 	var base := floori(b)
 	for k in range(0, 4):
@@ -346,16 +369,17 @@ func _draw_beat_bar(safe: Rect2, edge: Color) -> void:
 		var downbeat := posmod(nb, Conductor.beats_per_measure) == 0
 		var h := 26.0 if downbeat else 14.0
 		var a := clampf(1.0 - dt * 90.0 / reach, 0.0, 1.0)
-		var col := Color(UiKit.GOLD if downbeat else edge.lerp(Color.WHITE, 0.3), a)
+		var downbeat_col := Color("ffe0a3") if soft else UiKit.GOLD
+		var col := Color(downbeat_col if downbeat else beat_edge.lerp(Color.WHITE, 0.3), a)
 		for side: float in [-1.0, 1.0]:
 			var x := center.x + side * (dx + 22.0)
 			_view.draw_rect(Rect2(x - 2.5, center.y - h * 0.5 + 2.5, 5.0, h - 5.0), col)
 			_view.draw_circle(Vector2(x, center.y - h * 0.5 + 2.5), 2.5, col)
 			_view.draw_circle(Vector2(x, center.y + h * 0.5 - 2.5), 2.5, col)
 	var p := Conductor.pulse(8.0)
-	_view.draw_circle(center, 22.0 + p * 8.0, Color(edge, 0.15 + 0.15 * p))
-	_view.draw_arc(center, 16.0, 0.0, TAU, 32, Color(edge, 0.9), 2.5, true)
-	_view.draw_circle(center, 9.0 + p * 4.0, edge.lerp(Color.WHITE, p))
+	_view.draw_circle(center, 22.0 + p * 8.0, Color(beat_edge, 0.12 + 0.13 * p))
+	_view.draw_arc(center, 16.0, 0.0, TAU, 32, Color(beat_edge, 0.85), 2.5, true)
+	_view.draw_circle(center, 9.0 + p * 4.0, beat_edge.lerp(Color("fff1e4"), p))
 
 
 ## 結算：面板從下方滑上來，三格數據、新紀錄標籤，背景飄著音符

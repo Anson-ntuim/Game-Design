@@ -9,6 +9,11 @@ var level_height: float = 800.0
 var stage: bool = false
 ## 標題畫面：更暗、幾乎不動，接近 Hollow Knight 的靜謐感
 var quiet: bool = false
+## 關卡可選的背景演出；第一關先使用低干擾的動態城市試作。
+var profile: String = ""
+var _ambient_time: float = 0.0
+var _far_cloud_scroll: float = 0.0
+var _near_cloud_scroll: float = 0.0
 
 
 func _ready() -> void:
@@ -21,7 +26,12 @@ func _on_theme_changed(_index: int) -> void:
 	queue_redraw()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_ambient_time += delta
+	## 累積位移而非用「總時間 × 畫質強度」，切換畫質時雲不會瞬間跳位。
+	var motion := GameState.anim_amount()
+	_far_cloud_scroll += delta * 6.5 * motion
+	_near_cloud_scroll += delta * 12.5 * motion
 	if GameState.should_redraw_decor("bg_redraw_every"):
 		queue_redraw()
 
@@ -98,6 +108,9 @@ func _draw_classic(tl: Vector2, size: Vector2, center: Vector2, b: float, pulse:
 
 
 func _draw_art_layers(theme: Dictionary, tl: Vector2, size: Vector2, center: Vector2, dim: bool) -> void:
+	if profile == "calm_city" and not dim:
+		_draw_calm_city(tl, size, center)
+		return
 	var layers: Array = theme.get("layers", [])
 	for layer in layers:
 		var path := String(layer.get("path", ""))
@@ -117,6 +130,46 @@ func _draw_art_layers(theme: Dictionary, tl: Vector2, size: Vector2, center: Vec
 				_blit_parallax(tex, tl, size, center, factor, anchor, tint, true, height_frac)
 			_:
 				_blit_parallax(tex, tl, size, center, factor, anchor, tint, false, height_frac)
+
+
+## 第一關試作：拆開天空元素，讓環境緩慢呼吸，但不干擾平台判讀。
+func _draw_calm_city(tl: Vector2, size: Vector2, center: Vector2) -> void:
+	var base := "res://assets/themes/heartbeat_city/bg/animated/"
+	var sky := GameState.theme_texture(base + "sky_base.png")
+	var stars := GameState.theme_texture(base + "stars.png")
+	var moon := GameState.theme_texture(base + "moon.png")
+	var clouds_far := GameState.theme_texture(base + "clouds_far.png")
+	var clouds_near := GameState.theme_texture(base + "clouds_near.png")
+	var city_far := GameState.theme_texture("res://assets/themes/heartbeat_city/bg/city_far.png")
+	var city_near := GameState.theme_texture("res://assets/themes/heartbeat_city/bg/city_near.png")
+	var far_glow := GameState.theme_texture(base + "city_far_glow.png")
+	var near_glow := GameState.theme_texture(base + "city_near_glow.png")
+	var anim := GameState.anim_amount()
+	var beat_pulse := Conductor.pulse(6.0) * anim
+	var twinkle := 0.72 + 0.18 * sin(_ambient_time * 0.85) * anim
+
+	if sky != null:
+		_blit_cover(sky, tl, size, center, 0.0, Color.WHITE)
+	if stars != null:
+		_blit_cover(stars, tl, size, center, 0.0, Color(1, 1, 1, twinkle))
+	if moon != null:
+		_blit_cover(moon, tl, size, center, 0.0,
+			Color(1.0, 0.96, 0.90, 0.86 + beat_pulse * 0.12))
+	if clouds_far != null:
+		_blit_cover_looping(clouds_far, tl, size, _far_cloud_scroll, Color(0.88, 0.86, 1.0, 0.58))
+	if clouds_near != null:
+		_blit_cover_looping(clouds_near, tl, size, _near_cloud_scroll, Color(1, 1, 1, 0.94))
+
+	if city_far != null:
+		_blit_parallax(city_far, tl, size, center, 0.22, "bottom", Color(1, 1, 1, 0.95), true, 0.42)
+	if far_glow != null:
+		_blit_parallax(far_glow, tl, size, center, 0.22, "bottom",
+			Color(1, 1, 1, 0.16 + beat_pulse * 0.30), true, 0.42)
+	if city_near != null:
+		_blit_parallax(city_near, tl, size, center, 0.48, "bottom", Color(1, 1, 1, 0.88), true, 0.50)
+	if near_glow != null:
+		_blit_parallax(near_glow, tl, size, center, 0.48, "bottom",
+			Color(1, 1, 1, 0.12 + beat_pulse * 0.24), true, 0.50)
 
 
 func _draw_panorama(theme: Dictionary, tl: Vector2, size: Vector2, center: Vector2, dim: bool) -> void:
@@ -144,6 +197,22 @@ func _blit_cover(tex: Texture2D, tl: Vector2, size: Vector2, center: Vector2,
 		tl.x - overflow_x * 0.5 - drift,
 		tl.y - overflow_y * 0.5)
 	draw_texture_rect(tex, Rect2(origin, draw_size), false, modulate)
+
+
+## 雲層向右無限捲動；相鄰副本首尾接續，循環重置發生在畫面外。
+func _blit_cover_looping(tex: Texture2D, tl: Vector2, size: Vector2,
+		scroll: float, modulate: Color) -> void:
+	var tex_size := tex.get_size()
+	if tex_size.x < 1.0 or tex_size.y < 1.0:
+		return
+	var scale := maxf(size.x / tex_size.x, size.y / tex_size.y)
+	var draw_size := tex_size * scale
+	var offset := fposmod(scroll, draw_size.x)
+	var x := tl.x - draw_size.x + offset
+	var y := tl.y + (size.y - draw_size.y) * 0.5
+	while x < tl.x + size.x:
+		draw_texture_rect(tex, Rect2(Vector2(x, y), draw_size), false, modulate)
+		x += draw_size.x
 
 
 func _blit_parallax(tex: Texture2D, tl: Vector2, size: Vector2, center: Vector2,
