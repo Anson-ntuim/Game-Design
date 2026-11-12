@@ -12,6 +12,8 @@ var quiet: bool = false
 ## 關卡可選的背景演出；第一關先使用低干擾的動態城市試作。
 var profile: String = ""
 var _ambient_time: float = 0.0
+var _far_cloud_scroll: float = 0.0
+var _near_cloud_scroll: float = 0.0
 
 
 func _ready() -> void:
@@ -26,6 +28,10 @@ func _on_theme_changed(_index: int) -> void:
 
 func _process(delta: float) -> void:
 	_ambient_time += delta
+	## 累積位移而非用「總時間 × 畫質強度」，切換畫質時雲不會瞬間跳位。
+	var motion := GameState.anim_amount()
+	_far_cloud_scroll += delta * 6.5 * motion
+	_near_cloud_scroll += delta * 12.5 * motion
 	if GameState.should_redraw_decor("bg_redraw_every"):
 		queue_redraw()
 
@@ -141,8 +147,6 @@ func _draw_calm_city(tl: Vector2, size: Vector2, center: Vector2) -> void:
 	var anim := GameState.anim_amount()
 	var beat_pulse := Conductor.pulse(6.0) * anim
 	var twinkle := 0.72 + 0.18 * sin(_ambient_time * 0.85) * anim
-	var far_cloud_scroll := _ambient_time * 6.5 * anim
-	var near_cloud_scroll := _ambient_time * 12.5 * anim
 
 	if sky != null:
 		_blit_cover(sky, tl, size, center, 0.0, Color.WHITE)
@@ -152,9 +156,9 @@ func _draw_calm_city(tl: Vector2, size: Vector2, center: Vector2) -> void:
 		_blit_cover(moon, tl, size, center, 0.0,
 			Color(1.0, 0.96, 0.90, 0.86 + beat_pulse * 0.12))
 	if clouds_far != null:
-		_blit_cover_looping(clouds_far, tl, size, far_cloud_scroll, Color(0.88, 0.86, 1.0, 0.58))
+		_blit_cover_looping(clouds_far, tl, size, _far_cloud_scroll, Color(0.88, 0.86, 1.0, 0.58))
 	if clouds_near != null:
-		_blit_cover_looping(clouds_near, tl, size, near_cloud_scroll, Color(1, 1, 1, 0.94))
+		_blit_cover_looping(clouds_near, tl, size, _near_cloud_scroll, Color(1, 1, 1, 0.94))
 
 	if city_far != null:
 		_blit_parallax(city_far, tl, size, center, 0.22, "bottom", Color(1, 1, 1, 0.95), true, 0.42)
