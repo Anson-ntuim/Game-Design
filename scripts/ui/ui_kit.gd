@@ -17,6 +17,7 @@ const SAFE_PAD := 24.0
 
 static var _fonts: Dictionary = {}
 static var _minimaps: Dictionary = {}
+static var _soft_panel_style: StyleBoxFlat
 
 
 ## 回傳 UI 可用矩形（已扣掉安全邊距），單位是目前 viewport 的 UI 座標
@@ -142,17 +143,45 @@ static func panel(ci: CanvasItem, rect: Rect2, edge: Color, glow: float = 0.0, a
 	ci.draw_line(pts[2], pts[3], Color(edge.lerp(Color.WHITE, 0.4), alpha), 3.0, true)
 
 
+## 心動之城的柔和面板：圓角、葡萄紫半透明底與粉彩細框，保留文字對比。
+static func soft_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0) -> void:
+	if _soft_panel_style == null:
+		_soft_panel_style = StyleBoxFlat.new()
+		_soft_panel_style.set_border_width_all(2)
+		_soft_panel_style.set_corner_radius_all(12)
+		_soft_panel_style.shadow_size = 8
+		_soft_panel_style.anti_aliasing = true
+	var style := _soft_panel_style
+	style.bg_color = Color(0.10, 0.055, 0.15, 0.88 * alpha)
+	style.border_color = Color(0.94, 0.66, 0.82, 0.72 * alpha)
+	style.shadow_color = Color(0.08, 0.025, 0.12, 0.34 * alpha)
+	ci.draw_style_box(style, rect)
+	var inner := rect.grow(-5.0)
+	ci.draw_line(inner.position + Vector2(10, 0), Vector2(inner.end.x - 10, inner.position.y),
+		Color(1.0, 0.88, 0.95, 0.13 * alpha), 1.0, true)
+	for i in 5:
+		var y := inner.position.y + 10.0 + i * maxf(8.0, inner.size.y / 6.0)
+		var inset := 14.0 + fposmod(i * 23.0, 31.0)
+		ci.draw_line(Vector2(inner.position.x + inset, y),
+			Vector2(inner.end.x - inset * 1.4, y), Color(0.95, 0.75, 0.88, 0.025 * alpha), 1.0)
+
+
 ## 按鍵小方塊：pos 是左上角，回傳寬度
-static func keycap(ci: CanvasItem, pos: Vector2, label: String, edge: Color, alpha: float = 1.0, size: int = 13) -> float:
+static func keycap(ci: CanvasItem, pos: Vector2, label: String, edge: Color, alpha: float = 1.0,
+		size: int = 13, soft: bool = false) -> float:
 	var f := font()
 	var w := maxf(KEY_H, width_of(label, size, f) + 14.0)
 	var r := Rect2(pos, Vector2(w, KEY_H))
-	ci.draw_rect(Rect2(r.position + Vector2(0, 3), r.size), Color(INK, 0.9 * alpha))
-	ci.draw_rect(r, Color(0.16, 0.17, 0.26, 0.95 * alpha))
-	ci.draw_rect(r, Color(edge, 0.55 * alpha), false, 1.0)
-	ci.draw_line(r.position + Vector2(2, 1.5), Vector2(r.end.x - 2, r.position.y + 1.5), Color(1, 1, 1, 0.18 * alpha), 1.0)
+	var shadow := Color("2b1833") if soft else INK
+	var fill := Color("392440") if soft else Color(0.16, 0.17, 0.26)
+	var border := Color("dfa2bd") if soft else edge
+	ci.draw_rect(Rect2(r.position + Vector2(0, 3), r.size), Color(shadow, 0.8 * alpha))
+	ci.draw_rect(r, Color(fill, 0.92 * alpha))
+	ci.draw_rect(r, Color(border, 0.62 * alpha), false, 1.0)
+	ci.draw_line(r.position + Vector2(2, 1.5), Vector2(r.end.x - 2, r.position.y + 1.5),
+		Color(1, 0.9, 0.96, 0.16 * alpha), 1.0)
 	ci.draw_string(f, Vector2(r.position.x, r.position.y + KEY_H * 0.5 + size * 0.36), label,
-		HORIZONTAL_ALIGNMENT_CENTER, w, size, Color(1, 1, 1, alpha))
+		HORIZONTAL_ALIGNMENT_CENTER, w, size, Color(Color("fff4ee"), alpha))
 	return w
 
 
@@ -168,7 +197,7 @@ static func key_hints_width(items: Array, size: int = 13) -> float:
 
 ## y 是按鍵的上緣；align 決定 x 是左端、中央或右端
 static func key_hints(ci: CanvasItem, x: float, y: float, items: Array, edge: Color, alpha: float = 1.0,
-		align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_CENTER, size: int = 13) -> void:
+		align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_CENTER, size: int = 13, soft: bool = false) -> void:
 	var total := key_hints_width(items, size)
 	if align == HORIZONTAL_ALIGNMENT_CENTER:
 		x -= total * 0.5
@@ -176,10 +205,12 @@ static func key_hints(ci: CanvasItem, x: float, y: float, items: Array, edge: Co
 		x -= total
 	for it: Array in items:
 		for k: String in it[0]:
-			x += keycap(ci, Vector2(x, y), k, edge, alpha, size) + 4.0
+			x += keycap(ci, Vector2(x, y), k, edge, alpha, size, soft) + 4.0
 		x += 4.0
 		var label := String(it[1])
-		text(ci, Vector2(x, y + KEY_H * 0.5 + (size + 1) * 0.36), -1, label, size + 1, Color(1, 1, 1, 0.78 * alpha))
+		var label_color := Color("f6e7ee") if soft else Color.WHITE
+		text(ci, Vector2(x, y + KEY_H * 0.5 + (size + 1) * 0.36), -1, label, size + 1,
+			Color(label_color, 0.78 * alpha))
 		x += width_of(label, size + 1) + 22.0
 
 
