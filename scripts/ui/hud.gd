@@ -17,6 +17,9 @@ const CONTROLS_A := [[["←", "→"], "移動"], [["空白鍵"], "跳"], [["C", 
 const CONTROLS_B := [[["↑"], "看示範"], [["[", "]"], "畫質"], [["R"], "重來"], [["Esc"], "選關"]]
 const TIP_TIME := 6.0
 const TIP_COLOR := Color(1.0, 0.45, 0.5)
+const SAKURA_ROSE := Color("e6a0b7")
+const SAKURA_CREAM := Color("ffe0ad")
+const SAKURA_MINT := Color("bfe8d2")
 
 var player: Player
 var tempo_mode: bool = false
@@ -134,6 +137,8 @@ func _on_view_draw() -> void:
 	var size := _view.size
 	var safe := UiKit.safe_rect(size)
 	var edge := GameState.color("edge")
+	if _sakura_park_style():
+		edge = SAKURA_ROSE
 	var done := not _results.is_empty()
 	var lift := 110.0 * ease(_bars, -2.0)
 	if not done and lift < 109.0:
@@ -161,15 +166,24 @@ func _soft_city_style() -> bool:
 	return GameState.level_index == 0 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
 
 
+func _sakura_park_style() -> bool:
+	if GameState.level_index < 0 or GameState.level_index >= LevelData.LEVELS.size():
+		return false
+	return String(LevelData.LEVELS[GameState.level_index].get("background_profile", "")) == "sakura_park"
+
+
 ## 左上：關卡編號和整關縮圖，亮起的部分是已經跑過的距離
 func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
 	var box := Rect2(safe.position.x, safe.position.y - lift, 320, 72)
 	if _soft_city_style():
 		UiKit.soft_panel(_view, box)
+	elif _sakura_park_style():
+		UiKit.sakura_panel(_view, box)
 	else:
 		UiKit.panel(_view, box, edge)
 	var idx := GameState.level_index
-	UiKit.pill(_view, box.position + Vector2(14, 10), LevelData.level_code(idx), edge, UiKit.INK, 13)
+	var code_fill := SAKURA_CREAM if _sakura_park_style() else edge
+	UiKit.pill(_view, box.position + Vector2(14, 10), LevelData.level_code(idx), code_fill, UiKit.INK, 13)
 	var info := UiKit.minimap(idx)
 	var progress := 0.0
 	if player:
@@ -189,6 +203,8 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 	var box := Rect2(safe.end.x - 260, safe.position.y - lift, 260, box_h)
 	if _soft_city_style():
 		UiKit.soft_panel(_view, box)
+	elif _sakura_park_style():
+		UiKit.sakura_panel(_view, box, 1.0, _death_bump)
 	else:
 		UiKit.panel(_view, box, edge, 0.6 * _death_bump)
 	var p := box.position
@@ -201,7 +217,8 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 	var judge := String(GameState.DIFFICULTIES[GameState.difficulty]["name"])
 	var jw := UiKit.width_of(judge, 13) + 24.0
 	UiKit.text(_view, Vector2(box.end.x - jw - 52, p.y + 30), -1, "判定", 13, Color(1, 1, 1, 0.6))
-	UiKit.pill(_view, Vector2(box.end.x - jw - 14, p.y + 12), judge, Color(edge, 0.9), UiKit.INK, 13)
+	var judge_fill := Color(SAKURA_MINT, 0.94) if _sakura_park_style() else Color(edge, 0.9)
+	UiKit.pill(_view, Vector2(box.end.x - jw - 14, p.y + 12), judge, judge_fill, UiKit.INK, 13)
 
 	UiKit.text(_view, p + Vector2(16, 60), -1, "律動", 13, Color(1, 1, 1, 0.6))
 	var segs := 12
@@ -241,16 +258,18 @@ func _draw_controls(safe: Rect2, edge: Color, lift: float) -> void:
 		var tip := "旗子前等候 GO…" if player and player.auto_flag_wait else "自動前進中　GO 後直接出發　F 停止"
 		UiKit.pill(_view, Vector2(safe.position.x, y0 - 80), tip, edge, UiKit.INK, 12)
 	var soft := _soft_city_style()
+	var sakura := _sakura_park_style()
 	UiKit.key_hints(_view, safe.position.x, y0 - 42, CONTROLS_A, edge, 0.5,
-		HORIZONTAL_ALIGNMENT_LEFT, 12, soft)
+		HORIZONTAL_ALIGNMENT_LEFT, 12, soft, sakura)
 	UiKit.key_hints(_view, safe.position.x, y0 - 12, CONTROLS_B, edge, 0.5,
-		HORIZONTAL_ALIGNMENT_LEFT, 12, soft)
+		HORIZONTAL_ALIGNMENT_LEFT, 12, soft, sakura)
 
 
 func _draw_bars(size: Vector2, edge: Color) -> void:
 	var h := 64.0 * ease(_bars, -2.0)
-	_view.draw_rect(Rect2(0, 0, size.x, h), Color(0, 0, 0, 0.88))
-	_view.draw_rect(Rect2(0, size.y - h, size.x, h), Color(0, 0, 0, 0.88))
+	var bar_fill := Color(0.12, 0.045, 0.14, 0.88) if _sakura_park_style() else Color(0, 0, 0, 0.88)
+	_view.draw_rect(Rect2(0, 0, size.x, h), bar_fill)
+	_view.draw_rect(Rect2(0, size.y - h, size.x, h), bar_fill)
 	_view.draw_line(Vector2(0, h), Vector2(size.x, h), Color(edge, 0.5 * _bars), 2.0)
 	_view.draw_line(Vector2(0, size.y - h), Vector2(size.x, size.y - h), Color(edge, 0.5 * _bars), 2.0)
 	var a := clampf(_bars * 2.0 - 1.0, 0.0, 1.0)
@@ -318,14 +337,17 @@ func _draw_hint(safe: Rect2, edge: Color) -> void:
 	var box := Rect2(safe.get_center().x - box_w * 0.5, top, box_w, y - top + 14.0)
 	var a := _hint_alpha
 	var soft_city := _soft_city_style()
+	var sakura := _sakura_park_style()
 	if soft_city:
 		UiKit.soft_panel(_view, box, a)
+	elif sakura:
+		UiKit.sakura_panel(_view, box, a, 0.25)
 	else:
 		UiKit.panel(_view, box, edge, 0.3, a, 10.0)
 	for i in lines.size():
 		var title := i == 0 and lines.size() > 1
-		var title_col := Color("ffe0a3") if soft_city else UiKit.GOLD
-		var body_col := Color("fff5f0") if soft_city else Color.WHITE
+		var title_col := SAKURA_CREAM if sakura else (Color("ffe0a3") if soft_city else UiKit.GOLD)
+		var body_col := Color("fff2e9") if sakura else (Color("fff5f0") if soft_city else Color.WHITE)
 		var col := Color(title_col, a) if title else Color(body_col, 0.92 * a)
 		UiKit.text(_view, Vector2(0, baselines[i]), safe.end.x + safe.position.x, lines[i], sizes[i], col, HORIZONTAL_ALIGNMENT_CENTER)
 
@@ -339,7 +361,10 @@ func _draw_tip(safe: Rect2) -> void:
 	var pw := UiKit.width_of(label, 13) + 24.0
 	var box_w := pw + 12.0 + UiKit.width_of(_tip, 17) + 44.0
 	var box := Rect2(safe.get_center().x - box_w * 0.5, safe.end.y - 126.0 + rise, box_w, 50.0)
-	UiKit.panel(_view, box, TIP_COLOR, 0.35, a, 10.0)
+	if _sakura_park_style():
+		UiKit.sakura_panel(_view, box, a, 0.35)
+	else:
+		UiKit.panel(_view, box, TIP_COLOR, 0.35, a, 10.0)
 	var x := box.position.x + 22.0
 	var y := box.position.y + 32.0
 	UiKit.pill(_view, Vector2(x, y - 18.0), label, Color(TIP_COLOR, a), UiKit.INK, 13)
@@ -351,8 +376,9 @@ func _draw_beat_bar(safe: Rect2, edge: Color) -> void:
 	var center := Vector2(safe.get_center().x, safe.end.y - 6.0)
 	var reach := 250.0
 	var soft := _soft_city_style()
-	var line_color := Color("ebc4d7") if soft else Color.WHITE
-	var beat_edge := Color("e5a1bf") if soft else edge
+	var sakura := _sakura_park_style()
+	var line_color := Color("f4cfda") if sakura else (Color("ebc4d7") if soft else Color.WHITE)
+	var beat_edge := SAKURA_MINT if sakura else (Color("e5a1bf") if soft else edge)
 	for side: float in [-1.0, 1.0]:
 		_view.draw_polygon(PackedVector2Array([center + Vector2(side * 20, -1.5), center + Vector2(side * reach, -1.5),
 			center + Vector2(side * reach, 1.5), center + Vector2(side * 20, 1.5)]),
@@ -369,7 +395,7 @@ func _draw_beat_bar(safe: Rect2, edge: Color) -> void:
 		var downbeat := posmod(nb, Conductor.beats_per_measure) == 0
 		var h := 26.0 if downbeat else 14.0
 		var a := clampf(1.0 - dt * 90.0 / reach, 0.0, 1.0)
-		var downbeat_col := Color("ffe0a3") if soft else UiKit.GOLD
+		var downbeat_col := SAKURA_CREAM if sakura else (Color("ffe0a3") if soft else UiKit.GOLD)
 		var col := Color(downbeat_col if downbeat else beat_edge.lerp(Color.WHITE, 0.3), a)
 		for side: float in [-1.0, 1.0]:
 			var x := center.x + side * (dx + 22.0)

@@ -14,6 +14,7 @@ var profile: String = ""
 var _ambient_time: float = 0.0
 var _far_cloud_scroll: float = 0.0
 var _near_cloud_scroll: float = 0.0
+var _ferris_angle: float = 0.0
 
 
 func _ready() -> void:
@@ -32,6 +33,8 @@ func _process(delta: float) -> void:
 	var motion := GameState.anim_amount()
 	_far_cloud_scroll += delta * 6.5 * motion
 	_near_cloud_scroll += delta * 12.5 * motion
+	## 約三分鐘一圈；保持比花瓣更安靜，避免搶走平台判讀。
+	_ferris_angle += delta * 0.035 * motion
 	if GameState.should_redraw_decor("bg_redraw_every"):
 		queue_redraw()
 
@@ -111,6 +114,9 @@ func _draw_art_layers(theme: Dictionary, tl: Vector2, size: Vector2, center: Vec
 	if profile == "calm_city" and not dim:
 		_draw_calm_city(tl, size, center)
 		return
+	if profile == "sakura_park" and not dim:
+		_draw_sakura_park(tl, size, center)
+		return
 	var layers: Array = theme.get("layers", [])
 	for layer in layers:
 		var path := String(layer.get("path", ""))
@@ -170,6 +176,99 @@ func _draw_calm_city(tl: Vector2, size: Vector2, center: Vector2) -> void:
 	if near_glow != null:
 		_blit_parallax(near_glow, tl, size, center, 0.48, "bottom",
 			Color(1, 1, 1, 0.12 + beat_pulse * 0.24), true, 0.50)
+
+
+## 第二關：夕陽遊樂園，加入低干擾的花瓣景深與緩慢摩天輪。
+func _draw_sakura_park(tl: Vector2, size: Vector2, center: Vector2) -> void:
+	var base := "res://assets/themes/sakura_park/bg/"
+	var sky := GameState.theme_texture(base + "sky_clean.png")
+	var clouds_far := GameState.theme_texture(base + "clouds_far.png")
+	var clouds_near := GameState.theme_texture(base + "clouds_near.png")
+	var park_far := GameState.theme_texture(base + "park_far_clean.png")
+	var wheel := GameState.theme_texture(base + "ferris_wheel.png")
+	var trees_mid := GameState.theme_texture(base + "trees_mid.png")
+	var park_near_bottom := GameState.theme_texture(base + "park_near_bottom.png")
+
+	if sky != null:
+		_blit_cover(sky, tl, size, center, 0.0, Color.WHITE)
+	if clouds_far != null:
+		_blit_cover_looping(clouds_far, tl, size, _far_cloud_scroll,
+			Color(1.0, 0.96, 1.0, 0.46))
+	if clouds_near != null:
+		_blit_cover_looping(clouds_near, tl, size, _near_cloud_scroll,
+			Color(1.0, 0.98, 1.0, 0.60))
+	if park_far != null:
+		_blit_parallax(park_far, tl, size, center, 0.16, "bottom",
+			Color(1.0, 0.96, 1.0, 0.80), true, 0.55)
+	if wheel != null and park_far != null:
+		_draw_sakura_wheels(wheel, park_far, tl, size, center)
+	_draw_sakura_petals(tl, size, false)
+	if trees_mid != null:
+		_blit_parallax(trees_mid, tl, size, center, 0.34, "bottom",
+			Color(1.0, 0.97, 1.0, 0.72), true, 0.36)
+	if park_near_bottom != null:
+		_blit_parallax(park_near_bottom, tl, size, center, 0.58, "bottom",
+			Color(1.0, 0.98, 1.0, 0.76), true, 0.27)
+	_draw_sakura_petals(tl, size, true)
+
+
+func _draw_sakura_wheels(wheel: Texture2D, reference: Texture2D, tl: Vector2,
+		size: Vector2, center: Vector2) -> void:
+	var reference_size := reference.get_size()
+	var scale := size.y * 0.55 / reference_size.y
+	var draw_w := reference_size.x * scale
+	var draw_h := reference_size.y * scale
+	var shift := center.x * 0.84
+	var first := floori((tl.x - shift) / draw_w) - 1
+	var last := ceili((tl.x + size.x - shift) / draw_w) + 1
+	var y := tl.y + size.y - draw_h
+	var diameter := draw_h * 0.49
+	for i in range(first, last):
+		var mirrored := posmod(i, 2) != 0
+		var local_x := draw_w * (0.715 if mirrored else 0.285)
+		var wheel_center := Vector2(float(i) * draw_w + shift + local_x, y + draw_h * 0.66)
+		var base_y := y + draw_h * 0.99
+		## 支架不跟著輪體旋轉，讓機械結構看起來有固定在地面上。
+		draw_line(wheel_center + Vector2(-diameter * 0.04, diameter * 0.08),
+			Vector2(wheel_center.x - diameter * 0.20, base_y), Color("a878a6", 0.72),
+			diameter * 0.035, true)
+		draw_line(wheel_center + Vector2(diameter * 0.04, diameter * 0.08),
+			Vector2(wheel_center.x + diameter * 0.20, base_y), Color("a878a6", 0.72),
+			diameter * 0.035, true)
+		draw_set_transform(wheel_center, -_ferris_angle if mirrored else _ferris_angle,
+			Vector2.ONE)
+		draw_texture_rect(wheel, Rect2(Vector2(-diameter, -diameter) * 0.5,
+			Vector2(diameter, diameter)), false, Color(1.0, 0.96, 1.0, 0.88))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_sakura_petals(tl: Vector2, size: Vector2, near: bool) -> void:
+	var detail := GameState.quality_int("detail", 2)
+	var count := (6 if detail == 0 else (10 if detail == 1 else 16)) if near else \
+		(5 if detail == 0 else (8 if detail == 1 else 12))
+	var motion := GameState.anim_amount()
+	var margin := 34.0
+	for i in count:
+		var seed := i + (700 if near else 500)
+		var speed_x := (12.0 + _hash(seed + 9) * 10.0) * (1.35 if near else 0.72)
+		var speed_y := (4.0 + _hash(seed + 19) * 7.0) * (1.25 if near else 0.72)
+		var x := tl.x - margin + fposmod(_hash(seed) * (size.x + margin * 2.0)
+			+ _ambient_time * speed_x * motion, size.x + margin * 2.0)
+		var y := tl.y - margin + fposmod(_hash(seed + 31) * (size.y + margin * 2.0)
+			+ _ambient_time * speed_y * motion, size.y + margin * 2.0)
+		x += sin(_ambient_time * (0.65 + _hash(seed + 41)) + seed) * (9.0 if near else 5.0) * motion
+		var radius := (3.2 + _hash(seed + 51) * 2.8) if near else (1.8 + _hash(seed + 51) * 1.8)
+		var angle := _ambient_time * (0.45 + _hash(seed + 61)) * motion + seed
+		var axis := Vector2(cos(angle), sin(angle))
+		var normal := Vector2(-axis.y, axis.x)
+		var p := Vector2(x, y)
+		var shape := PackedVector2Array([
+			p + axis * radius,
+			p + normal * radius * 0.48,
+			p - axis * radius,
+			p - normal * radius * 0.48])
+		var color := Color("ffd2e4", 0.62) if near else Color("f5b9d2", 0.34)
+		draw_colored_polygon(shape, color)
 
 
 func _draw_panorama(theme: Dictionary, tl: Vector2, size: Vector2, center: Vector2, dim: bool) -> void:

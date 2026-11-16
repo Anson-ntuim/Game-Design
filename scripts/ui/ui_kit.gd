@@ -18,6 +18,7 @@ const SAFE_PAD := 24.0
 static var _fonts: Dictionary = {}
 static var _minimaps: Dictionary = {}
 static var _soft_panel_style: StyleBoxFlat
+static var _sakura_panel_style: StyleBoxFlat
 
 
 ## 回傳 UI 可用矩形（已扣掉安全邊距），單位是目前 viewport 的 UI 座標
@@ -166,15 +167,39 @@ static func soft_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0) -> void:
 			Vector2(inner.end.x - inset * 1.4, y), Color(0.95, 0.75, 0.88, 0.025 * alpha), 1.0)
 
 
+## 櫻花樂園：梅紫玻璃底、暖粉細框與很淡的花瓣角飾。
+static func sakura_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0,
+		accent: float = 0.0) -> void:
+	if _sakura_panel_style == null:
+		_sakura_panel_style = StyleBoxFlat.new()
+		_sakura_panel_style.set_border_width_all(2)
+		_sakura_panel_style.set_corner_radius_all(13)
+		_sakura_panel_style.shadow_size = 9
+		_sakura_panel_style.anti_aliasing = true
+	var style := _sakura_panel_style
+	style.bg_color = Color(0.16, 0.075, 0.18, (0.80 + accent * 0.05) * alpha)
+	style.border_color = Color(0.91, 0.61, 0.72, (0.68 + accent * 0.18) * alpha)
+	style.shadow_color = Color(0.18, 0.06, 0.18, 0.30 * alpha)
+	ci.draw_style_box(style, rect)
+	var inner := rect.grow(-5.0)
+	ci.draw_line(inner.position + Vector2(12, 0), Vector2(inner.end.x - 12, inner.position.y),
+		Color(1.0, 0.89, 0.84, 0.16 * alpha), 1.0, true)
+	## 只放兩組小花瓣點，避免裝飾搶過文字。
+	for side: float in [-1.0, 1.0]:
+		var c := Vector2(rect.get_center().x + side * (rect.size.x * 0.5 - 14.0), rect.position.y + 13.0)
+		ci.draw_circle(c, 2.2, Color(1.0, 0.78, 0.84, 0.42 * alpha))
+		ci.draw_circle(c + Vector2(-side * 3.2, 2.8), 1.7, Color(1.0, 0.88, 0.78, 0.30 * alpha))
+
+
 ## 按鍵小方塊：pos 是左上角，回傳寬度
 static func keycap(ci: CanvasItem, pos: Vector2, label: String, edge: Color, alpha: float = 1.0,
-		size: int = 13, soft: bool = false) -> float:
+		size: int = 13, soft: bool = false, sakura: bool = false) -> float:
 	var f := font()
 	var w := maxf(KEY_H, width_of(label, size, f) + 14.0)
 	var r := Rect2(pos, Vector2(w, KEY_H))
-	var shadow := Color("2b1833") if soft else INK
-	var fill := Color("392440") if soft else Color(0.16, 0.17, 0.26)
-	var border := Color("dfa2bd") if soft else edge
+	var shadow := Color("351d38") if sakura else (Color("2b1833") if soft else INK)
+	var fill := Color("56384f") if sakura else (Color("392440") if soft else Color(0.16, 0.17, 0.26))
+	var border := Color("e7a0b8") if sakura else (Color("dfa2bd") if soft else edge)
 	ci.draw_rect(Rect2(r.position + Vector2(0, 3), r.size), Color(shadow, 0.8 * alpha))
 	ci.draw_rect(r, Color(fill, 0.92 * alpha))
 	ci.draw_rect(r, Color(border, 0.62 * alpha), false, 1.0)
@@ -197,7 +222,8 @@ static func key_hints_width(items: Array, size: int = 13) -> float:
 
 ## y 是按鍵的上緣；align 決定 x 是左端、中央或右端
 static func key_hints(ci: CanvasItem, x: float, y: float, items: Array, edge: Color, alpha: float = 1.0,
-		align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_CENTER, size: int = 13, soft: bool = false) -> void:
+		align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_CENTER, size: int = 13,
+		soft: bool = false, sakura: bool = false) -> void:
 	var total := key_hints_width(items, size)
 	if align == HORIZONTAL_ALIGNMENT_CENTER:
 		x -= total * 0.5
@@ -205,10 +231,10 @@ static func key_hints(ci: CanvasItem, x: float, y: float, items: Array, edge: Co
 		x -= total
 	for it: Array in items:
 		for k: String in it[0]:
-			x += keycap(ci, Vector2(x, y), k, edge, alpha, size, soft) + 4.0
+			x += keycap(ci, Vector2(x, y), k, edge, alpha, size, soft, sakura) + 4.0
 		x += 4.0
 		var label := String(it[1])
-		var label_color := Color("f6e7ee") if soft else Color.WHITE
+		var label_color := Color("fff0e8") if sakura else (Color("f6e7ee") if soft else Color.WHITE)
 		text(ci, Vector2(x, y + KEY_H * 0.5 + (size + 1) * 0.36), -1, label, size + 1,
 			Color(label_color, 0.78 * alpha))
 		x += width_of(label, size + 1) + 22.0
