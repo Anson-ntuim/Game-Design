@@ -19,6 +19,7 @@ static var _fonts: Dictionary = {}
 static var _minimaps: Dictionary = {}
 static var _soft_panel_style: StyleBoxFlat
 static var _sakura_panel_style: StyleBoxFlat
+static var _festival_panel_style: StyleBoxFlat
 
 
 ## 回傳 UI 可用矩形（已扣掉安全邊距），單位是目前 viewport 的 UI 座標
@@ -191,15 +192,53 @@ static func sakura_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0,
 		ci.draw_circle(c + Vector2(-side * 3.2, 2.8), 1.7, Color(1.0, 0.88, 0.78, 0.30 * alpha))
 
 
+## 霓虹音樂祭：深靛玻璃底、桃紅／電光藍雙色框與舞台燈點。
+static func festival_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0,
+		accent: float = 0.0) -> void:
+	if _festival_panel_style == null:
+		_festival_panel_style = StyleBoxFlat.new()
+		_festival_panel_style.set_border_width_all(2)
+		_festival_panel_style.set_corner_radius_all(10)
+		_festival_panel_style.shadow_size = 10
+		_festival_panel_style.anti_aliasing = true
+	var style := _festival_panel_style
+	style.bg_color = Color(0.035, 0.025, 0.13, (0.84 + accent * 0.04) * alpha)
+	style.border_color = Color(0.87, 0.31, 0.91, (0.68 + accent * 0.18) * alpha)
+	style.shadow_color = Color(0.12, 0.02, 0.22, 0.36 * alpha)
+	ci.draw_style_box(style, rect)
+	var inner := rect.grow(-5.0)
+	ci.draw_line(inner.position + Vector2(8, 0), Vector2(inner.get_center().x - 5, inner.position.y),
+		Color(1.0, 0.40, 0.87, 0.45 * alpha), 1.5, true)
+	ci.draw_line(Vector2(inner.get_center().x + 5, inner.position.y), Vector2(inner.end.x - 8, inner.position.y),
+		Color(0.35, 0.88, 1.0, 0.45 * alpha), 1.5, true)
+	for i in 5:
+		var x := lerpf(inner.position.x + 18.0, inner.end.x - 18.0, float(i) / 4.0)
+		var color := Color("ff65d7") if i % 2 == 0 else Color("62e5ff")
+		ci.draw_circle(Vector2(x, rect.end.y - 7.0), 1.7, Color(color, 0.35 * alpha))
+
+
 ## 按鍵小方塊：pos 是左上角，回傳寬度
 static func keycap(ci: CanvasItem, pos: Vector2, label: String, edge: Color, alpha: float = 1.0,
-		size: int = 13, soft: bool = false, sakura: bool = false) -> float:
+		size: int = 13, soft: bool = false, sakura: bool = false,
+		festival: bool = false) -> float:
 	var f := font()
 	var w := maxf(KEY_H, width_of(label, size, f) + 14.0)
 	var r := Rect2(pos, Vector2(w, KEY_H))
-	var shadow := Color("351d38") if sakura else (Color("2b1833") if soft else INK)
-	var fill := Color("56384f") if sakura else (Color("392440") if soft else Color(0.16, 0.17, 0.26))
-	var border := Color("e7a0b8") if sakura else (Color("dfa2bd") if soft else edge)
+	var shadow := INK
+	var fill := Color(0.16, 0.17, 0.26)
+	var border := edge
+	if soft:
+		shadow = Color("2b1833")
+		fill = Color("392440")
+		border = Color("dfa2bd")
+	if sakura:
+		shadow = Color("351d38")
+		fill = Color("56384f")
+		border = Color("e7a0b8")
+	if festival:
+		shadow = Color("150b2e")
+		fill = Color("292052")
+		border = Color("65e5ff")
 	ci.draw_rect(Rect2(r.position + Vector2(0, 3), r.size), Color(shadow, 0.8 * alpha))
 	ci.draw_rect(r, Color(fill, 0.92 * alpha))
 	ci.draw_rect(r, Color(border, 0.62 * alpha), false, 1.0)
@@ -223,7 +262,7 @@ static func key_hints_width(items: Array, size: int = 13) -> float:
 ## y 是按鍵的上緣；align 決定 x 是左端、中央或右端
 static func key_hints(ci: CanvasItem, x: float, y: float, items: Array, edge: Color, alpha: float = 1.0,
 		align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_CENTER, size: int = 13,
-		soft: bool = false, sakura: bool = false) -> void:
+		soft: bool = false, sakura: bool = false, festival: bool = false) -> void:
 	var total := key_hints_width(items, size)
 	if align == HORIZONTAL_ALIGNMENT_CENTER:
 		x -= total * 0.5
@@ -231,10 +270,16 @@ static func key_hints(ci: CanvasItem, x: float, y: float, items: Array, edge: Co
 		x -= total
 	for it: Array in items:
 		for k: String in it[0]:
-			x += keycap(ci, Vector2(x, y), k, edge, alpha, size, soft, sakura) + 4.0
+			x += keycap(ci, Vector2(x, y), k, edge, alpha, size, soft, sakura, festival) + 4.0
 		x += 4.0
 		var label := String(it[1])
-		var label_color := Color("fff0e8") if sakura else (Color("f6e7ee") if soft else Color.WHITE)
+		var label_color := Color.WHITE
+		if soft:
+			label_color = Color("f6e7ee")
+		if sakura:
+			label_color = Color("fff0e8")
+		if festival:
+			label_color = Color("efeaff")
 		text(ci, Vector2(x, y + KEY_H * 0.5 + (size + 1) * 0.36), -1, label, size + 1,
 			Color(label_color, 0.78 * alpha))
 		x += width_of(label, size + 1) + 22.0

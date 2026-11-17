@@ -37,26 +37,29 @@ func _draw() -> void:
 	var groove := GameState.groove
 	var soft_city := GameState.level_index == 0 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
 	var sakura_park := GameState.level_index == 1 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
+	var music_festival := GameState.level_index == 2 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
 	var edge_col := edge.lerp(Color.WHITE, pulse * 0.4)
 	if soft_city:
 		edge_col = Color("e9a9c6").lerp(Color("ffe1ed"), pulse * 0.22)
 	elif sakura_park:
 		edge_col = Color("e8a6bd").lerp(Color("ffe8dc"), pulse * 0.25)
-	edge_col.a = (0.68 + 0.16 * pulse) if (soft_city or sakura_park) else (0.55 + 0.45 * pulse)
+	elif music_festival:
+		edge_col = Color("ff65d5").lerp(Color("76e9ff"), pulse * 0.34)
+	edge_col.a = (0.68 + 0.16 * pulse) if (soft_city or sakura_park or music_festival) else (0.55 + 0.45 * pulse)
 	var detail := GameState.quality_int("detail", 2)
 	var edge_lights := GameState.quality_flag("edge_lights", true)
 
 	for r in fill_rects:
 		if not r.intersects(view):
 			continue
-		_draw_solid_body(r, ground, detail, soft_city, sakura_park)
+		_draw_solid_body(r, ground, detail, soft_city, sakura_park, music_festival)
 
 	var stripe := Color(ground.lightened(0.25), 0.5)
 	var stripe_step := 28.0 if detail == 0 else 18.0
 	for r in slick_rects:
 		if not r.intersects(view):
 			continue
-		draw_rect(r, ground.lightened(0.06))
+		draw_rect(r, Color("34255a") if music_festival else ground.lightened(0.06))
 		if detail == 0:
 			continue
 		var x := r.position.x - r.size.y
@@ -76,7 +79,13 @@ func _draw() -> void:
 			continue
 		draw_rect(Rect2(r.position, Vector2(r.size.x, 4.0)), edge_col)
 		if detail > 0:
-			var underglow := Color("d78eae") if soft_city else (Color("c77f9b") if sakura_park else edge)
+			var underglow := edge
+			if soft_city:
+				underglow = Color("d78eae")
+			elif sakura_park:
+				underglow = Color("c77f9b")
+			elif music_festival:
+				underglow = Color("6bdff4")
 			draw_rect(Rect2(r.position + Vector2(0, 4.0), Vector2(r.size.x, 6)),
 				Color(underglow, (0.08 + 0.08 * pulse) if soft_city else (0.10 + 0.18 * pulse)))
 		if not edge_lights:
@@ -85,17 +94,28 @@ func _draw() -> void:
 		for i in count:
 			var tx := int(r.position.x / tile) + i
 			if posmod(tx - beat_i, 4) == 0:
-				var c := Color(Color("d9a0ba"), 0.28) if soft_city else (Color(Color("ffe1b8"), 0.26 + pulse * 0.24) if sakura_park else Color(edge.lerp(Color.WHITE, 0.5), (0.35 + 0.65 * pulse) * (0.5 + 0.5 * groove)))
+				var c := Color(edge.lerp(Color.WHITE, 0.5),
+					(0.35 + 0.65 * pulse) * (0.5 + 0.5 * groove))
+				if soft_city:
+					c = Color(Color("d9a0ba"), 0.28)
+				elif sakura_park:
+					c = Color(Color("ffe1b8"), 0.26 + pulse * 0.24)
+				elif music_festival:
+					c = Color(Color("72e8ff").lerp(Color("ff79dc"), float(i % 2)),
+						0.32 + pulse * 0.42)
 				draw_rect(Rect2(r.position.x + i * tile + tile * 0.35, r.position.y + 14, tile * 0.3, 4), c)
 
 
 func _draw_solid_body(r: Rect2, ground: Color, detail: int, soft_city: bool,
-		sakura_park: bool) -> void:
+		sakura_park: bool, music_festival: bool) -> void:
 	if soft_city:
 		_draw_soft_city_body(r, detail)
 		return
 	if sakura_park:
 		_draw_sakura_park_body(r, detail)
+		return
+	if music_festival:
+		_draw_music_festival_body(r, detail)
 		return
 	draw_rect(r, ground)
 	if r.size.y <= 18.0:
@@ -161,3 +181,34 @@ func _draw_sakura_park_body(r: Rect2, detail: int) -> void:
 		if x < r.position.x + 5.0 or x > r.end.x - 5.0:
 			continue
 		draw_circle(Vector2(x, r.position.y + 4.0), 2.4, Color("ffd6e3", 0.78))
+
+
+func _draw_music_festival_body(r: Rect2, detail: int) -> void:
+	var top := Color("39285f")
+	var bottom := Color("171329")
+	draw_rect(r, bottom)
+	var bands := 6
+	for i in bands:
+		var y0 := r.position.y + r.size.y * float(i) / bands
+		var y1 := r.position.y + r.size.y * float(i + 1) / bands
+		draw_rect(Rect2(r.position.x, y0, r.size.x, y1 - y0 + 1.0),
+			top.lerp(bottom, float(i) / maxf(1.0, bands - 1.0)))
+	## 霓虹頂緣與金屬桁架都畫在碰撞矩形內。
+	draw_rect(Rect2(r.position, Vector2(r.size.x, minf(7.0, r.size.y))), Color("ff61d2", 0.78))
+	if r.size.y > 7.0:
+		draw_rect(Rect2(r.position + Vector2(0, 7), Vector2(r.size.x, minf(4.0, r.size.y - 7.0))),
+			Color("6ee7ff", 0.28))
+	if detail <= 0 or r.size.y < 32.0:
+		return
+	var first := floori(r.position.x / 64.0)
+	var last := ceili(r.end.x / 64.0)
+	for i in range(first, last):
+		var x0 := maxf(r.position.x, i * 64.0)
+		var x1 := minf(r.end.x, i * 64.0 + 64.0)
+		var y0 := r.position.y + 16.0
+		var y1 := minf(r.end.y - 8.0, y0 + 44.0)
+		if x1 - x0 < 8.0 or y1 <= y0:
+			continue
+		draw_line(Vector2(x0 + 5.0, y0), Vector2(x1 - 5.0, y1), Color("a279ce", 0.22), 3.0, true)
+		draw_line(Vector2(x1 - 5.0, y0), Vector2(x0 + 5.0, y1), Color("6d52a5", 0.22), 3.0, true)
+		draw_line(Vector2(x1, y0), Vector2(x1, r.end.y), Color("bc8bd9", 0.10), 2.0)

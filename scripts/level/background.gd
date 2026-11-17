@@ -117,6 +117,9 @@ func _draw_art_layers(theme: Dictionary, tl: Vector2, size: Vector2, center: Vec
 	if profile == "sakura_park" and not dim:
 		_draw_sakura_park(tl, size, center)
 		return
+	if profile == "music_festival" and not dim:
+		_draw_music_festival(tl, size, center)
+		return
 	var layers: Array = theme.get("layers", [])
 	for layer in layers:
 		var path := String(layer.get("path", ""))
@@ -181,7 +184,7 @@ func _draw_calm_city(tl: Vector2, size: Vector2, center: Vector2) -> void:
 ## 第二關：夕陽遊樂園，加入低干擾的花瓣景深與緩慢摩天輪。
 func _draw_sakura_park(tl: Vector2, size: Vector2, center: Vector2) -> void:
 	var base := "res://assets/themes/sakura_park/bg/"
-	var sky := GameState.theme_texture(base + "sky_clean.png")
+	var sky := GameState.theme_texture(base + "sky.png")
 	var clouds_far := GameState.theme_texture(base + "clouds_far.png")
 	var clouds_near := GameState.theme_texture(base + "clouds_near.png")
 	var park_far := GameState.theme_texture(base + "park_far_clean.png")
@@ -269,6 +272,77 @@ func _draw_sakura_petals(tl: Vector2, size: Vector2, near: bool) -> void:
 			p - normal * radius * 0.48])
 		var color := Color("ffd2e4", 0.62) if near else Color("f5b9d2", 0.34)
 		draw_colored_polygon(shape, color)
+
+
+## 第三關：霓虹音樂祭，多層舞台視差與低干擾節拍燈光。
+func _draw_music_festival(tl: Vector2, size: Vector2, center: Vector2) -> void:
+	var base := "res://assets/themes/music_festival/bg/"
+	var sky := GameState.theme_texture(base + "sky.png")
+	var city := GameState.theme_texture(base + "city_far.png")
+	var festival := GameState.theme_texture(base + "festival_mid.png")
+	var promenade := GameState.theme_texture(base + "festival_near.png")
+	var pulse := Conductor.pulse(6.0) * GameState.anim_amount()
+
+	if sky != null:
+		_blit_cover(sky, tl, size, center, 0.0, Color.WHITE)
+	_draw_festival_spotlights(tl, size, pulse)
+	if city != null:
+		_blit_parallax(city, tl, size, center, 0.16, "bottom",
+			Color(0.94, 0.92, 1.0, 0.82), true, 0.60)
+	if festival != null:
+		_blit_parallax(festival, tl, size, center, 0.36, "bottom",
+			Color(1.0, 0.94, 1.0, 0.72 + pulse * 0.08), true, 0.50)
+	if promenade != null:
+		_blit_parallax(promenade, tl, size, center, 0.60, "bottom",
+			Color(0.96, 0.96, 1.0, 0.84), true, 0.24)
+	_draw_festival_notes(tl, size)
+
+
+func _draw_festival_spotlights(tl: Vector2, size: Vector2, pulse: float) -> void:
+	if not GameState.quality_flag("bg_stage", true):
+		return
+	var detail := GameState.quality_int("detail", 2)
+	var positions: Array[float] = [0.08, 0.92]
+	if detail == 1:
+		positions = [0.08, 0.36, 0.64, 0.92]
+	elif detail >= 2:
+		positions = [0.08, 0.28, 0.44, 0.56, 0.72, 0.92]
+	var motion := GameState.anim_amount()
+	for i in positions.size():
+		var position_ratio := positions[i]
+		var side := 1.0 if position_ratio < 0.5 else -1.0
+		var outer := i == 0 or i == positions.size() - 1
+		var base_x := tl.x + size.x * position_ratio
+		var base := Vector2(base_x, tl.y + size.y * 0.98)
+		var speed := (0.14 + i * 0.018) if outer else (0.20 + i * 0.025)
+		var amplitude := 0.11 if outer else 0.22
+		var sway := sin(_ambient_time * speed + i * 1.7) * amplitude * motion
+		var direction := Vector2(side * (0.18 + sway), -1.0).normalized()
+		var length := size.y * 1.18
+		var spread := 0.075
+		var color := Color("55dfff") if i % 2 == 0 else Color("ff5fd7")
+		var alpha := (0.018 + pulse * 0.016) if outer else (0.025 + pulse * 0.025)
+		draw_colored_polygon(PackedVector2Array([
+			base,
+			base + direction.rotated(-spread) * length,
+			base + direction.rotated(spread) * length]), Color(color, alpha))
+
+
+func _draw_festival_notes(tl: Vector2, size: Vector2) -> void:
+	var detail := GameState.quality_int("detail", 2)
+	var count := 4 if detail == 0 else (7 if detail == 1 else 10)
+	var motion := GameState.anim_amount()
+	var font := UiKit.font()
+	for i in count:
+		var seed := i + 900
+		var x := tl.x + fposmod(_hash(seed) * (size.x + 120.0)
+			+ _ambient_time * (3.0 + _hash(seed + 7) * 5.0) * motion, size.x + 120.0) - 60.0
+		var y := tl.y + fposmod(_hash(seed + 31) * size.y
+			- _ambient_time * (7.0 + _hash(seed + 17) * 7.0) * motion, size.y)
+		var glyph := "♫" if i % 3 == 0 else "♪"
+		var color := Color("68e4ff") if i % 2 == 0 else Color("ff79dc")
+		draw_string(font, Vector2(x, y), glyph, HORIZONTAL_ALIGNMENT_LEFT, -1,
+			13 + i % 3 * 2, Color(color, 0.16 + Conductor.pulse(6.0) * 0.16 * motion))
 
 
 func _draw_panorama(theme: Dictionary, tl: Vector2, size: Vector2, center: Vector2, dim: bool) -> void:
