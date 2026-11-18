@@ -28,27 +28,27 @@ const DIFFICULTIES: Array[Dictionary] = [
 const JUDGE_FPS := 60.0
 ## 畫質：不鎖幀，用減少動畫／特效量來減輕負擔（瀏覽器預設「中」）
 ## anim：演出強度 0~1；player_frames：跑／待機循環幀數；player_trail：衝刺殘影數
-## detail：背景層級；*_redraw_every：裝飾層隔幾幀重畫
+## detail：背景層級；terrain_redraw_every：地形裝飾隔幾幀重畫。背景視差一律每幀更新。
 const QUALITIES: Array[Dictionary] = [
 	{
 		"name": "低", "max_fps": 0, "physics_tps": 120, "anim": 0.12,
 		"player_frames": 1, "player_trail": 0,
 		"bg_motes": 4, "bg_eq_spacing": 110.0, "bg_moon_glow": 0, "bg_stage": false,
-		"bg_redraw_every": 3, "terrain_redraw_every": 3, "confetti": 0,
+		"terrain_redraw_every": 3, "confetti": 0,
 		"ghost": false, "shake": false, "edge_lights": false, "detail": 0,
 	},
 	{
 		"name": "中", "max_fps": 0, "physics_tps": 120, "anim": 0.5,
 		"player_frames": 2, "player_trail": 2,
 		"bg_motes": 12, "bg_eq_spacing": 72.0, "bg_moon_glow": 1, "bg_stage": false,
-		"bg_redraw_every": 2, "terrain_redraw_every": 2, "confetti": 8,
+		"terrain_redraw_every": 2, "confetti": 8,
 		"ghost": true, "shake": true, "edge_lights": true, "detail": 1,
 	},
 	{
 		"name": "高", "max_fps": 0, "physics_tps": 120, "anim": 1.0,
 		"player_frames": 6, "player_trail": 7,
 		"bg_motes": 36, "bg_eq_spacing": 46.0, "bg_moon_glow": 4, "bg_stage": true,
-		"bg_redraw_every": 1, "terrain_redraw_every": 1, "confetti": 26,
+		"terrain_redraw_every": 1, "confetti": 26,
 		"ghost": true, "shake": true, "edge_lights": true, "detail": 2,
 	},
 ]
@@ -417,8 +417,8 @@ func anim_amount() -> float:
 	return quality_float("anim", 1.0)
 
 
-## 依畫質決定這一幀要不要重畫裝飾層（背景／地形光）；玩法物件仍每幀更新
-func should_redraw_decor(every_key: String = "bg_redraw_every") -> bool:
+## 依畫質決定這一幀要不要重畫地形裝飾；背景視差與玩法物件仍每幀更新
+func should_redraw_decor(every_key: String = "terrain_redraw_every") -> bool:
 	var every := maxi(1, quality_int(every_key, 1))
 	return every <= 1 or Engine.get_process_frames() % every == 0
 

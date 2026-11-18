@@ -22,8 +22,11 @@ func _on_theme_changed(_index: int) -> void:
 
 
 func _process(_delta: float) -> void:
-	if GameState.should_redraw_decor("bg_redraw_every"):
-		queue_redraw()
+	## 繪圖座標含鏡頭位置與視差，必須和每個顯示幀同步。
+	## 跳幀會讓快取的天空先隨鏡頭反向位移、下次重畫又歸位；
+	## 網頁預設中畫質時，走路與跳躍都會因此出現背景抖動。
+	## 低畫質以減少光點／光暈等細節省效能，不能降低背景捲動更新率。
+	queue_redraw()
 
 
 func _hash(i: int) -> float:
