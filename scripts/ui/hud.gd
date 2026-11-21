@@ -17,6 +17,12 @@ const CONTROLS_A := [[["←", "→"], "移動"], [["空白鍵"], "跳"], [["C", 
 const CONTROLS_B := [[["↑"], "看示範"], [["[", "]"], "畫質"], [["R"], "重來"], [["Esc"], "選關"]]
 const TIP_TIME := 6.0
 const TIP_COLOR := Color(1.0, 0.45, 0.5)
+const SAKURA_ROSE := Color("e6a0b7")
+const SAKURA_CREAM := Color("ffe0ad")
+const SAKURA_MINT := Color("bfe8d2")
+const FESTIVAL_PINK := Color("ff61d5")
+const FESTIVAL_CYAN := Color("66e7ff")
+const FESTIVAL_GOLD := Color("ffe19a")
 
 var player: Player
 var tempo_mode: bool = false
@@ -134,6 +140,10 @@ func _on_view_draw() -> void:
 	var size := _view.size
 	var safe := UiKit.safe_rect(size)
 	var edge := GameState.color("edge")
+	if _sakura_park_style():
+		edge = SAKURA_ROSE
+	elif _music_festival_style():
+		edge = FESTIVAL_PINK
 	var done := not _results.is_empty()
 	var lift := 110.0 * ease(_bars, -2.0)
 	if not done and lift < 109.0:
@@ -157,12 +167,40 @@ func _on_view_draw() -> void:
 		_view.draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, _fade))
 
 
+func _soft_city_style() -> bool:
+	return GameState.level_index == 0 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
+
+
+func _sakura_park_style() -> bool:
+	if GameState.level_index < 0 or GameState.level_index >= LevelData.LEVELS.size():
+		return false
+	return String(LevelData.LEVELS[GameState.level_index].get("background_profile", "")) == "sakura_park"
+
+
+func _music_festival_style() -> bool:
+	if GameState.level_index < 0 or GameState.level_index >= LevelData.LEVELS.size():
+		return false
+	return String(LevelData.LEVELS[GameState.level_index].get("background_profile", "")) == "music_festival"
+
+
 ## 左上：關卡編號和整關縮圖，亮起的部分是已經跑過的距離
 func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
 	var box := Rect2(safe.position.x, safe.position.y - lift, 320, 72)
-	UiKit.panel(_view, box, edge)
+	if _soft_city_style():
+		UiKit.soft_panel(_view, box)
+	elif _sakura_park_style():
+		UiKit.sakura_panel(_view, box)
+	elif _music_festival_style():
+		UiKit.festival_panel(_view, box)
+	else:
+		UiKit.panel(_view, box, edge)
 	var idx := GameState.level_index
-	UiKit.pill(_view, box.position + Vector2(14, 10), LevelData.level_code(idx), edge, UiKit.INK, 13)
+	var code_fill := edge
+	if _sakura_park_style():
+		code_fill = SAKURA_CREAM
+	elif _music_festival_style():
+		code_fill = FESTIVAL_CYAN
+	UiKit.pill(_view, box.position + Vector2(14, 10), LevelData.level_code(idx), code_fill, UiKit.INK, 13)
 	var info := UiKit.minimap(idx)
 	var progress := 0.0
 	if player:
@@ -180,7 +218,14 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 	var lit_g := UiKit.gravity_lightness(_gravity)
 	var box_h := 72.0 + (28.0 if lit_g > 0.02 else 0.0)
 	var box := Rect2(safe.end.x - 260, safe.position.y - lift, 260, box_h)
-	UiKit.panel(_view, box, edge, 0.6 * _death_bump)
+	if _soft_city_style():
+		UiKit.soft_panel(_view, box)
+	elif _sakura_park_style():
+		UiKit.sakura_panel(_view, box, 1.0, _death_bump)
+	elif _music_festival_style():
+		UiKit.festival_panel(_view, box, 1.0, _death_bump)
+	else:
+		UiKit.panel(_view, box, edge, 0.6 * _death_bump)
 	var p := box.position
 	UiKit.text(_view, p + Vector2(16, 30), -1, "死亡", 13, Color(1, 1, 1, 0.6))
 	var s := 1.0 + 0.4 * _death_bump
@@ -191,7 +236,12 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 	var judge := String(GameState.DIFFICULTIES[GameState.difficulty]["name"])
 	var jw := UiKit.width_of(judge, 13) + 24.0
 	UiKit.text(_view, Vector2(box.end.x - jw - 52, p.y + 30), -1, "判定", 13, Color(1, 1, 1, 0.6))
-	UiKit.pill(_view, Vector2(box.end.x - jw - 14, p.y + 12), judge, Color(edge, 0.9), UiKit.INK, 13)
+	var judge_fill := Color(edge, 0.9)
+	if _sakura_park_style():
+		judge_fill = Color(SAKURA_MINT, 0.94)
+	elif _music_festival_style():
+		judge_fill = Color(FESTIVAL_CYAN, 0.94)
+	UiKit.pill(_view, Vector2(box.end.x - jw - 14, p.y + 12), judge, judge_fill, UiKit.INK, 13)
 
 	UiKit.text(_view, p + Vector2(16, 60), -1, "律動", 13, Color(1, 1, 1, 0.6))
 	var segs := 12
@@ -230,14 +280,24 @@ func _draw_controls(safe: Rect2, edge: Color, lift: float) -> void:
 	if player and player.auto_running:
 		var tip := "旗子前等候 GO…" if player and player.auto_flag_wait else "自動前進中　GO 後直接出發　F 停止"
 		UiKit.pill(_view, Vector2(safe.position.x, y0 - 80), tip, edge, UiKit.INK, 12)
-	UiKit.key_hints(_view, safe.position.x, y0 - 42, CONTROLS_A, edge, 0.5, HORIZONTAL_ALIGNMENT_LEFT, 12)
-	UiKit.key_hints(_view, safe.position.x, y0 - 12, CONTROLS_B, edge, 0.5, HORIZONTAL_ALIGNMENT_LEFT, 12)
+	var soft := _soft_city_style()
+	var sakura := _sakura_park_style()
+	var festival := _music_festival_style()
+	UiKit.key_hints(_view, safe.position.x, y0 - 42, CONTROLS_A, edge, 0.5,
+		HORIZONTAL_ALIGNMENT_LEFT, 12, soft, sakura, festival)
+	UiKit.key_hints(_view, safe.position.x, y0 - 12, CONTROLS_B, edge, 0.5,
+		HORIZONTAL_ALIGNMENT_LEFT, 12, soft, sakura, festival)
 
 
 func _draw_bars(size: Vector2, edge: Color) -> void:
 	var h := 64.0 * ease(_bars, -2.0)
-	_view.draw_rect(Rect2(0, 0, size.x, h), Color(0, 0, 0, 0.88))
-	_view.draw_rect(Rect2(0, size.y - h, size.x, h), Color(0, 0, 0, 0.88))
+	var bar_fill := Color(0, 0, 0, 0.88)
+	if _sakura_park_style():
+		bar_fill = Color(0.12, 0.045, 0.14, 0.88)
+	elif _music_festival_style():
+		bar_fill = Color(0.025, 0.015, 0.11, 0.90)
+	_view.draw_rect(Rect2(0, 0, size.x, h), bar_fill)
+	_view.draw_rect(Rect2(0, size.y - h, size.x, h), bar_fill)
 	_view.draw_line(Vector2(0, h), Vector2(size.x, h), Color(edge, 0.5 * _bars), 2.0)
 	_view.draw_line(Vector2(0, size.y - h), Vector2(size.x, size.y - h), Color(edge, 0.5 * _bars), 2.0)
 	var a := clampf(_bars * 2.0 - 1.0, 0.0, 1.0)
@@ -304,10 +364,31 @@ func _draw_hint(safe: Rect2, edge: Color) -> void:
 		baselines.append(y)
 	var box := Rect2(safe.get_center().x - box_w * 0.5, top, box_w, y - top + 14.0)
 	var a := _hint_alpha
-	UiKit.panel(_view, box, edge, 0.3, a, 10.0)
+	var soft_city := _soft_city_style()
+	var sakura := _sakura_park_style()
+	var festival := _music_festival_style()
+	if soft_city:
+		UiKit.soft_panel(_view, box, a)
+	elif sakura:
+		UiKit.sakura_panel(_view, box, a, 0.25)
+	elif festival:
+		UiKit.festival_panel(_view, box, a, 0.25)
+	else:
+		UiKit.panel(_view, box, edge, 0.3, a, 10.0)
 	for i in lines.size():
 		var title := i == 0 and lines.size() > 1
-		var col := Color(UiKit.GOLD, a) if title else Color(1, 1, 1, 0.92 * a)
+		var title_col := UiKit.GOLD
+		var body_col := Color.WHITE
+		if soft_city:
+			title_col = Color("ffe0a3")
+			body_col = Color("fff5f0")
+		elif sakura:
+			title_col = SAKURA_CREAM
+			body_col = Color("fff2e9")
+		elif festival:
+			title_col = FESTIVAL_GOLD
+			body_col = Color("f2efff")
+		var col := Color(title_col, a) if title else Color(body_col, 0.92 * a)
 		UiKit.text(_view, Vector2(0, baselines[i]), safe.end.x + safe.position.x, lines[i], sizes[i], col, HORIZONTAL_ALIGNMENT_CENTER)
 
 
@@ -320,7 +401,12 @@ func _draw_tip(safe: Rect2) -> void:
 	var pw := UiKit.width_of(label, 13) + 24.0
 	var box_w := pw + 12.0 + UiKit.width_of(_tip, 17) + 44.0
 	var box := Rect2(safe.get_center().x - box_w * 0.5, safe.end.y - 126.0 + rise, box_w, 50.0)
-	UiKit.panel(_view, box, TIP_COLOR, 0.35, a, 10.0)
+	if _sakura_park_style():
+		UiKit.sakura_panel(_view, box, a, 0.35)
+	elif _music_festival_style():
+		UiKit.festival_panel(_view, box, a, 0.35)
+	else:
+		UiKit.panel(_view, box, TIP_COLOR, 0.35, a, 10.0)
 	var x := box.position.x + 22.0
 	var y := box.position.y + 32.0
 	UiKit.pill(_view, Vector2(x, y - 18.0), label, Color(TIP_COLOR, a), UiKit.INK, 13)
@@ -331,10 +417,25 @@ func _draw_tip(safe: Rect2) -> void:
 func _draw_beat_bar(safe: Rect2, edge: Color) -> void:
 	var center := Vector2(safe.get_center().x, safe.end.y - 6.0)
 	var reach := 250.0
+	var soft := _soft_city_style()
+	var sakura := _sakura_park_style()
+	var festival := _music_festival_style()
+	var line_color := Color.WHITE
+	var beat_edge := edge
+	if soft:
+		line_color = Color("ebc4d7")
+		beat_edge = Color("e5a1bf")
+	elif sakura:
+		line_color = Color("f4cfda")
+		beat_edge = SAKURA_MINT
+	elif festival:
+		line_color = Color("b9dfff")
+		beat_edge = FESTIVAL_CYAN
 	for side: float in [-1.0, 1.0]:
 		_view.draw_polygon(PackedVector2Array([center + Vector2(side * 20, -1.5), center + Vector2(side * reach, -1.5),
 			center + Vector2(side * reach, 1.5), center + Vector2(side * 20, 1.5)]),
-			PackedColorArray([Color(1, 1, 1, 0.3), Color(1, 1, 1, 0), Color(1, 1, 1, 0), Color(1, 1, 1, 0.3)]))
+			PackedColorArray([Color(line_color, 0.3), Color(line_color, 0),
+				Color(line_color, 0), Color(line_color, 0.3)]))
 	var b := Conductor.song_beat
 	var base := floori(b)
 	for k in range(0, 4):
@@ -346,16 +447,23 @@ func _draw_beat_bar(safe: Rect2, edge: Color) -> void:
 		var downbeat := posmod(nb, Conductor.beats_per_measure) == 0
 		var h := 26.0 if downbeat else 14.0
 		var a := clampf(1.0 - dt * 90.0 / reach, 0.0, 1.0)
-		var col := Color(UiKit.GOLD if downbeat else edge.lerp(Color.WHITE, 0.3), a)
+		var downbeat_col := UiKit.GOLD
+		if soft:
+			downbeat_col = Color("ffe0a3")
+		elif sakura:
+			downbeat_col = SAKURA_CREAM
+		elif festival:
+			downbeat_col = FESTIVAL_PINK
+		var col := Color(downbeat_col if downbeat else beat_edge.lerp(Color.WHITE, 0.3), a)
 		for side: float in [-1.0, 1.0]:
 			var x := center.x + side * (dx + 22.0)
 			_view.draw_rect(Rect2(x - 2.5, center.y - h * 0.5 + 2.5, 5.0, h - 5.0), col)
 			_view.draw_circle(Vector2(x, center.y - h * 0.5 + 2.5), 2.5, col)
 			_view.draw_circle(Vector2(x, center.y + h * 0.5 - 2.5), 2.5, col)
 	var p := Conductor.pulse(8.0)
-	_view.draw_circle(center, 22.0 + p * 8.0, Color(edge, 0.15 + 0.15 * p))
-	_view.draw_arc(center, 16.0, 0.0, TAU, 32, Color(edge, 0.9), 2.5, true)
-	_view.draw_circle(center, 9.0 + p * 4.0, edge.lerp(Color.WHITE, p))
+	_view.draw_circle(center, 22.0 + p * 8.0, Color(beat_edge, 0.12 + 0.13 * p))
+	_view.draw_arc(center, 16.0, 0.0, TAU, 32, Color(beat_edge, 0.85), 2.5, true)
+	_view.draw_circle(center, 9.0 + p * 4.0, beat_edge.lerp(Color("fff1e4"), p))
 
 
 ## 結算：面板從下方滑上來，三格數據、新紀錄標籤，背景飄著音符

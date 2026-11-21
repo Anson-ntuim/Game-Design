@@ -39,11 +39,14 @@ const MOVER_TRAVEL_TILES := 6
 ## 關卡只顯示編號；name／desc 留給舊 UI 相容，畫面以 index+1 為準
 const LEVELS: Array[Dictionary] = [
 	{"name": "01", "desc": "", "stars": 1,
-		"patterns": Demo1Data.PATTERNS, "chunks": Demo1Data.CHUNKS},
+		"patterns": Demo1Data.PATTERNS, "chunks": Demo1Data.CHUNKS,
+		"background_profile": "calm_city"},
 	{"name": "02", "desc": "", "stars": 2,
-		"patterns": Demo3Data.PATTERNS, "chunks": Demo3Data.CHUNKS, "stage": true},
+		"patterns": Demo3Data.PATTERNS, "chunks": Demo3Data.CHUNKS, "stage": true,
+		"background_profile": "sakura_park"},
 	{"name": "03", "desc": "", "stars": 3,
-		"patterns": Demo2Data.PATTERNS, "chunks": Demo2Data.CHUNKS},
+		"patterns": Demo2Data.PATTERNS, "chunks": Demo2Data.CHUNKS,
+		"background_profile": "music_festival"},
 	{"name": "04", "desc": "", "stars": 1,
 		"patterns": Demo6Data.PATTERNS, "chunks": Demo6Data.CHUNKS},
 	{"name": "05", "desc": "", "stars": 2,

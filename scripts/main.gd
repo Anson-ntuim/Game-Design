@@ -52,6 +52,7 @@ func _ready() -> void:
 	_camera_ground_y = spawn_point.y
 	bg.level_height = level_size.y
 	bg.stage = _stage
+	bg.profile = String(LevelData.LEVELS[GameState.level_index].get("background_profile", ""))
 
 	player = Player.new()
 	player.position = spawn_point
