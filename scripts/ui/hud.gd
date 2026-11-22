@@ -23,6 +23,9 @@ const SAKURA_MINT := Color("bfe8d2")
 const FESTIVAL_PINK := Color("ff61d5")
 const FESTIVAL_CYAN := Color("66e7ff")
 const FESTIVAL_GOLD := Color("ffe19a")
+const RAIN_BLUE := Color("78bfff")
+const RAIN_VIOLET := Color("b89cff")
+const RAIN_AMBER := Color("ffd18a")
 
 var player: Player
 var tempo_mode: bool = false
@@ -144,6 +147,8 @@ func _on_view_draw() -> void:
 		edge = SAKURA_ROSE
 	elif _music_festival_style():
 		edge = FESTIVAL_PINK
+	elif _rainy_street_style():
+		edge = RAIN_BLUE
 	var done := not _results.is_empty()
 	var lift := 110.0 * ease(_bars, -2.0)
 	if not done and lift < 109.0:
@@ -183,6 +188,12 @@ func _music_festival_style() -> bool:
 	return String(LevelData.LEVELS[GameState.level_index].get("background_profile", "")) == "music_festival"
 
 
+func _rainy_street_style() -> bool:
+	if GameState.level_index < 0 or GameState.level_index >= LevelData.LEVELS.size():
+		return false
+	return String(LevelData.LEVELS[GameState.level_index].get("background_profile", "")) == "rainy_street"
+
+
 ## 左上：關卡編號和整關縮圖，亮起的部分是已經跑過的距離
 func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
 	var box := Rect2(safe.position.x, safe.position.y - lift, 320, 72)
@@ -192,6 +203,8 @@ func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
 		UiKit.sakura_panel(_view, box)
 	elif _music_festival_style():
 		UiKit.festival_panel(_view, box)
+	elif _rainy_street_style():
+		UiKit.rainy_panel(_view, box)
 	else:
 		UiKit.panel(_view, box, edge)
 	var idx := GameState.level_index
@@ -200,6 +213,8 @@ func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
 		code_fill = SAKURA_CREAM
 	elif _music_festival_style():
 		code_fill = FESTIVAL_CYAN
+	elif _rainy_street_style():
+		code_fill = RAIN_BLUE
 	UiKit.pill(_view, box.position + Vector2(14, 10), LevelData.level_code(idx), code_fill, UiKit.INK, 13)
 	var info := UiKit.minimap(idx)
 	var progress := 0.0
@@ -224,6 +239,8 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 		UiKit.sakura_panel(_view, box, 1.0, _death_bump)
 	elif _music_festival_style():
 		UiKit.festival_panel(_view, box, 1.0, _death_bump)
+	elif _rainy_street_style():
+		UiKit.rainy_panel(_view, box, 1.0, _death_bump)
 	else:
 		UiKit.panel(_view, box, edge, 0.6 * _death_bump)
 	var p := box.position
@@ -241,6 +258,8 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 		judge_fill = Color(SAKURA_MINT, 0.94)
 	elif _music_festival_style():
 		judge_fill = Color(FESTIVAL_CYAN, 0.94)
+	elif _rainy_street_style():
+		judge_fill = Color(RAIN_VIOLET, 0.94)
 	UiKit.pill(_view, Vector2(box.end.x - jw - 14, p.y + 12), judge, judge_fill, UiKit.INK, 13)
 
 	UiKit.text(_view, p + Vector2(16, 60), -1, "律動", 13, Color(1, 1, 1, 0.6))
@@ -283,10 +302,11 @@ func _draw_controls(safe: Rect2, edge: Color, lift: float) -> void:
 	var soft := _soft_city_style()
 	var sakura := _sakura_park_style()
 	var festival := _music_festival_style()
+	var rainy := _rainy_street_style()
 	UiKit.key_hints(_view, safe.position.x, y0 - 42, CONTROLS_A, edge, 0.5,
-		HORIZONTAL_ALIGNMENT_LEFT, 12, soft, sakura, festival)
+		HORIZONTAL_ALIGNMENT_LEFT, 12, soft, sakura, festival, rainy)
 	UiKit.key_hints(_view, safe.position.x, y0 - 12, CONTROLS_B, edge, 0.5,
-		HORIZONTAL_ALIGNMENT_LEFT, 12, soft, sakura, festival)
+		HORIZONTAL_ALIGNMENT_LEFT, 12, soft, sakura, festival, rainy)
 
 
 func _draw_bars(size: Vector2, edge: Color) -> void:
@@ -296,6 +316,8 @@ func _draw_bars(size: Vector2, edge: Color) -> void:
 		bar_fill = Color(0.12, 0.045, 0.14, 0.88)
 	elif _music_festival_style():
 		bar_fill = Color(0.025, 0.015, 0.11, 0.90)
+	elif _rainy_street_style():
+		bar_fill = Color(0.018, 0.035, 0.08, 0.91)
 	_view.draw_rect(Rect2(0, 0, size.x, h), bar_fill)
 	_view.draw_rect(Rect2(0, size.y - h, size.x, h), bar_fill)
 	_view.draw_line(Vector2(0, h), Vector2(size.x, h), Color(edge, 0.5 * _bars), 2.0)
@@ -367,12 +389,15 @@ func _draw_hint(safe: Rect2, edge: Color) -> void:
 	var soft_city := _soft_city_style()
 	var sakura := _sakura_park_style()
 	var festival := _music_festival_style()
+	var rainy := _rainy_street_style()
 	if soft_city:
 		UiKit.soft_panel(_view, box, a)
 	elif sakura:
 		UiKit.sakura_panel(_view, box, a, 0.25)
 	elif festival:
 		UiKit.festival_panel(_view, box, a, 0.25)
+	elif rainy:
+		UiKit.rainy_panel(_view, box, a, 0.25)
 	else:
 		UiKit.panel(_view, box, edge, 0.3, a, 10.0)
 	for i in lines.size():
@@ -388,6 +413,9 @@ func _draw_hint(safe: Rect2, edge: Color) -> void:
 		elif festival:
 			title_col = FESTIVAL_GOLD
 			body_col = Color("f2efff")
+		elif rainy:
+			title_col = RAIN_AMBER
+			body_col = Color("e8f1ff")
 		var col := Color(title_col, a) if title else Color(body_col, 0.92 * a)
 		UiKit.text(_view, Vector2(0, baselines[i]), safe.end.x + safe.position.x, lines[i], sizes[i], col, HORIZONTAL_ALIGNMENT_CENTER)
 
@@ -405,6 +433,8 @@ func _draw_tip(safe: Rect2) -> void:
 		UiKit.sakura_panel(_view, box, a, 0.35)
 	elif _music_festival_style():
 		UiKit.festival_panel(_view, box, a, 0.35)
+	elif _rainy_street_style():
+		UiKit.rainy_panel(_view, box, a, 0.35)
 	else:
 		UiKit.panel(_view, box, TIP_COLOR, 0.35, a, 10.0)
 	var x := box.position.x + 22.0
@@ -420,6 +450,7 @@ func _draw_beat_bar(safe: Rect2, edge: Color) -> void:
 	var soft := _soft_city_style()
 	var sakura := _sakura_park_style()
 	var festival := _music_festival_style()
+	var rainy := _rainy_street_style()
 	var line_color := Color.WHITE
 	var beat_edge := edge
 	if soft:
@@ -431,6 +462,9 @@ func _draw_beat_bar(safe: Rect2, edge: Color) -> void:
 	elif festival:
 		line_color = Color("b9dfff")
 		beat_edge = FESTIVAL_CYAN
+	elif rainy:
+		line_color = Color("b8d2f0")
+		beat_edge = RAIN_BLUE
 	for side: float in [-1.0, 1.0]:
 		_view.draw_polygon(PackedVector2Array([center + Vector2(side * 20, -1.5), center + Vector2(side * reach, -1.5),
 			center + Vector2(side * reach, 1.5), center + Vector2(side * 20, 1.5)]),
@@ -454,6 +488,8 @@ func _draw_beat_bar(safe: Rect2, edge: Color) -> void:
 			downbeat_col = SAKURA_CREAM
 		elif festival:
 			downbeat_col = FESTIVAL_PINK
+		elif rainy:
+			downbeat_col = RAIN_VIOLET
 		var col := Color(downbeat_col if downbeat else beat_edge.lerp(Color.WHITE, 0.3), a)
 		for side: float in [-1.0, 1.0]:
 			var x := center.x + side * (dx + 22.0)

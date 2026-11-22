@@ -14,6 +14,8 @@ var profile: String = ""
 var _ambient_time: float = 0.0
 var _far_cloud_scroll: float = 0.0
 var _near_cloud_scroll: float = 0.0
+var _rain_cloud_scroll: float = 0.0
+var _rain_cloud_near_scroll: float = 0.0
 var _ferris_angle: float = 0.0
 
 
@@ -33,6 +35,9 @@ func _process(delta: float) -> void:
 	var motion := GameState.anim_amount()
 	_far_cloud_scroll += delta * 6.5 * motion
 	_near_cloud_scroll += delta * 12.5 * motion
+	## 第四關遠、近雨雲分速向右，製造較安靜的景深。
+	_rain_cloud_scroll += delta * 1.8 * motion
+	_rain_cloud_near_scroll += delta * 3.8 * motion
 	## 約三分鐘一圈；保持比花瓣更安靜，避免搶走平台判讀。
 	_ferris_angle += delta * 0.035 * motion
 	if GameState.should_redraw_decor("bg_redraw_every"):
@@ -75,7 +80,8 @@ func _draw() -> void:
 	match kind:
 		"layered":
 			_draw_art_layers(theme, tl, size, center, quiet)
-			if detail > 0 or quiet:
+			## 雨夜本身已有前後景雨絲與漣漪，通用圓形光點會使畫面過於雜亂。
+			if (detail > 0 or quiet) and profile != "rainy_street":
 				_draw_motes(tl, size, center, b, pulse, groove)
 		"panorama":
 			_draw_panorama(theme, tl, size, center, quiet)
@@ -119,6 +125,9 @@ func _draw_art_layers(theme: Dictionary, tl: Vector2, size: Vector2, center: Vec
 		return
 	if profile == "music_festival" and not dim:
 		_draw_music_festival(tl, size, center)
+		return
+	if profile == "rainy_street" and not dim:
+		_draw_rainy_street(tl, size, center)
 		return
 	var layers: Array = theme.get("layers", [])
 	for layer in layers:
@@ -184,7 +193,7 @@ func _draw_calm_city(tl: Vector2, size: Vector2, center: Vector2) -> void:
 ## 第二關：夕陽遊樂園，加入低干擾的花瓣景深與緩慢摩天輪。
 func _draw_sakura_park(tl: Vector2, size: Vector2, center: Vector2) -> void:
 	var base := "res://assets/themes/sakura_park/bg/"
-	var sky := GameState.theme_texture(base + "sky.png")
+	var sky := GameState.theme_texture(base + "sky_clean.png")
 	var clouds_far := GameState.theme_texture(base + "clouds_far.png")
 	var clouds_near := GameState.theme_texture(base + "clouds_near.png")
 	var park_far := GameState.theme_texture(base + "park_far_clean.png")
@@ -345,6 +354,150 @@ func _draw_festival_notes(tl: Vector2, size: Vector2) -> void:
 			13 + i % 3 * 2, Color(color, 0.16 + Conductor.pulse(6.0) * 0.16 * motion))
 
 
+const RAIN_STREET_PARALLAX := 0.34
+const RAIN_STREET_HEIGHT := 0.48
+
+## 第四關：雨夜街道。雨與閃電保持程式化，避免把動畫烘焙進素材。
+func _draw_rainy_street(tl: Vector2, size: Vector2, center: Vector2) -> void:
+	var base := "res://assets/themes/rainy_street/bg/"
+	var sky := GameState.theme_texture(base + "sky_base.png")
+	var clouds_far := GameState.theme_texture(base + "clouds_far.png")
+	var clouds_near := GameState.theme_texture(base + "clouds_near.png")
+	var city := GameState.theme_texture(base + "city_far.png")
+	var street := GameState.theme_texture(base + "street_mid.png")
+	var street_neon := GameState.theme_texture(base + "street_neon.png")
+	var promenade := GameState.theme_texture(base + "promenade_near.png")
+	var flash := _rainy_lightning_flash()
+	var motion := GameState.anim_amount()
+	var beat_pulse := Conductor.pulse(5.0) * motion
+	## 拍頭短暫持亮，讓低畫質隔幀重畫時也能讀到拍點。
+	var neon_pulse := (1.0 - smoothstep(0.10, 0.76, Conductor.beat_fraction())) * motion
+	var city_breathe := (0.5 + 0.5 * sin(_ambient_time * 0.42)) * motion
+	if sky != null:
+		_blit_cover(sky, tl, size, center, 0.0, Color.WHITE)
+	if clouds_far != null:
+		_blit_cover_looping(clouds_far, tl, size, _rain_cloud_scroll,
+			Color(0.82, 0.86, 1.0, 0.48), true, 0.92)
+	if clouds_near != null:
+		_blit_cover_looping(clouds_near, tl, size, _rain_cloud_near_scroll,
+			Color(1.0, 1.0, 1.0, 0.90), true, 1.05)
+	if flash > 0.0:
+		draw_rect(Rect2(tl, size), Color(0.72, 0.80, 1.0, flash * 0.20))
+	if city != null:
+		_blit_parallax(city, tl, size, center, 0.14, "bottom",
+			Color(0.82, 0.84, 1.0, 0.68 + flash * 0.10), true, 0.48)
+	if street != null:
+		_blit_parallax(street, tl, size, center, RAIN_STREET_PARALLAX, "bottom",
+			Color(0.92, 0.91, 1.0, 0.72 + flash * 0.08), true, RAIN_STREET_HEIGHT)
+	if street_neon != null:
+		## 原圖保留最低亮度；獨立霓虹層只在拍點額外增亮，不讓建築一起閃。
+		var glow := 1.0 + 0.48 * neon_pulse
+		_blit_parallax(street_neon, tl, size, center, RAIN_STREET_PARALLAX, "bottom",
+			Color(glow, glow, glow, 0.08 + neon_pulse * 0.90), true, RAIN_STREET_HEIGHT)
+	_draw_rain(tl, size, false)
+	## 背景有 40px 防震留邊；讓濕地貼近可視底部，露出欄杆下方的路面。
+	var promenade_tl := tl - Vector2(0.0, 36.0)
+	if promenade != null:
+		_blit_parallax(promenade, promenade_tl, size, center, 0.58, "bottom",
+			Color(0.94, 0.95, 1.0, 0.76 + city_breathe * 0.035), true, 0.30)
+	_draw_rainy_lamp_glows(tl, size, beat_pulse, flash)
+	if street_neon != null and promenade != null:
+		_draw_rainy_reflections(promenade_tl, size, center, street_neon, neon_pulse)
+	_draw_rainy_ripples(tl, size)
+	_draw_rain(tl, size, true)
+
+
+func _rainy_lightning_flash() -> float:
+	if GameState.anim_amount() <= 0.0:
+		return 0.0
+	## 約 13.7 秒一次，短暫雙閃；不畫明確閃電枝，避免遮擋關卡。
+	var phase := fposmod(_ambient_time, 13.7)
+	var first := clampf(1.0 - absf(phase - 0.10) / 0.08, 0.0, 1.0)
+	var second := clampf(1.0 - absf(phase - 0.34) / 0.12, 0.0, 1.0)
+	return maxf(first, second * 0.68) * GameState.anim_amount()
+
+
+func _draw_rain(tl: Vector2, size: Vector2, near: bool) -> void:
+	var detail := GameState.quality_int("detail", 2)
+	var count := (34 if detail == 0 else (54 if detail == 1 else 78)) if near else \
+		(20 if detail == 0 else (32 if detail == 1 else 46))
+	var motion := GameState.anim_amount()
+	## 風向以很慢的週期改變，雨不會像固定角度的直線貼圖。
+	var wind := 0.20 + sin(_ambient_time * 0.18) * 0.075 * motion
+	var margin := 70.0
+	for i in count:
+		var seed := i + (1400 if near else 1200)
+		var fall_speed := (360.0 + _hash(seed + 7) * 210.0) * (1.18 if near else 0.72)
+		var drift := fall_speed * wind
+		var span_x := size.x + margin * 2.0
+		var span_y := size.y + margin * 2.0
+		var y := tl.y - margin + fposmod(_hash(seed + 17) * span_y
+			+ _ambient_time * fall_speed * motion, span_y)
+		var x := tl.x - margin + fposmod(_hash(seed) * span_x
+			+ _ambient_time * drift * motion, span_x)
+		var length := (16.0 + _hash(seed + 31) * 15.0) if near else (9.0 + _hash(seed + 31) * 9.0)
+		var alpha := 0.22 if near else 0.10
+		draw_line(Vector2(x, y), Vector2(x + length * wind, y + length),
+			Color(0.68, 0.82, 1.0, alpha), 1.3 if near else 1.0, true)
+
+
+func _draw_rainy_lamp_glows(tl: Vector2, size: Vector2, beat_pulse: float,
+		flash: float) -> void:
+	var detail := GameState.quality_int("detail", 2)
+	var spacing := 430.0 if detail > 0 else 620.0
+	var first := floori(tl.x / spacing) - 1
+	var last := ceili((tl.x + size.x) / spacing) + 1
+	var dim_from_flash := 1.0 - flash * 0.55
+	var breathe := 0.72 + 0.16 * sin(_ambient_time * 0.65) + beat_pulse * 0.12
+	for i in range(first, last):
+		var p := Vector2(i * spacing + spacing * 0.52, tl.y + size.y * 0.765)
+		for ring in 3:
+			draw_circle(p, 20.0 + ring * 14.0,
+				Color("ffd28d", (0.040 - ring * 0.009) * breathe * dim_from_flash))
+
+
+func _draw_rainy_reflections(tl: Vector2, size: Vector2, center: Vector2,
+		signs: Texture2D, pulse: float) -> void:
+	## 原圖中藍色音符與粉色主招牌的中心；倒影跟店面共用視差與奇偶鏡像。
+	var scale_factor := size.y * RAIN_STREET_HEIGHT / signs.get_height()
+	var tile_width := signs.get_width() * scale_factor
+	var shift := center.x * (1.0 - RAIN_STREET_PARALLAX)
+	var surface := tl.y + size.y * 0.963
+	var first := floori((tl.x - shift) / tile_width)
+	var last := ceili((tl.x + size.x - shift) / tile_width)
+	var shimmer := _ambient_time * GameState.anim_amount()
+	for tile in range(first, last):
+		for sign_x: float in [472.0, 1354.0]:
+			var offset := sign_x * scale_factor
+			if posmod(tile, 2) == 1:
+				offset = tile_width - offset
+			var x := shift + tile * tile_width + offset
+			var tint := Color("69ceff") if sign_x == 472.0 else Color("ed85dd")
+			for band in 7:
+				var depth := band / 6.0
+				var y := surface + depth * size.y * (0.010 + 0.017 * pulse)
+				var half_width := scale_factor * (17.0 - 8.0 * depth + 3.0 * sin(band * 2.4))
+				var drift := scale_factor * 4.0 * sin(band * 1.8 + shimmer)
+				draw_line(Vector2(x + drift - half_width, y), Vector2(x + drift + half_width, y),
+					Color(tint, (0.11 + 0.33 * pulse) * (1.0 - 0.65 * depth)),
+					maxf(1.0, scale_factor * 3.5), true)
+
+
+func _draw_rainy_ripples(tl: Vector2, size: Vector2) -> void:
+	var detail := GameState.quality_int("detail", 2)
+	var count := 3 if detail == 0 else (5 if detail == 1 else 8)
+	var motion := GameState.anim_amount()
+	for i in count:
+		var seed := i + 1600
+		var cycle := fposmod(_ambient_time * (0.45 + _hash(seed) * 0.25)
+			+ _hash(seed + 9), 1.0) * motion
+		var p := Vector2(tl.x + size.x * (0.08 + _hash(seed + 17) * 0.84),
+			tl.y + size.y * (0.86 + _hash(seed + 27) * 0.10))
+		var radius := 5.0 + cycle * 18.0
+		draw_arc(p, radius, 0.0, TAU, 24, Color(0.55, 0.83, 1.0, (1.0 - cycle) * 0.26), 1.2, true)
+		draw_arc(p, radius * 0.52, 0.0, TAU, 20, Color(0.88, 0.60, 1.0, (1.0 - cycle) * 0.14), 1.0, true)
+
+
 func _draw_panorama(theme: Dictionary, tl: Vector2, size: Vector2, center: Vector2, dim: bool) -> void:
 	var tex := GameState.theme_texture(String(theme.get("bg_far", "")))
 	if tex == null:
@@ -356,7 +509,7 @@ func _draw_panorama(theme: Dictionary, tl: Vector2, size: Vector2, center: Vecto
 
 ## 天空等：整張跟著鏡頭鋪滿，月亮／主體永遠完整，不橫向拼貼
 func _blit_cover(tex: Texture2D, tl: Vector2, size: Vector2, center: Vector2,
-		factor: float, modulate: Color) -> void:
+		factor: float, modulate: Color, ambient_offset: float = 0.0) -> void:
 	var tex_size := tex.get_size()
 	if tex_size.x < 1.0 or tex_size.y < 1.0:
 		return
@@ -365,7 +518,8 @@ func _blit_cover(tex: Texture2D, tl: Vector2, size: Vector2, center: Vector2,
 	## 輕微視差只在「多出來的邊界」內平移，永不露出圖外、也不循環跳回
 	var overflow_x := maxf(0.0, draw_size.x - size.x)
 	var overflow_y := maxf(0.0, draw_size.y - size.y)
-	var drift := clampf(center.x * factor * 0.04, -overflow_x * 0.5, overflow_x * 0.5)
+	var drift := clampf(center.x * factor * 0.04 + ambient_offset,
+		-overflow_x * 0.5, overflow_x * 0.5)
 	var origin := Vector2(
 		tl.x - overflow_x * 0.5 - drift,
 		tl.y - overflow_y * 0.5)
@@ -374,18 +528,28 @@ func _blit_cover(tex: Texture2D, tl: Vector2, size: Vector2, center: Vector2,
 
 ## 雲層向右無限捲動；相鄰副本首尾接續，循環重置發生在畫面外。
 func _blit_cover_looping(tex: Texture2D, tl: Vector2, size: Vector2,
-		scroll: float, modulate: Color) -> void:
+		scroll: float, modulate: Color, mirror: bool = false,
+		scale_mult: float = 1.0) -> void:
 	var tex_size := tex.get_size()
 	if tex_size.x < 1.0 or tex_size.y < 1.0:
 		return
 	var scale := maxf(size.x / tex_size.x, size.y / tex_size.y)
-	var draw_size := tex_size * scale
-	var offset := fposmod(scroll, draw_size.x)
-	var x := tl.x - draw_size.x + offset
+	var draw_size := tex_size * scale * scale_mult
+	## 鏡像時以兩張為一個循環，右接右、左接左，避免雲邊緣突然斷裂。
+	var period := draw_size.x * (2.0 if mirror else 1.0)
+	var offset := fposmod(scroll, period)
+	var x := tl.x - period + offset
 	var y := tl.y + (size.y - draw_size.y) * 0.5
+	var segment := 0
 	while x < tl.x + size.x:
-		draw_texture_rect(tex, Rect2(Vector2(x, y), draw_size), false, modulate)
+		if mirror and segment % 2 != 0:
+			draw_texture_rect(tex,
+				Rect2(Vector2(x, y), Vector2(-draw_size.x, draw_size.y)),
+				false, modulate)
+		else:
+			draw_texture_rect(tex, Rect2(Vector2(x, y), draw_size), false, modulate)
 		x += draw_size.x
+		segment += 1
 
 
 func _blit_parallax(tex: Texture2D, tl: Vector2, size: Vector2, center: Vector2,

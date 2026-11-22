@@ -20,6 +20,7 @@ static var _minimaps: Dictionary = {}
 static var _soft_panel_style: StyleBoxFlat
 static var _sakura_panel_style: StyleBoxFlat
 static var _festival_panel_style: StyleBoxFlat
+static var _rainy_panel_style: StyleBoxFlat
 
 
 ## 回傳 UI 可用矩形（已扣掉安全邊距），單位是目前 viewport 的 UI 座標
@@ -217,10 +218,33 @@ static func festival_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0,
 		ci.draw_circle(Vector2(x, rect.end.y - 7.0), 1.7, Color(color, 0.35 * alpha))
 
 
+## 雨夜街道：冷藍玻璃、淡紫反光與細小雨痕，保持文字區域乾淨。
+static func rainy_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0,
+		accent: float = 0.0) -> void:
+	if _rainy_panel_style == null:
+		_rainy_panel_style = StyleBoxFlat.new()
+		_rainy_panel_style.set_border_width_all(2)
+		_rainy_panel_style.set_corner_radius_all(9)
+		_rainy_panel_style.shadow_size = 10
+		_rainy_panel_style.anti_aliasing = true
+	var style := _rainy_panel_style
+	style.bg_color = Color(0.035, 0.055, 0.12, (0.86 + accent * 0.04) * alpha)
+	style.border_color = Color(0.43, 0.68, 0.92, (0.62 + accent * 0.18) * alpha)
+	style.shadow_color = Color(0.015, 0.025, 0.08, 0.42 * alpha)
+	ci.draw_style_box(style, rect)
+	var inner := rect.grow(-5.0)
+	ci.draw_line(inner.position + Vector2(9, 0), Vector2(inner.end.x - 9, inner.position.y),
+		Color(0.72, 0.88, 1.0, 0.23 * alpha), 1.2, true)
+	for i in 4:
+		var x := inner.position.x + 22.0 + float(i) * maxf(30.0, inner.size.x / 4.5)
+		ci.draw_line(Vector2(x, inner.position.y + 7.0), Vector2(x + 3.0, inner.position.y + 15.0),
+			Color(0.58, 0.76, 1.0, 0.16 * alpha), 1.0, true)
+
+
 ## 按鍵小方塊：pos 是左上角，回傳寬度
 static func keycap(ci: CanvasItem, pos: Vector2, label: String, edge: Color, alpha: float = 1.0,
 		size: int = 13, soft: bool = false, sakura: bool = false,
-		festival: bool = false) -> float:
+		festival: bool = false, rainy: bool = false) -> float:
 	var f := font()
 	var w := maxf(KEY_H, width_of(label, size, f) + 14.0)
 	var r := Rect2(pos, Vector2(w, KEY_H))
@@ -239,6 +263,10 @@ static func keycap(ci: CanvasItem, pos: Vector2, label: String, edge: Color, alp
 		shadow = Color("150b2e")
 		fill = Color("292052")
 		border = Color("65e5ff")
+	if rainy:
+		shadow = Color("0d172b")
+		fill = Color("253550")
+		border = Color("82c7ff")
 	ci.draw_rect(Rect2(r.position + Vector2(0, 3), r.size), Color(shadow, 0.8 * alpha))
 	ci.draw_rect(r, Color(fill, 0.92 * alpha))
 	ci.draw_rect(r, Color(border, 0.62 * alpha), false, 1.0)
@@ -262,7 +290,8 @@ static func key_hints_width(items: Array, size: int = 13) -> float:
 ## y 是按鍵的上緣；align 決定 x 是左端、中央或右端
 static func key_hints(ci: CanvasItem, x: float, y: float, items: Array, edge: Color, alpha: float = 1.0,
 		align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_CENTER, size: int = 13,
-		soft: bool = false, sakura: bool = false, festival: bool = false) -> void:
+		soft: bool = false, sakura: bool = false, festival: bool = false,
+		rainy: bool = false) -> void:
 	var total := key_hints_width(items, size)
 	if align == HORIZONTAL_ALIGNMENT_CENTER:
 		x -= total * 0.5
@@ -270,7 +299,7 @@ static func key_hints(ci: CanvasItem, x: float, y: float, items: Array, edge: Co
 		x -= total
 	for it: Array in items:
 		for k: String in it[0]:
-			x += keycap(ci, Vector2(x, y), k, edge, alpha, size, soft, sakura, festival) + 4.0
+			x += keycap(ci, Vector2(x, y), k, edge, alpha, size, soft, sakura, festival, rainy) + 4.0
 		x += 4.0
 		var label := String(it[1])
 		var label_color := Color.WHITE
@@ -280,6 +309,8 @@ static func key_hints(ci: CanvasItem, x: float, y: float, items: Array, edge: Co
 			label_color = Color("fff0e8")
 		if festival:
 			label_color = Color("efeaff")
+		if rainy:
+			label_color = Color("e5efff")
 		text(ci, Vector2(x, y + KEY_H * 0.5 + (size + 1) * 0.36), -1, label, size + 1,
 			Color(label_color, 0.78 * alpha))
 		x += width_of(label, size + 1) + 22.0
