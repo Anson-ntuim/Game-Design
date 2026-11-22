@@ -1,5 +1,6 @@
 class_name Background
 extends Node2D
+const BrokenRing := preload("res://scripts/level/memory_ring.gd")
 ## 多層視差背景：依 GameState.visual_theme 切換經典霓虹／心動之城／暮色遺跡。
 ## 經典＝天空漸層、月亮、等化器、遺跡剪影；素材主題＝貼圖分層或全景＋輕量光點。
 ## 顏色取自目前風格的色盤，每個音樂段落仍會換氛圍。
@@ -12,6 +13,14 @@ var quiet: bool = false
 ## 關卡可選的背景演出；第一關先使用低干擾的動態城市試作。
 var profile: String = ""
 var _ambient_time: float = 0.0
+var _bird_rng := RandomNumberGenerator.new()
+var _next_flock := 4.0
+class MemoryFlock:
+	var start: float
+	var count: int
+	var seed_value: int
+
+var _flocks: Array[MemoryFlock] = []
 var _far_cloud_scroll: float = 0.0
 var _near_cloud_scroll: float = 0.0
 var _rain_cloud_scroll: float = 0.0
@@ -31,6 +40,15 @@ func _on_theme_changed(_index: int) -> void:
 
 func _process(delta: float) -> void:
 	_ambient_time += delta
+	if profile == "broken_memory" and _ambient_time >= _next_flock:
+		while not _flocks.is_empty() and _ambient_time - _flocks.front().start >= 10.0:
+			_flocks.pop_front()
+		var flock := MemoryFlock.new()
+		flock.start = _ambient_time
+		flock.count = _bird_rng.randi_range(1, 3)
+		flock.seed_value = _bird_rng.randi_range(0, 100000)
+		_flocks.append(flock)
+		_next_flock = _ambient_time + _bird_rng.randf_range(5.0, 10.0)
 	## 累積位移而非用「總時間 × 畫質強度」，切換畫質時雲不會瞬間跳位。
 	var motion := GameState.anim_amount()
 	_far_cloud_scroll += delta * 6.5 * motion
@@ -81,7 +99,7 @@ func _draw() -> void:
 		"layered":
 			_draw_art_layers(theme, tl, size, center, quiet)
 			## 雨夜本身已有前後景雨絲與漣漪，通用圓形光點會使畫面過於雜亂。
-			if (detail > 0 or quiet) and profile != "rainy_street":
+			if (detail > 0 or quiet) and profile not in ["rainy_street", "broken_memory"]:
 				_draw_motes(tl, size, center, b, pulse, groove)
 		"panorama":
 			_draw_panorama(theme, tl, size, center, quiet)
@@ -117,6 +135,9 @@ func _draw_classic(tl: Vector2, size: Vector2, center: Vector2, b: float, pulse:
 
 
 func _draw_art_layers(theme: Dictionary, tl: Vector2, size: Vector2, center: Vector2, dim: bool) -> void:
+	if profile == "broken_memory" and not dim:
+		_draw_broken_memory(tl, size, center)
+		return
 	if profile == "calm_city" and not dim:
 		_draw_calm_city(tl, size, center)
 		return
@@ -148,6 +169,65 @@ func _draw_art_layers(theme: Dictionary, tl: Vector2, size: Vector2, center: Vec
 				_blit_parallax(tex, tl, size, center, factor, anchor, tint, true, height_frac)
 			_:
 				_blit_parallax(tex, tl, size, center, factor, anchor, tint, false, height_frac)
+
+
+func _draw_broken_memory(tl: Vector2, size: Vector2, center: Vector2) -> void:
+	var base := "res://assets/themes/broken_memory/bg/"
+	var sky := GameState.theme_texture(base + "sky.png")
+	var city := GameState.theme_texture(base + "city.png")
+	var bridge := GameState.theme_texture(base + "bridge.png")
+	if sky != null:
+		_blit_cover(sky, tl, size, center, 0.03, Color.WHITE)
+	var ring_center := tl + size * Vector2(0.79, 0.28)
+	BrokenRing.draw(self, ring_center, size.y * 0.076, Conductor.song_beat, GameState.anim_amount())
+	for flock in _flocks:
+		_draw_memory_flock(tl, size, flock)
+	if city != null:
+		_blit_parallax(city, tl, size, center, 0.14, "bottom", Color(0.86, 0.79, 0.95, 0.78), true, 0.68)
+	if bridge != null:
+		_blit_parallax(bridge, tl, size, center, 0.35, "bottom", Color(0.81, 0.74, 0.91, 0.80), true, 0.35)
+
+
+## 同一群共用航線，跟隨者稍晚進場，錯開轉向和振翅時間。
+func _draw_memory_flock(tl: Vector2, size: Vector2, flock: MemoryFlock) -> void:
+	var elapsed := _ambient_time - flock.start
+	if elapsed >= 10.0:
+		return
+	var duration := lerpf(5.8, 8.5, _hash(flock.seed_value))
+	var altitude := lerpf(0.40, 0.55, _hash(flock.seed_value + 1))
+	var curve_phase := TAU * _hash(flock.seed_value + 2)
+	for i in flock.count:
+		var seed_i := flock.seed_value + i * 11 + 3
+		var flight := elapsed - i * 0.41
+		var progress := flight / (duration + i * 0.17)
+		if progress < 0.0 or progress >= 1.0:
+			continue
+		var arc := progress * TAU + curve_phase
+		var height_offset := [0.0, -0.055, 0.017]
+		var y := altitude + float(height_offset[i]) + 0.031 * sin(arc) + 0.009 * sin(2.0 * arc)
+		# 高飛的鳥在圓環下緣走一條淺弧，仍與教學框保持距離。
+		var ring_clearance := 1.0 - smoothstep(0.035, 0.15, absf(progress - 0.78))
+		y = maxf(y, 0.318 + 0.064 * ring_clearance)
+		var tilt := 0.10 * cos(arc) + 0.045 * cos(2.0 * arc)
+		var position_on_screen := tl + size * Vector2(lerpf(-0.02, 1.02, progress), y)
+		var wing_phase := fposmod(flight + _hash(seed_i), 1.65 + 0.55 * _hash(seed_i + 1))
+		_draw_memory_bird(position_on_screen, size.y / 800.0 * (1.06 - i * 0.07), tilt, wing_phase)
+
+
+func _draw_memory_bird(at: Vector2, bird_scale: float, tilt: float, wing_phase: float) -> void:
+	var stroke := 0.0
+	if wing_phase < 0.72:
+		stroke = sin(TAU * 2.0 * wing_phase / 0.72) * sin(PI * wing_phase / 0.72)
+	var wing_y := -4.0 - 7.0 * stroke * GameState.anim_amount()
+	var silhouette := Color("51445e", 0.86)
+	draw_set_transform(at, tilt, Vector2.ONE * bird_scale)
+	draw_colored_polygon(PackedVector2Array([Vector2(-12,wing_y), Vector2(-7,wing_y * 0.73),
+		Vector2(-1,0), Vector2(-1,2), Vector2(-7,wing_y * 0.73 + 2)]), Color("66566e", 0.84))
+	draw_colored_polygon(PackedVector2Array([Vector2(-9,2), Vector2(-4,0), Vector2(0,-1),
+		Vector2(4,-2), Vector2(7,0), Vector2(3,1), Vector2(-2,2)]), silhouette)
+	draw_colored_polygon(PackedVector2Array([Vector2(-9,wing_y - 2), Vector2(-4,wing_y * 0.8),
+		Vector2(2,-1), Vector2(2,1), Vector2(-4,wing_y * 0.8 + 3)]), silhouette)
+	draw_set_transform(Vector2.ZERO)
 
 
 ## 第一關試作：拆開天空元素，讓環境緩慢呼吸，但不干擾平台判讀。

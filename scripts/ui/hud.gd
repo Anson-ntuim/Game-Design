@@ -194,6 +194,11 @@ func _rainy_street_style() -> bool:
 	return String(LevelData.LEVELS[GameState.level_index].get("background_profile", "")) == "rainy_street"
 
 
+func _broken_memory_style() -> bool:
+	var idx := GameState.level_index
+	return idx >= 0 and idx < LevelData.LEVELS.size() and LevelData.LEVELS[idx].get("background_profile", "") == "broken_memory"
+
+
 ## 左上：關卡編號和整關縮圖，亮起的部分是已經跑過的距離
 func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
 	var box := Rect2(safe.position.x, safe.position.y - lift, 320, 72)
@@ -205,6 +210,9 @@ func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
 		UiKit.festival_panel(_view, box)
 	elif _rainy_street_style():
 		UiKit.rainy_panel(_view, box)
+	elif _broken_memory_style():
+		UiKit.memory_panel(_view, box)
+		edge = Color("ceb7d6")
 	else:
 		UiKit.panel(_view, box, edge)
 	var idx := GameState.level_index
@@ -241,6 +249,9 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 		UiKit.festival_panel(_view, box, 1.0, _death_bump)
 	elif _rainy_street_style():
 		UiKit.rainy_panel(_view, box, 1.0, _death_bump)
+	elif _broken_memory_style():
+		UiKit.memory_panel(_view, box)
+		edge = Color("ceb7d6")
 	else:
 		UiKit.panel(_view, box, edge, 0.6 * _death_bump)
 	var p := box.position
@@ -386,6 +397,7 @@ func _draw_hint(safe: Rect2, edge: Color) -> void:
 		baselines.append(y)
 	var box := Rect2(safe.get_center().x - box_w * 0.5, top, box_w, y - top + 14.0)
 	var a := _hint_alpha
+	var memory := _broken_memory_style()
 	var soft_city := _soft_city_style()
 	var sakura := _sakura_park_style()
 	var festival := _music_festival_style()
@@ -398,6 +410,8 @@ func _draw_hint(safe: Rect2, edge: Color) -> void:
 		UiKit.festival_panel(_view, box, a, 0.25)
 	elif rainy:
 		UiKit.rainy_panel(_view, box, a, 0.25)
+	elif memory:
+		UiKit.memory_panel(_view, box, a)
 	else:
 		UiKit.panel(_view, box, edge, 0.3, a, 10.0)
 	for i in lines.size():
@@ -416,6 +430,9 @@ func _draw_hint(safe: Rect2, edge: Color) -> void:
 		elif rainy:
 			title_col = RAIN_AMBER
 			body_col = Color("e8f1ff")
+		elif memory:
+			title_col = Color("fff0dc")
+			body_col = Color("f1eaf4")
 		var col := Color(title_col, a) if title else Color(body_col, 0.92 * a)
 		UiKit.text(_view, Vector2(0, baselines[i]), safe.end.x + safe.position.x, lines[i], sizes[i], col, HORIZONTAL_ALIGNMENT_CENTER)
 

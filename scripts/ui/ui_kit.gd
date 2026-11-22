@@ -146,6 +146,14 @@ static func panel(ci: CanvasItem, rect: Rect2, edge: Color, glow: float = 0.0, a
 	ci.draw_line(pts[2], pts[3], Color(edge.lerp(Color.WHITE, 0.4), alpha), 3.0, true)
 
 
+static func memory_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0) -> void:
+	var outline := chamfer(rect, 6.0)
+	ci.draw_colored_polygon(outline, Color("392e46", 0.84 * alpha))
+	outline.append(outline[0])
+	ci.draw_polyline(outline, Color("aa93b4", 0.63 * alpha), 1.0, true)
+	ci.draw_line(outline[5], outline[0], Color("dfb5c9", 0.82 * alpha), 1.5, true)
+
+
 ## 心動之城的柔和面板：圓角、葡萄紫半透明底與粉彩細框，保留文字對比。
 static func soft_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0) -> void:
 	if _soft_panel_style == null:

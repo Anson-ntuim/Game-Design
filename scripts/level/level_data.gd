@@ -51,7 +51,8 @@ const LEVELS: Array[Dictionary] = [
 		"patterns": Demo6Data.PATTERNS, "chunks": Demo6Data.CHUNKS,
 		"background_profile": "rainy_street"},
 	{"name": "05", "desc": "", "stars": 2,
-		"patterns": TempoCourseData.PATTERNS, "chunks": TempoCourseData.CHUNKS, "tempo_stage": true},
+		"patterns": TempoCourseData.PATTERNS, "chunks": TempoCourseData.CHUNKS, "tempo_stage": true,
+		"background_profile": "broken_memory"},
 	{"name": "06", "desc": "", "stars": 3,
 		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true},
 ]
