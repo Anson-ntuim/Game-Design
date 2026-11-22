@@ -31,6 +31,9 @@ var _gravity_zones: Array[Dictionary] = []
 var _level_time: float = 0.0
 var _completed: bool = false
 var _shake: float = 0.0
+var _look_x: float = 0.0
+var _player_prev := Vector2.ZERO
+var _player_curr := Vector2.ZERO
 var _zoom_punch: float = 0.0
 var _camera_ground_y: float = 0.0
 var _score_cue_slot: int = -99999
@@ -52,7 +55,7 @@ func _ready() -> void:
 	_camera_ground_y = spawn_point.y
 	bg.level_height = level_size.y
 	bg.stage = _stage
-	bg.profile = String(LevelData.LEVELS[GameState.level_index].get("background_profile", ""))
+	bg.profile = String(LevelData.level_info(GameState.level_index).get("background_profile", ""))
 
 	player = Player.new()
 	player.position = spawn_point
@@ -67,6 +70,7 @@ func _ready() -> void:
 	camera.limit_right = int(level_size.x)
 	camera.limit_bottom = int(level_size.y)
 	camera.position = spawn_point
+	camera.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	add_child(camera)
 	camera.make_current()
 
@@ -88,9 +92,25 @@ func _ready() -> void:
 		hud.show_message(_level_name, 2.0)
 
 
-func _physics_process(delta: float) -> void:
+## 記下最近兩個物理步的角色位置，畫面更新時依插值比例取中間點（2D 沒有現成的插值變換可讀）
+func _physics_process(_delta: float) -> void:
+	_player_prev = _player_curr
+	_player_curr = player.global_position
+
+
+## 鏡頭每個畫面更新一次（不是每個物理步），追的是物理插值後的角色位置：
+## 螢幕更新率和 120 物理頻率對不上時（144Hz、網頁）不會一幀不動一幀跳兩步。
+## 前視距離跟水平速度走、慢慢變化，不再跟面向（轉身、蹬牆時不會左右甩）。
+func _update_camera(delta: float) -> void:
 	var view := get_viewport_rect().size / camera.zoom
-	var target := player.global_position + Vector2(player.facing * 70.0, -30.0)
+	var player_pos: Vector2 = _player_prev.lerp(_player_curr, Engine.get_physics_interpolation_fraction())
+	if _player_curr.distance_to(player.global_position) > 1.0:
+		## 物理步之外被移動（重生、跳段）：直接用現在位置
+		_player_prev = player.global_position
+		_player_curr = player.global_position
+		player_pos = player.global_position
+	_look_x = lerpf(_look_x, clampf(player.velocity.x * 0.2, -60.0, 60.0), 1.0 - exp(-2.0 * delta))
+	var target: Vector2 = player_pos + Vector2(_look_x, -30.0)
 	if level_size.y > LevelData.HEIGHT * TILE:
 		# 以最近落腳高度為基準，小跳保留下方地形；持續攀升才移動視野。
 		if player.is_on_floor():
@@ -123,13 +143,15 @@ func _physics_process(delta: float) -> void:
 		camera.position.y = clampf(camera.position.y, view.y * 0.5, maxf(view.y * 0.5, level_size.y - view.y * 0.5))
 
 	_shake = move_toward(_shake, 0.0, 40.0 * delta)
-	if GameState.quality_flag("shake", true) and _shake > 0.0:
-		camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake
+	## 畫面晃動預設關（設定裡可開）；開的時候也只用 35% 的平滑擺動，不用每幀亂跳的雜訊
+	var amt := _shake * GameState.shake_amount()
+	if amt > 0.05:
+		camera.offset = Vector2(sin(_level_time * 37.0), cos(_level_time * 29.0)) * amt
 	else:
 		camera.offset = Vector2.ZERO
 	_zoom_punch = move_toward(_zoom_punch, 0.0, 3.0 * delta)
 	## 素材主題不用鏡頭 zoom punch：zoom 會整層縮放，遠城／近城看起來像被水平抽動
-	if GameState.theme_is_procedural():
+	if GameState.theme_is_procedural() and GameState.screen_shake:
 		var punch := 0.025 * _zoom_punch * (0.4 + GameState.groove) * GameState.anim_amount()
 		var z := 1.0 + punch
 		camera.zoom = Vector2(z, z)
@@ -138,6 +160,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	_update_camera(delta)
 	if not _completed:
 		_level_time += delta
 	var hint := ""
@@ -291,7 +314,7 @@ func _on_wave_armed(_start_beat: float) -> void:
 
 
 func _on_player_damaged() -> void:
-	_shake = 12.0
+	_shake = 6.0
 
 
 func _on_player_died() -> void:
@@ -543,6 +566,9 @@ func _build_level() -> void:
 			if f.position.x >= float(h["from"]) and f.position.x < float(h["to"]):
 				f.section_from = float(h["from"])
 				f.section_to = float(h["to"])
+				## 自動前進時旗子插在起跑點旁邊，倒數就在角色頭上
+				if GameState.auto_run:
+					f.position.x = f.section_from + CueFlag.START_X + CueFlag.BESIDE_PLAYER
 		for g: Dictionary in data["ghosts"]:
 			if f.position.x >= float(g["from"]) and f.position.x < float(g["to"]):
 				f.ghost = g["points"]
@@ -595,6 +621,7 @@ func _add_pattern_tile(pat: Dictionary, grid: Array[String], x: int, y: int, run
 		"flag":
 			var flag := CueFlag.new()
 			flag.setup(top_left + Vector2(TILE * 0.5, TILE), pat.get("demo", ""))
+			flag.cycle_beats = float(pat.get("cycle", CueFlag.CYCLE_BEATS))
 			_flags.append(flag)
 			add_child(flag)
 		"platform":

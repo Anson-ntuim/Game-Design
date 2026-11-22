@@ -2,6 +2,7 @@ class_name CueFlag
 extends Node2D
 ## 起跳旗：插在段落起點的懸崖邊。
 ## 平常只當節拍器：每 8 拍響一次鈴（前三拍木魚倒數，旗子上跳出 3、2、1，響鈴時 GO!），挑任何一次鈴聲出發都行。
+## GO 鈴在小節頭（連招第 0 拍）的前 GO_LEAD 拍響：GO 之後先往前走一拍，第一個動作才落在小節頭。
 ## 站在旗子旁按「上」才看示範：下一個 8 拍循環開頭，旗子把這段連招彈一遍，
 ## 鏡頭跟著半透明的示範角色把整段跑完，再飛回玩家；一樣倒數 3、2、1，
 ## 示範結束後留時間返回玩家，再對齊八拍循環響鈴換玩家跑（機關都是 8 拍循環，所以響鈴時剛好對上）。
@@ -18,6 +19,8 @@ const GO_BEATS := 16.0
 const TRIGGER_BEHIND := 70.0
 const TRIGGER_AHEAD := 30.0
 const CYCLE_BEATS := 8.0
+## GO 比連招第 0 拍早幾拍（出發後至少先走這麼久才需要按）
+const GO_LEAD := 1.0
 
 var demo: String = ""
 ## 示範角色的路徑（世界座標），第 0 點 = 連招第 0 拍
@@ -39,6 +42,11 @@ var _auto_go_at: float = -1.0
 var _auto_waiting: bool = false
 ## GO 出發後要先離開旗子旁，才會再在這面旗停一次
 var _auto_can_stop: bool = true
+var _last_player_x: float = -INF
+## 最近一次放玩家出發的連招第 0 拍（停下倒數或直接通過都算；測試機器人用來對拍）
+var last_sync_beat: float = -INF
+## 這面旗子多久可以放行一次（拍）：段落裡的機關若是 4 拍一輪（tools/campaign.py 會折成 4 拍），GO 就每 4 拍一次
+var cycle_beats: float = CYCLE_BEATS
 
 
 func setup(feet: Vector2, demo_pattern: String) -> void:
@@ -129,13 +137,17 @@ func _physics_process(delta: float) -> void:
 				_demo_step = 0
 				_last_slot = floori((b - start_beat) * 2.0)
 				p.watching = true
-				p.watch_x = position.x
+				p.watch_x = _start_x() if p.auto_running else position.x
 			else:
 				_tick_auto_flag(b, p, near)
 				_tick_metronome(b, p)
 		State.WATCH:
-			# 響鈴前一點點就放開操作，剛好在鈴聲上按的跳才不會被吃掉
-			if b >= go_beat() - 0.25:
+			# 響鈴前一點點就放開操作，剛好在鈴聲上按的跳才不會被吃掉；
+			# 自動跑時在 GO 前半拍從起跑點出發（和模擬一致），不再多等一輪
+			if p.auto_running and p.watching and b + 0.004 >= go_beat() - LEAD_BEATS:
+				p.watching = false
+				_auto_can_stop = false
+			elif not p.auto_running and b >= go_beat() - 0.25:
 				p.watching = false
 			_tick_sounds(b)
 			if b >= go_beat():
@@ -151,10 +163,11 @@ func _tick_sounds(b: float) -> void:
 	var go := roundi((go_beat() - start_beat) * 2.0)
 	if s >= 0 and s < demo.length() and s < go and demo[s] != ".":
 		_play_demo(demo[s])
-	if s == go:
+	var lead := roundi(GO_LEAD * 2.0)
+	if s == go - lead:
 		GameState.play_cue("cue", 0.0, -6.0)
 		GameState.reset_notes()
-	elif s == go - 6 or s == go - 4 or s == go - 2:
+	elif s == go - lead - 6 or s == go - lead - 4 or s == go - lead - 2:
 		GameState.play_cue("block", 0.0, -8.0)
 
 
@@ -164,30 +177,67 @@ func _in_start_zone(p: Player) -> bool:
 	return not p.control_locked and x >= section_from and x <= position.x + 60.0
 
 
-## 自動跑：跑到旗子前停住等 3、2、1，GO 直接繼續往右（不必先跳才能離開）
-func _tick_auto_flag(b: float, p: Player, near: bool) -> void:
+## 關卡產生器的模擬在連招第 -0.5 拍位於段落左端 140px、往右跑（tools/gen_level3.py 的 START，跑速 155px／拍）。
+## 自動跑往回推一拍：停在 140 - 77.5 = 62.5，GO 鈴（第 -1 拍）一響就出發，走一拍後剛好對上模擬的位置
+const START_X := 62.5
+## 自動前進時旗子插在起跑點右邊這麼遠（main.gd 擺放）
+const BESIDE_PLAYER := 34.0
+## 無縫接軌：關卡產生器把段落間的平地算成「照節奏跑剛好在 GO 拍或略早一點到」，跑速不調整；
+## 剛好對上就直接通過，略早就停一下馬上 GO，差太多才會等到下一個 cycle_beats。
+## 到起跑點時離 GO 拍差多少以內就直接通過
+const PASS_TOLERANCE := 0.07
+## 一拍跑多遠（px）：跑速 310 × 半秒
+const RUN_PER_BEAT := 155.0
+const LEAD_BEATS := GO_LEAD
+
+
+## 自動跑：跑到起跑點停住等 3、2、1，GO 一響自動出發，先走一拍才到第一個動作（不用自己抓助跑）
+func _tick_auto_flag(b: float, p: Player, _near: bool) -> void:
 	if not p.auto_running:
 		_clear_auto_wait(p)
 		_auto_can_stop = true
 		return
-	if not near:
+	## 出發後跑過旗子、回到段落左邊、倒下或被傳送（重生在長椅），下次經過才會再停
+	var x := p.global_position.x
+	var teleported := absf(x - _last_player_x) > 80.0
+	_last_player_x = x
+	if p.control_locked or teleported:
+		_clear_auto_wait(p)
 		_auto_can_stop = true
-	if not _auto_waiting and near and _auto_can_stop:
+	if x > position.x + TRIGGER_AHEAD + 40.0 or x < section_from:
+		_auto_can_stop = true
+	var sx := _start_x()
+	## 跑到起跑點：剛好在 GO 拍就直接通過，否則停下倒數
+	var arrive := p.is_on_floor() and not p.control_locked and x >= sx - 6.0 and x < position.x + TRIGGER_AHEAD
+	var phase := fposmod(b + LEAD_BEATS, cycle_beats)
+	if not _auto_waiting and arrive and _auto_can_stop and (phase < PASS_TOLERANCE or phase > cycle_beats - PASS_TOLERANCE):
+		_auto_can_stop = false
+		last_sync_beat = roundf((b + LEAD_BEATS) / cycle_beats) * cycle_beats
+		GameState.play_cue("cue", 0.0, -6.0)
+		GameState.reset_notes()
+		return
+	if not _auto_waiting and arrive and _auto_can_stop:
 		_auto_waiting = true
 		_auto_can_stop = false
 		## 至少留出完整倒數：離下一個小節頭太近就等再下一輪
-		_auto_go_at = ceilf((b + 0.85) / CYCLE_BEATS) * CYCLE_BEATS
+		## 不再為了湊滿 3、2、1 多等一整輪：最近一個來得及的小節頭就出發，倒數從現在一路數到 0
+		_auto_go_at = ceilf((b + 0.02 + LEAD_BEATS) / cycle_beats) * cycle_beats
 		p.auto_flag_wait = true
-		p.watch_x = position.x
+		p.watch_x = _start_x()
 	if not _auto_waiting:
 		return
 	p.auto_flag_wait = true
-	p.watch_x = position.x
-	if b + 0.02 >= _auto_go_at:
+	p.watch_x = _start_x()
+	if b + 0.004 >= _auto_go_at - LEAD_BEATS:
 		## GO 當下解除等候並保持自動跑，不要求站在旗心或先起跳
+		last_sync_beat = _auto_go_at
 		_clear_auto_wait(p)
 		_auto_can_stop = false
 		p.auto_running = true
+
+
+func _start_x() -> float:
+	return minf(section_from + START_X, position.x)
 
 
 func _clear_auto_wait(p: Player) -> void:
@@ -204,12 +254,14 @@ func _tick_metronome(b: float, p: Player) -> void:
 	_last_slot = s
 	if not _in_start_zone(p) and not _auto_waiting:
 		return
-	var slot := posmod(s, roundi(CYCLE_BEATS * 2.0))
+	var slot := posmod(s + roundi(GO_LEAD * 2.0), roundi(cycle_beats * 2.0))
 	if slot == 0:
 		GameState.play_cue("cue", 0.0, -6.0)
 		GameState.reset_notes()
-	elif slot == 10 or slot == 12 or slot == 14:
-		GameState.play_cue("block", 0.0, -8.0)
+	else:
+		var n := roundi(cycle_beats * 2.0)
+		if slot == n - 6 or slot == n - 4 or slot == n - 2:
+			GameState.play_cue("block", 0.0, -8.0)
 
 
 ## 示範用的聲音和玩家做同一個動作時的聲音相同：跳彈琶音、音符高八度、長會接延音、衝刺是拍手
@@ -239,14 +291,14 @@ func _draw() -> void:
 	var until := INF
 	var since := INF
 	if state == State.WATCH:
-		until = go_beat() - b
+		until = go_beat() - GO_LEAD - b
 	elif state == State.FREE:
 		if _auto_waiting and _auto_go_at >= 0.0:
-			until = _auto_go_at - b
+			until = _auto_go_at - GO_LEAD - b
 			since = INF
 		else:
-			until = ceilf(b / CYCLE_BEATS) * CYCLE_BEATS - b
-			since = b - floorf(b / CYCLE_BEATS) * CYCLE_BEATS
+			until = ceilf((b + GO_LEAD) / cycle_beats) * cycle_beats - GO_LEAD - b
+			since = b + GO_LEAD - floorf((b + GO_LEAD) / cycle_beats) * cycle_beats
 	draw_line(Vector2(0, 0), Vector2(0, -56), Color(0.85, 0.85, 0.9), 3.0)
 	var fill := 0.25
 	if until <= 2.0:
@@ -274,7 +326,9 @@ func _draw_countdown(until: float, since: float) -> void:
 		return
 	var label := ""
 	var age := 0.0
-	if until > 0.0 and until <= 3.0:
+	## 自動前進等候中：從停下來就開始倒數（最多 8），數到 0 就是 GO
+	var max_count := 8.0 if _auto_waiting else 3.0
+	if until > 0.0 and until <= max_count:
 		label = str(ceili(until))
 		age = ceilf(until) - until
 	elif since < 0.75:
@@ -284,7 +338,7 @@ func _draw_countdown(until: float, since: float) -> void:
 		return
 	var go := label == "GO!"
 	var a := _counting * (clampf((0.75 - age) * 4.0, 0.0, 1.0) if go else 1.0)
-	var lit := 4 if go else 4 - ceili(until)
+	var lit := 4 if go else clampi(4 - ceili(until), 0, 4)
 	for i in 4:
 		var on := i < lit
 		var r := (5.0 if i == 3 else 4.0) + (1.5 if on and i == lit - 1 else 0.0)

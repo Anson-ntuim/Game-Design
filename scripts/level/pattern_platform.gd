@@ -54,7 +54,9 @@ func _physics_process(_delta: float) -> void:
 	if s != solid:
 		solid = s
 		_shape.set_deferred("disabled", not s)
-	queue_redraw()
+	## 離玩家很遠就不重畫（整關幾十個節奏機關每秒 120 次重畫會拖慢後段）
+	if BeatPattern.near_player(self, 1400.0):
+		queue_redraw()
 
 
 func _draw() -> void:

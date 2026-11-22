@@ -13,7 +13,7 @@ void fragment() {
 	COLOR = vec4(0.0, 0.0, 0.02, amount * 0.97 * smoothstep(radius, radius * 2.2, d));
 }
 "
-const CONTROLS_A := [[["←", "→"], "移動"], [["空白鍵"], "跳"], [["C", "Shift"], "衝刺"], [["F"], "自動跑／停"]]
+const CONTROLS_A := [[["空白鍵"], "跳"], [["C", "Shift"], "衝刺"], [["F"], "自動／手動"], [["←", "→"], "手動移動"]]
 const CONTROLS_B := [[["↑"], "看示範"], [["[", "]"], "畫質"], [["R"], "重來"], [["Esc"], "選關"]]
 const TIP_TIME := 6.0
 const TIP_COLOR := Color(1.0, 0.45, 0.5)
@@ -174,13 +174,13 @@ func _soft_city_style() -> bool:
 func _sakura_park_style() -> bool:
 	if GameState.level_index < 0 or GameState.level_index >= LevelData.LEVELS.size():
 		return false
-	return String(LevelData.LEVELS[GameState.level_index].get("background_profile", "")) == "sakura_park"
+	return String(LevelData.level_info(GameState.level_index).get("background_profile", "")) == "sakura_park"
 
 
 func _music_festival_style() -> bool:
 	if GameState.level_index < 0 or GameState.level_index >= LevelData.LEVELS.size():
 		return false
-	return String(LevelData.LEVELS[GameState.level_index].get("background_profile", "")) == "music_festival"
+	return String(LevelData.level_info(GameState.level_index).get("background_profile", "")) == "music_festival"
 
 
 ## 左上：關卡編號和整關縮圖，亮起的部分是已經跑過的距離
@@ -277,9 +277,10 @@ func _draw_controls(safe: Rect2, edge: Color, lift: float) -> void:
 				UiKit.pill(_view, Vector2(safe.end.x - UiKit.width_of(feel, 13) - 24, safe.end.y - 118 + lift),
 					feel, UiKit.FLOAT, UiKit.INK, 13)
 	var y0 := safe.end.y + lift
-	if player and player.auto_running:
-		var tip := "旗子前等候 GO…" if player and player.auto_flag_wait else "自動前進中　GO 後直接出發　F 停止"
-		UiKit.pill(_view, Vector2(safe.position.x, y0 - 80), tip, edge, UiKit.INK, 12)
+	if player and player.auto_running and player.auto_flag_wait:
+		UiKit.pill(_view, Vector2(safe.position.x, y0 - 80), "旗子前等候 3、2、1，GO 自動出發", edge, UiKit.INK, 12)
+	elif player and not player.auto_running and not player.control_locked and not GameState.auto_run:
+		UiKit.pill(_view, Vector2(safe.position.x, y0 - 80), "手動移動中　F 切回自動前進", edge, UiKit.INK, 12)
 	var soft := _soft_city_style()
 	var sakura := _sakura_park_style()
 	var festival := _music_festival_style()
@@ -322,7 +323,7 @@ func _draw_message(size: Vector2, edge: Color) -> void:
 	var font_size := 42
 	var text := _message
 	var code := LevelData.level_code(GameState.level_index)
-	if _message == code or _message == String(LevelData.LEVELS[GameState.level_index].get("name", "")):
+	if _message == code or _message == String(LevelData.level_info(GameState.level_index).get("name", "")):
 		text = code
 		font_size = 56
 		var tag := "STAGE"

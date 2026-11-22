@@ -3,7 +3,8 @@ extends SceneTree
 ## Godot --headless --path . --fixed-fps 120 --script res://tools/check_ride_levels.gd
 ## 另外測：彈簧床不按維持段數、鞦韆亂放手到不了對岸、礦車不跳會撞尖刺、不攻擊會撞木箱、亂敲會鎖住。
 
-const FIRST_RIDE_LEVEL := 6
+## 搭乘機關試作關已封存：封存區第 6 個起（level_index = 正式版關數 + 5）
+var FIRST_RIDE_LEVEL := 0
 
 var failures := 0
 var checks := 0
@@ -32,11 +33,13 @@ func _run() -> void:
 	var saved_bytes := FileAccess.get_file_as_bytes(save_path) if had_save else PackedByteArray()
 	conductor = root.get_node("Conductor")
 	conductor.restore_builtin_music()
+	root.get_node("GameState").auto_run = true
 	var levels = load("res://scripts/level/level_data.gd")
-	check(levels.LEVELS.size() == FIRST_RIDE_LEVEL + 4, "Four ride levels registered (incl. mixed)")
+	FIRST_RIDE_LEVEL = levels.LEVELS.size() + 5
+	check(levels.ARCHIVE.size() == 9, "Four ride levels kept in the archive (incl. mixed)")
 	var swing_level: Dictionary = levels.build(FIRST_RIDE_LEVEL + 1)
 	var periods := []
-	for chunk: Dictionary in levels.LEVELS[FIRST_RIDE_LEVEL + 1]["chunks"]:
+	for chunk: Dictionary in levels.level_info(FIRST_RIDE_LEVEL + 1)["chunks"]:
 		for sw: Array in chunk.get("swings", []):
 			periods.append(float(sw[3]))
 	check(periods.min() >= 4.0, "Swings take at least 4 beats per round trip %s" % [periods])
@@ -123,23 +126,16 @@ func _bot_jump(player: Node, state: Dictionary) -> bool:
 				state[key] = true
 				return true
 		return false
-	## 鞦韆關：走到高台邊緣，等座椅盪回來（往後到頂前 0.3~0.5 拍）再長按起跳去抓
-	if _at_swing_edge(player, state):
-		var sw: Node = state["first_swing"]
-		var frac := fposmod(b - float(sw.offset), float(sw.period))
-		var back := float(sw.period) * 0.5
-		if frac >= back * 0.5 and frac <= back * 0.6:
-			state["hold_until"] = frame_clock + 40
-			return true
-	return false
-
-
-func _at_swing_edge(player: Node, state: Dictionary) -> bool:
-	if state.get("jump_edges", []).is_empty() or not player.is_on_floor():
-		return false
-	for edge: float in state["jump_edges"]:
-		if player.global_position.x >= edge - 14.0 and player.global_position.x < edge + 20.0:
-			return true
+	## 有起跳旗的段落：自動跑停在旗子前，GO 後照 plan 的拍子起跳（跳躍高度固定，點一下就好）
+	var flag: Node = state.get("flag")
+	if flag != null and float(state.get("base", INF)) == INF and flag._auto_waiting:
+		state["base"] = float(flag._auto_go_at)
+	if float(state.get("base", INF)) != INF:
+		for step: Array in state.get("plan", []):
+			var key := "plan:%f" % float(step[0])
+			if b >= float(state["base"]) + float(step[0]) - 0.004 and not state.has(key):
+				state[key] = true
+				return true
 	return false
 
 
@@ -173,17 +169,20 @@ func _play_level(index: int) -> void:
 		player.kill_y = float(hints[i]["kill_y"])
 		level.camera.position = start
 		var target_x := float(hints[i]["to"]) + 80.0
-		var state := {"jump_edges": _swing_edges(level, i), "first_swing": _first_swing(level, i)}
+		var state := {"flag": _flag_for(level, hints[i]), "plan": levels_plan(index, i)}
 		var reached := false
 		var died := false
+		## 上一段跑到終點時可能已經踩進這段的起跑區：每段開始前把旗子重置成剛進場的狀態
+		for fl: Node in level._flags:
+			fl._clear_auto_wait(player)
+			fl._auto_can_stop = true
+		if OS.get_cmdline_user_args().has("--trace") and state["flag"] != null:
+			var fl: Node = state["flag"]
+			print("    flag x %.0f from %.0f start_x %.0f player %s can_stop %s" % [fl.position.x, fl.section_from, fl._start_x(), player.global_position, fl._auto_can_stop])
 		for f in 60 * 40:
 			_tick()
-			var press := _bot_jump(player, state)
-			var hold := frame_clock < int(state.get("hold_until", -1))
-			_set_action("jump", press or hold)
+			_set_action("jump", _bot_jump(player, state))
 			_set_action("dash", _bot_dash(player, state))
-			var wait := _at_swing_edge(player, state) and frame_clock >= int(state.get("hold_until", -1))
-			_set_action("move_right", (player.ride == null and not wait) or (player.ride != null and player.ride.is_in_group("trampoline")))
 			var was_ride = player.ride
 			await physics_frame
 			if OS.get_cmdline_user_args().has("--trace") and was_ride != player.ride:
@@ -199,7 +198,8 @@ func _play_level(index: int) -> void:
 		_release_all()
 		await physics_frame
 		if died:
-			print("    died at ", player.death_pos, " beat ", player.death_beat, " source ", player.death_source)
+			print("    died at ", player.death_pos, " beat ", player.death_beat, " source ", player.death_source,
+				" flag ", state.get("flag"), " GO ", state.get("base", INF), " plan ", state.get("plan"))
 		check(reached, "Level %02d section %d「%s」passable (pos %s)" % [index + 1, i, title, player.global_position])
 		if player.control_locked and not level._completed:
 			player.respawn_at(start)
@@ -207,25 +207,16 @@ func _play_level(index: int) -> void:
 	await process_frame
 
 
-func _first_swing(level: Node, section: int) -> Node:
-	var h: Dictionary = level._hints[section]
-	for sw: Node in get_nodes_in_group("swing"):
-		if sw.global_position.x >= float(h["from"]) and sw.global_position.x <= float(h["to"]):
-			return sw
+func _flag_for(level: Node, hint: Dictionary) -> Node:
+	for f: Node in level._flags:
+		if f.position.x >= float(hint["from"]) and f.position.x <= float(hint["to"]):
+			return f
 	return null
 
 
-## 鞦韆段：每座鞦韆前高台的右緣 x（px）
-func _swing_edges(level: Node, section: int) -> Array:
-	var out := []
-	var h: Dictionary = level._hints[section]
-	for sw: Node in get_nodes_in_group("swing"):
-		if sw.global_position.x < float(h["from"]) or sw.global_position.x > float(h["to"]):
-			continue
-		## 只有第一座需要從地面起跳；後面的在空中抓
-		if out.is_empty():
-			out.append(sw.global_position.x - 3.5 * 40.0)
-	return out
+func levels_plan(index: int, section: int) -> Array:
+	var levels = load("res://scripts/level/level_data.gd")
+	return levels.level_info(index)["chunks"][section].get("plan", [])
 
 
 func _negative_tests() -> void:
@@ -255,24 +246,21 @@ func _negative_tests() -> void:
 	player = level.player
 	player.respawn_at(level._section_spawns[1])
 	player.kill_y = float(level._hints[1]["kill_y"])
-	var edge: float = _swing_edges(level, 1)[0]
-	var hold_until := -1
+	var state := {"flag": _flag_for(level, level._hints[1]), "plan": levels_plan(FIRST_RIDE_LEVEL + 1, 1)}
 	var released := false
 	var died := false
 	for f in 60 * 20:
 		_tick()
 		var press := false
-		if player.ride == null and player.is_on_floor() and player.global_position.x >= edge - 14.0:
-			hold_until = frame_clock + 40
-			press = true
+		if player.ride == null and not released:
+			press = _bot_jump(player, state)
 		if player.ride != null and player.ride.is_in_group("swing") and not released:
 			var sw = player.ride
 			var back_peak: float = sw.next_peak(conductor.song_beat) - sw.period * 0.5
 			if absf(conductor.song_beat - back_peak) < 0.02 or conductor.song_beat - back_peak > 0.0 and conductor.song_beat - back_peak < 0.05:
 				press = true
 				released = true
-		_set_action("jump", press or frame_clock < hold_until)
-		_set_action("move_right", player.ride == null and not released)
+		_set_action("jump", press)
 		await physics_frame
 		if player.control_locked:
 			died = true

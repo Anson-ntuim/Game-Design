@@ -3,7 +3,7 @@ extends RefCounted
 ## 倒下時看玩家最後幾個動作和碰到的機關，判斷是不是「太短、太長、太早、太晚」其中一種，
 ## 是的話給一句指令；其他原因（沒按、沒衝刺、走下懸崖…）不給提示。
 ## 有標準節奏（區塊的 plan）的段落，拿這次起跳的位置去找標準節奏裡同一個位置的動作，
-## 對照這下該長按還是輕點、之後的音符和衝刺按得早還晚、起跳本身早還晚；
+## 對照之後的音符和衝刺按得早還晚、起跳本身早還晚（跳躍高度固定，沒有長短）；
 ## 光柱走廊這類沒有 plan 的段落只看按錯拍的紀錄和跳的長短。
 ## 回傳 {"tag": 原因代號, "title": 太短了／太長了／太早了／太晚了, "detail": 指令}，不給提示時回傳空的
 
@@ -26,11 +26,7 @@ static func _find(p: Player, plan: Array) -> Dictionary:
 	var src := p.death_source
 	var b := p.death_beat
 	var jump: Dictionary = p.last_jump if not p.last_jump.is_empty() and b - float(p.last_jump["beat"]) < RECENT else {}
-	var long_jump := not jump.is_empty() and bool(jump["long"])
-	if src is PatternLaser and not (src as PatternLaser).vertical and long_jump:
-		return _too_long()
-	if src is PatternSpike and (src as PatternSpike).ceiling and long_jump:
-		return _too_long()
+	## 跳躍高度固定，不再有「太長／太短」：只看早晚
 
 	var miss: Dictionary = p.last_miss if not p.last_miss.is_empty() and b - float(p.last_miss["beat"]) < RECENT else {}
 	if src == null and not miss.is_empty() and not is_nan(float(miss["off"])):
@@ -38,8 +34,6 @@ static func _find(p: Player, plan: Array) -> Dictionary:
 	var planned := _plan_tip(p, jump, plan)
 	if not planned.is_empty():
 		return planned
-	if src == null and plan.is_empty() and not jump.is_empty() and not long_jump:
-		return _too_short()
 	return {}
 
 
@@ -60,11 +54,6 @@ static func _plan_tip(p: Player, jump: Dictionary, plan: Array) -> Dictionary:
 	if idx == -1:
 		return {}
 	var step: Dictionary = plan[idx]
-	var want_long := String(step["act"]) in ["L", "O"]
-	if want_long and not jump["long"]:
-		return _too_short()
-	if not want_long and jump["long"]:
-		return _too_long()
 
 	# 這一跳之後、下一次跳之前的音符和衝刺：拍子用自己這次起跳去比，起跳本身早晚最後另外看
 	var j0 := float(jump["beat"])
@@ -108,14 +97,6 @@ static func _timing(off: float, what: String) -> Dictionary:
 	var fix := "晚一點" if early else "早一點"
 	var detail := fix + "起跳" if what == "起跳" else what + fix + "按"
 	return {"tag": "early" if early else "late", "title": "太早了" if early else "太晚了", "detail": detail}
-
-
-static func _too_short() -> Dictionary:
-	return {"tag": "too_short", "title": "太短了", "detail": "跳鍵按久一點"}
-
-
-static func _too_long() -> Dictionary:
-	return {"tag": "too_long", "title": "太長了", "detail": "輕點跳鍵就好"}
 
 
 ## beats 裡在 after 之後、最接近 target 的拍子（沒有回傳 INF）

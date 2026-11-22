@@ -12,9 +12,10 @@ const GRAB_RADIUS := 44.0
 ## 碰到繩子任何一段都算抓住，之後在 GRAB_BLEND 秒內滑到座椅上
 const ROPE_GRAB := 30.0
 const GRAB_BLEND := 0.15
-## 完美放手的初速（px/s，世界時間）
-const LAUNCH_VX := 420.0
-const LAUNCH_VY := 820.0
+## 完美放手的初速（px/s，世界時間）。玩家重力改成固定跳躍的 4480 後，初速乘 √(4480/2400)，
+## 飛行路線和原本 2400 重力時完全一樣（只是快一點），落點不用重算
+const LAUNCH_VX := 574.0
+const LAUNCH_VY := 1120.0
 const ROPE := Color(0.93, 0.86, 0.74)
 const SEAT := Color(0.98, 0.62, 0.36)
 const GLOW := Color(1.0, 0.9, 0.45)

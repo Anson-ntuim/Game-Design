@@ -21,7 +21,7 @@ extends RefCounted
 ## 區塊的 "bpm" 是玩家走進這個區塊後要換成的速度（下一個小節頭生效，預設 120）。
 ## 區塊的 "gravity" 是走進這個區塊後立刻強制套用的重力（預設 2400；第五關輕重力區固定 1000）。
 ##
-## 高度參考（1 格 = 40px）：滿跳約 4.4 格、音符跳約 4.2 格、節拍鼓約 9.4 格；衝刺約 4.2 格。
+## 高度參考（1 格 = 40px）：跳躍固定 3.5 格、平地一拍落地（音符跳相同；輕重力兩拍、高度不變）；衝刺約 4.2 格。
 
 const TILE := 40
 const HEIGHT := 20
@@ -34,10 +34,19 @@ const MOVER_TRAVEL_TILES := 6
 ##   lift 每個 x 升一階、v 開始降回的升降舞台（字元填滿的矩形 = 行程範圍）
 ##   rest 休止區（字元所在欄往右 cols 格）：x 的半拍要站著不動，strict = false 只發出錯音
 ##   blind 盲拍區（字元所在欄往右 cols 格）：x 的半拍畫面變暗；strobe = true 整段暗、每拍閃一下
-## 各關的節奏型與區塊在 demo_*_data.gd（tools/gen_demo.py 產生）。
+## 各關的節奏型與區塊在 campaign_*_data.gd（tools/campaign.py 產生）；舊關卡在 archive/。
 
 ## 關卡只顯示編號；name／desc 留給舊 UI 相容，畫面以 index+1 為準
+## 正式版關卡（tools/campaign.py）：每一關加入新東西，再和學過的混在一起
 const LEVELS: Array[Dictionary] = [
+	{"name": "01", "desc": "教學", "stars": 1,
+		"patterns": Campaign1Data.PATTERNS, "chunks": Campaign1Data.CHUNKS,
+		"background_profile": "calm_city"},
+]
+
+## 封存的舊關卡（scripts/level/archive/，tools/gen_demo.py、tools/ride_levels.py）：選單不顯示，
+## 用 level_index = LEVELS.size() + 封存序號 仍可載入（測試、參考用）
+const ARCHIVE: Array[Dictionary] = [
 	{"name": "01", "desc": "", "stars": 1,
 		"patterns": Demo1Data.PATTERNS, "chunks": Demo1Data.CHUNKS,
 		"background_profile": "calm_city"},
@@ -49,24 +58,34 @@ const LEVELS: Array[Dictionary] = [
 		"background_profile": "music_festival"},
 	{"name": "04", "desc": "", "stars": 1,
 		"patterns": Demo6Data.PATTERNS, "chunks": Demo6Data.CHUNKS},
-	{"name": "05", "desc": "", "stars": 2,
-		"patterns": TempoCourseData.PATTERNS, "chunks": TempoCourseData.CHUNKS, "tempo_stage": true},
-	{"name": "06", "desc": "", "stars": 3,
+	{"name": "05", "desc": "", "stars": 3,
 		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true},
 	## 試作關（tools/ride_levels.py）：持續好幾拍的搭乘機關
-	{"name": "07", "desc": "", "stars": 2,
+	{"name": "06", "desc": "", "stars": 2,
 		"patterns": RideTrampolineData.PATTERNS, "chunks": RideTrampolineData.CHUNKS,
 		"background_profile": "calm_city"},
-	{"name": "08", "desc": "", "stars": 2,
+	{"name": "07", "desc": "", "stars": 2,
 		"patterns": RideSwingData.PATTERNS, "chunks": RideSwingData.CHUNKS,
 		"background_profile": "sakura_park"},
-	{"name": "09", "desc": "", "stars": 2,
+	{"name": "08", "desc": "", "stars": 2,
 		"patterns": RideMinecartData.PATTERNS, "chunks": RideMinecartData.CHUNKS,
 		"background_profile": "music_festival"},
-	{"name": "10", "desc": "", "stars": 3,
+	{"name": "09", "desc": "", "stars": 3,
 		"patterns": RideMixedData.PATTERNS, "chunks": RideMixedData.CHUNKS,
 		"background_profile": "calm_city"},
 ]
+
+
+## 關卡資料：先查正式版，超出範圍就是封存關卡
+static func level_info(index: int) -> Dictionary:
+	if index < LEVELS.size():
+		return LEVELS[index]
+	return ARCHIVE[index - LEVELS.size()]
+
+
+static func total_count() -> int:
+	return LEVELS.size() + ARCHIVE.size()
+
 
 ## 同一種機關（含不同按法）在整條關卡線上，前幾次才保留提示文字
 const MECHANIC_HINT_LIMIT := 2
@@ -96,8 +115,10 @@ static func mechanic_key(chunk: Dictionary) -> String:
 ## 統計到 level 之前，各機關已出現幾次（含更早關卡）
 static func _mechanic_counts_before(level: int) -> Dictionary:
 	var seen: Dictionary = {}
-	for i in mini(maxi(level, 0), LEVELS.size()):
-		for chunk: Dictionary in LEVELS[i]["chunks"]:
+	## 封存關卡只算封存區裡更早的關，不受正式版影響
+	var first := 0 if level < LEVELS.size() else LEVELS.size()
+	for i in range(first, mini(maxi(level, 0), total_count())):
+		for chunk: Dictionary in level_info(i)["chunks"]:
 			var key := mechanic_key(chunk)
 			if key == "":
 				continue
@@ -108,9 +129,9 @@ static func _mechanic_counts_before(level: int) -> Dictionary:
 ## 關卡各段落標題（hint 第一行）
 static func section_titles(level: int) -> PackedStringArray:
 	var out: PackedStringArray = []
-	if level < 0 or level >= LEVELS.size():
+	if level < 0 or level >= total_count():
 		return out
-	for chunk: Dictionary in LEVELS[level]["chunks"]:
+	for chunk: Dictionary in level_info(level)["chunks"]:
 		var text := String(chunk.get("hint", "")).strip_edges()
 		var title := text.split("\n")[0] if not text.is_empty() else "（無標題）"
 		out.append(title)
@@ -119,7 +140,7 @@ static func section_titles(level: int) -> PackedStringArray:
 
 ## 把指定關卡的所有區塊拼成一張完整的字元地圖，並回傳提示範圍與音符
 static func build(level: int) -> Dictionary:
-	var info: Dictionary = LEVELS[level]
+	var info: Dictionary = level_info(level)
 	var height := HEIGHT
 	for chunk: Dictionary in info["chunks"]:
 		height = maxi(height, int(chunk.get("row_offset", 0)) + chunk["rows"].size())

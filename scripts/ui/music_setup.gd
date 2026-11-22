@@ -40,10 +40,12 @@ func _ready() -> void:
 	Engine.time_scale = 1.0
 	Conductor.stop()
 	_preview = AudioStreamPlayer.new()
+	_preview.bus = "Music"
 	_preview.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 	_preview.volume_db = -5.0
 	add_child(_preview)
 	_click = AudioStreamPlayer.new()
+	_click.bus = "SFX"
 	_click.stream = load("res://assets/sfx/block.wav")
 	_click.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 	_click.volume_db = -14.0

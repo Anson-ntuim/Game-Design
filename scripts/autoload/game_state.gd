@@ -99,6 +99,13 @@ var difficulty: int = 1
 var quality: int = 2
 ## 整體風格索引（目前固定心動之城）
 var visual_theme: int = 0
+## 音量（0～1，線性）：音樂走 Music 匯流排、音效走 SFX 匯流排
+var music_volume: float = 0.8
+var sfx_volume: float = 0.8
+## 預設自動往右跑（玩家只管跳和衝刺）；關掉就改成方向鍵手動移動
+var auto_run: bool = true
+## 鏡頭晃動、節拍縮放等畫面震動（問卷反映會頭暈、看不清判定，預設關）
+var screen_shake: bool = false
 ## 音訊延遲校正（毫秒）。正＝聲音比畫面晚，負＝聲音比畫面早。範圍約 ±300ms
 var audio_offset_ms: float = 0.0
 const AUDIO_OFFSET_MIN := -300.0
@@ -148,14 +155,64 @@ var _cue_keys: Dictionary = {}
 func _ready() -> void:
 	get_window().title = GAME_TITLE
 	_setup_input()
+	_ensure_buses()
 	_load_records()
 	_apply_audio_offset()
 	_apply_quality()
+	_apply_volumes()
 	Conductor.section_changed.connect(_on_section_changed)
 	for i in 12:
 		var p := AudioStreamPlayer.new()
+		p.bus = "SFX"
 		add_child(p)
 		_sfx_players.append(p)
+	var music_player := Conductor.get("_player") as AudioStreamPlayer
+	if music_player:
+		music_player.bus = "Music"
+
+
+## 執行時建立 Music、SFX 兩條匯流排（專案沒有 bus layout 檔）
+static func _ensure_buses() -> void:
+	for bus_name: String in ["Music", "SFX"]:
+		if AudioServer.get_bus_index(bus_name) == -1:
+			AudioServer.add_bus()
+			var idx := AudioServer.bus_count - 1
+			AudioServer.set_bus_name(idx, bus_name)
+			AudioServer.set_bus_send(idx, "Master")
+
+
+func _apply_volumes() -> void:
+	for pair: Array in [["Music", music_volume], ["SFX", sfx_volume]]:
+		var idx := AudioServer.get_bus_index(String(pair[0]))
+		if idx == -1:
+			continue
+		var v := clampf(float(pair[1]), 0.0, 1.0)
+		AudioServer.set_bus_mute(idx, v <= 0.001)
+		AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(v, 0.001)))
+
+
+func set_music_volume(v: float, persist: bool = true) -> void:
+	music_volume = clampf(snappedf(v, 0.1), 0.0, 1.0)
+	_apply_volumes()
+	if persist:
+		_save()
+
+
+func set_sfx_volume(v: float, persist: bool = true) -> void:
+	sfx_volume = clampf(snappedf(v, 0.1), 0.0, 1.0)
+	_apply_volumes()
+	if persist:
+		_save()
+
+
+func set_auto_run(on: bool) -> void:
+	auto_run = on
+	_save()
+
+
+func set_screen_shake(on: bool) -> void:
+	screen_shake = on
+	_save()
 
 
 func set_audio_offset_ms(ms: float, persist: bool = true) -> void:
@@ -417,6 +474,11 @@ func quality_float(key: String, default: float = 0.0) -> float:
 
 
 ## 演出強度 0~1：低畫質幾乎靜止，高畫質全開（脈動、標題彈跳、鏡頭 punch…）
+## 鏡頭晃動倍率：設定關掉（預設）就是 0，打開也只用 35%
+func shake_amount() -> float:
+	return 0.35 if screen_shake and quality_flag("shake", true) else 0.0
+
+
 func anim_amount() -> float:
 	return quality_float("anim", 1.0)
 
@@ -471,12 +533,16 @@ func skin_frame(pose: String, index: int = -1) -> Texture2D:
 
 func _save() -> void:
 	var cfg := ConfigFile.new()
-	cfg.set_value("settings", "level_order_version", 2)
+	cfg.set_value("settings", "level_order_version", 4)
 	cfg.set_value("settings", "skin", skin)
 	cfg.set_value("settings", "difficulty", difficulty)
 	cfg.set_value("settings", "quality", quality)
 	cfg.set_value("settings", "visual_theme", visual_theme)
 	cfg.set_value("settings", "audio_offset_ms", audio_offset_ms)
+	cfg.set_value("settings", "music_volume", music_volume)
+	cfg.set_value("settings", "sfx_volume", sfx_volume)
+	cfg.set_value("settings", "auto_run", auto_run)
+	cfg.set_value("settings", "screen_shake", screen_shake)
 	cfg.set_value("settings", "prefer_reference_tempo", Conductor.prefer_reference_tempo)
 	for k: int in records:
 		cfg.set_value("level_%d" % k, "time", records[k]["time"])
@@ -495,14 +561,27 @@ func _load_records() -> void:
 	quality = clampi(int(cfg.get_value("settings", "quality", default_quality)), 0, QUALITIES.size() - 1)
 	visual_theme = 0
 	audio_offset_ms = clampf(float(cfg.get_value("settings", "audio_offset_ms", 0.0)), AUDIO_OFFSET_MIN, AUDIO_OFFSET_MAX)
+	music_volume = clampf(float(cfg.get_value("settings", "music_volume", 0.8)), 0.0, 1.0)
+	sfx_volume = clampf(float(cfg.get_value("settings", "sfx_volume", 0.8)), 0.0, 1.0)
+	auto_run = bool(cfg.get_value("settings", "auto_run", true))
+	screen_shake = bool(cfg.get_value("settings", "screen_shake", false))
 	Conductor.prefer_reference_tempo = bool(cfg.get_value("settings", "prefer_reference_tempo", false))
 	var order_version := int(cfg.get_value("settings", "level_order_version", 1))
 	records.clear()
+	## 第 4 版：關卡全部重新設計，舊關卡封存，舊紀錄不再對應任何關卡
+	if order_version < 4:
+		return
 	for section in cfg.get_sections():
 		if section.begins_with("level_"):
 			var index := int(section.trim_prefix("level_"))
 			if order_version < 2 and index >= 4:
 				index += 1
+			## 第 3 版刪掉了第五關（變速關）：它的紀錄丟掉，後面的關卡往前一號
+			if order_version < 3:
+				if index == 4:
+					continue
+				if index > 4:
+					index -= 1
 			records[index] = {
 				"time": float(cfg.get_value(section, "time", 0.0)),
 				"deaths": int(cfg.get_value(section, "deaths", 0)),

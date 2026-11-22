@@ -2,7 +2,7 @@
 """產生三個「搭乘機關」試作關：彈簧床、盪鞦韆、礦車軌道。
 
 用法：python3 tools/ride_levels.py --write
-輸出 scripts/level/ride_trampoline_data.gd、ride_swing_data.gd、ride_minecart_data.gd、ride_mixed_data.gd。
+輸出（已封存）scripts/level/archive/ride_trampoline_data.gd、ride_swing_data.gd、ride_minecart_data.gd、ride_mixed_data.gd。
 
 座標：1 格 = 40 px，每段 20 列。機關參數格式見 scripts/level/level_data.gd。
 """
@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "scripts" / "level"
+OUT = ROOT / "scripts" / "level" / "archive"
 ROWS = 20
 
 
@@ -34,6 +34,24 @@ class Canvas:
 
     def rows(self) -> list[str]:
         return ["".join(r) for r in self.g]
+
+
+# 每關的節奏型（目前只有起跳旗）；render 時寫進 PATTERNS
+PATTERNS: dict = {}
+FLAG_CHARS = "fghijklmn"
+## 自動前進時，旗子讓玩家在段落左端 +3.5 格停下，GO 前半拍出發（同 tools/gen_level3.py 的 START）
+SWING_JUMP_BEAT = 1.0
+
+
+def add_flag(canvas: Canvas, ground_row: int, jumps: list[float]) -> list:
+    """在第 5 欄放起跳旗；jumps = GO 後第幾拍起跳（示範與機器人照這個按）。回傳 plan。"""
+    demo = ["."] * 16
+    for b in jumps:
+        demo[round(b * 2)] = "L"
+    ch = FLAG_CHARS[len(PATTERNS)]
+    PATTERNS[ch] = {"kind": "flag", "notes": "", "demo": "".join(demo)}
+    canvas.put(5, ground_row - 1, ch)
+    return [[b, "L", round(140 + 155 * (b + 0.5))] for b in jumps]
 
 
 def chunk(hint: str, canvas: Canvas, mechanic: str = "", **extra) -> dict:
@@ -118,23 +136,26 @@ def swing_level() -> list[dict]:
         c, "swing_intro"))
 
     c = Canvas(34).fill(0, 8, GROUND, 19).fill(21, 33, GROUND, 19)
-    c.put(3, GROUND - 1, "C")
+    c.put(0, GROUND - 1, "C")
+    plan = add_flag(c, GROUND, [SWING_JUMP_BEAT])
     chunks.append(chunk(
-        "盪到最高再放手\n鞦韆一小節（4 拍）來回一次。星星是往前最高的位置，盪到最高那一拍按跳才飛得過去",
-        c, "swing_1", swings=[[12.5, 5, 4, 4, 1, 0]]))
+        "盪到最高再放手\n旗子前會停下，GO 後一拍在高台邊起跳抓鞦韆。星星是往前最高的位置，盪到最高那一拍按跳才飛得過去",
+        c, "swing_1", swings=[[12.5, 5, 4, 4, 1, 0]], plan=plan))
 
     # 第二座比第一座晚 3 拍到頂：第 0 拍放手、飛行中抓住、第 3 拍再放手
     c = Canvas(46).fill(0, 8, GROUND, 19).fill(34, 45, GROUND, 19)
-    c.put(3, GROUND - 1, "C")
+    c.put(0, GROUND - 1, "C")
+    plan = add_flag(c, GROUND, [SWING_JUMP_BEAT])
     chunks.append(chunk(
         "鞦韆接力\n第一座放手後在空中抓住第二座，第二座晚三拍到頂：按、（三拍）、按",
-        c, "swing_2", swings=[[12.5, 5, 4, 4, 1, 0], [25.5, 5.5, 3.5, 4, 1, 3]]))
+        c, "swing_2", swings=[[12.5, 5, 4, 4, 1, 0], [25.5, 5.5, 3.5, 4, 1, 3]], plan=plan))
 
     c = Canvas(33).fill(0, 8, GROUND, 19).fill(21, 32, 10, 19)
-    c.put(3, GROUND - 1, "C")
+    c.put(0, GROUND - 1, "C")
+    plan = add_flag(c, GROUND, [SWING_JUMP_BEAT])
     chunks.append(chunk(
         "慢鞦韆\n這座來回要兩小節（8 拍），抓住後慢慢數，到最高那一拍再放手，目標比較高",
-        c, "swing_3", swings=[[12.5, 4, 5, 8, 1, 0]]))
+        c, "swing_3", swings=[[12.5, 4, 5, 8, 1, 0]], plan=plan))
 
     c = Canvas(14).fill(0, 13, 10, 19)
     c.put(6, 9, "G")
@@ -239,12 +260,17 @@ def mixed_level() -> list[dict]:
         "機關大集合\n彈簧床、盪鞦韆、礦車串在一起，每換一種機關都要重新抓節奏",
         c, "mix_intro"))
 
-    # 彈兩段上高台，馬上接鞦韆飛過坑
-    c = Canvas(46).fill(0, 7, FLOOR, 19).fill(8, 12, 17, 19).fill(13, 21, LEDGE, 19).fill(34, 45, LEDGE, 19)
+    # 彈兩段上高台
+    c = Canvas(22).fill(0, 7, FLOOR, 19).fill(8, 12, 17, 19).fill(13, 21, LEDGE, 19)
     c.put(3, FLOOR - 1, "C")
     chunks.append(chunk(
-        "彈上去再盪過去\n彈簧床按兩次上高台，在高台邊跳上鞦韆，盪到最高那一拍放手",
-        c, "mix_1", trampolines=[[8, FLOOR, 5]], swings=[[25.5, LEDGE - 7, 4, 4, 1, 0]]))
+        "彈上去再盪過去\n彈簧床按兩次上高台，高台上的旗子停一下，GO 後一拍起跳抓鞦韆，盪到最高那一拍放手",
+        c, "mix_1", trampolines=[[8, FLOOR, 5]]))
+    # 高台上接鞦韆飛過坑（跟盪鞦韆關第一段同一個形狀，整體高 2 列）
+    c = Canvas(34).fill(0, 8, LEDGE, 19).fill(21, 33, LEDGE, 19)
+    c.put(0, LEDGE - 1, "C")
+    plan = add_flag(c, LEDGE, [SWING_JUMP_BEAT])
+    chunks.append(chunk("", c, "mix_1b", swings=[[12.5, LEDGE - 7, 4, 4, 1, 0]], plan=plan))
 
     # 鞦韆飛到對岸直接進礦車：尖刺、木箱、斷軌、空中木箱
     start, beats = 25.0, 11
@@ -254,16 +280,17 @@ def mixed_level() -> list[dict]:
     c = Canvas(width).fill(0, 8, LEDGE, 19).fill(21, width - 1, LEDGE, 19)
     for g0, g1 in gaps:
         c.fill(int(rail_x(start, g0)) - 1, int(rail_x(start, g1)) + 1, LEDGE, 19, " ")
-    c.put(3, LEDGE - 1, "C")
+    c.put(0, LEDGE - 1, "C")
+    plan = add_flag(c, LEDGE, [SWING_JUMP_BEAT])
     chunks.append(chunk(
         "盪進礦車\n落地後走進礦車。黃色跳、橘色敲：斷軌跳起來後，空中還有一個木箱要敲",
-        c, "mix_2", swings=[[12.5, LEDGE - 7, 4, 4, 1, 0]],
+        c, "mix_2", swings=[[12.5, LEDGE - 7, 4, 4, 1, 0]], plan=plan,
         rails=[{"points": [start, LEDGE, end, LEDGE], "speed": SPEED, "spikes": [3, 9],
                 "crates": [2, 5, 6.9], "gaps": gaps}]))
 
     # 從高台跳下去落在彈簧床上，一碰到就開始彈；按三次彈到最高的第 7 列
     c = Canvas(30).fill(0, 5, LEDGE, 19).fill(6, 7, FLOOR, 19).fill(8, 14, 17, 19).fill(15, 29, 7, 19)
-    c.put(2, LEDGE - 1, "C")
+    c.put(0, LEDGE - 1, "C")
     chunks.append(chunk(
         "跳下彈簧床\n從高台直接跳到床上，床會馬上把你彈起來；連按三次彈到最高",
         c, "mix_3", trampolines=[[8, FLOOR, 7]]))
@@ -294,9 +321,9 @@ def gd_value(v, indent: int) -> str:
     return json.dumps(v, ensure_ascii=False)
 
 
-def render(class_name: str, doc: str, chunks: list[dict]) -> str:
+def render(class_name: str, doc: str, chunks: list[dict], patterns: dict) -> str:
     lines = [f"class_name {class_name}", "extends RefCounted", f"## {doc}",
-             "## 由 tools/ride_levels.py 產生。", "", "const PATTERNS: Dictionary = {}", "",
+             "## 由 tools/ride_levels.py 產生。", "", "const PATTERNS: Dictionary = " + gd_value(patterns, 0), "",
              "const CHUNKS: Array[Dictionary] = ["]
     for ch in chunks:
         lines.append("\t" + gd_value(ch, 1) + ",")
@@ -317,7 +344,9 @@ def main() -> None:
     ap.add_argument("--write", action="store_true")
     args = ap.parse_args()
     for cls, fname, doc, fn in LEVELS:
-        text = render(cls, doc, fn())
+        PATTERNS.clear()
+        chunks = fn()
+        text = render(cls, doc, chunks, dict(PATTERNS))
         if args.write:
             (OUT / fname).write_text(text, encoding="utf-8")
             print("wrote", fname)

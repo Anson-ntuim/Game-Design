@@ -14,16 +14,41 @@ BODY = (24.0, 44.0)
 HURT = (18.0, 38.0)
 
 RUN = 310.0
-JUMP_SPEED = 560.0
-JUMP_MIN = 0.08
-JUMP_MAX = 0.2
-JUMP_COMMIT = 0.22
+## 固定高度跳躍：不管按多久都是同一個拋物線，平地上剛好 JUMP_BEATS 拍落地（player.gd 要一起改）。
+## GRAVITY 是關卡資料裡的「標稱重力」（一般 2400、輕重力 1000），實際物理用 eff_gravity() 換算：
+## 一般重力 1 拍、輕重力 2 拍，跳躍高度都一樣是 JUMP_HEIGHT。
+JUMP_HEIGHT = 140.0
+JUMP_BEATS = 1.0
+NOMINAL_NORMAL = 2400.0
+NOMINAL_LIGHT = 1000.0
 GRAVITY = 2400.0
-MAX_FALL = 760.0
+# 舊參數保留給還在引用的工具；固定跳躍不再使用長短按
+JUMP_MIN = 0.0
+JUMP_MAX = 0.0
+JUMP_COMMIT = 0.0
+
+
+def jump_beats(nominal):
+    """標稱重力 → 平地跳躍滯空幾拍（2400 → 1 拍，1000 → 2 拍，中間線性）"""
+    t = (NOMINAL_NORMAL - nominal) / (NOMINAL_NORMAL - NOMINAL_LIGHT)
+    return JUMP_BEATS * (1.0 + min(max(t, 0.0), 1.0))
+
+
+def eff_gravity(nominal):
+    air = jump_beats(nominal) * SPB
+    return 8.0 * JUMP_HEIGHT / (air * air)
+
+
+def jump_speed(nominal):
+    return (2.0 * eff_gravity(nominal) * JUMP_HEIGHT) ** 0.5
+
+
+JUMP_SPEED = jump_speed(NOMINAL_NORMAL)
+MAX_FALL = JUMP_SPEED
 COYOTE = 0.08
 BUFFER = 0.1
-ORB_SPEED = 560.0
-ORB_MAX = 0.18
+ORB_SPEED = JUMP_SPEED
+ORB_MAX = 0.0
 DASH_SPEED = 850.0
 DASH_TIME = 0.2
 DASH_COOLDOWN = 0.55
@@ -136,13 +161,14 @@ class Sim:
                     return o, s
         return None, None
 
-    def begin_jump(self, speed, max_time):
-        self.jumping = True
+    def begin_jump(self, speed=None, max_time=0.0):
+        """固定拋物線：初速只由目前重力決定（speed 參數保留相容，不使用）"""
+        self.jumping = False
         self.elapsed = 0.0
-        self.jspeed = speed
-        self.jmax = max_time
-        self.cancelable = True
-        self.vy = -speed
+        self.jspeed = jump_speed(GRAVITY)
+        self.jmax = 0.0
+        self.cancelable = False
+        self.vy = -self.jspeed
         self.buffer = 0.0
         self.coyote = 0.0
 
@@ -205,7 +231,7 @@ class Sim:
                 if not holding:
                     self.vy = 0.0
         else:
-            self.vy = min(self.vy + GRAVITY * DT, MAX_FALL)
+            self.vy = min(self.vy + eff_gravity(GRAVITY) * DT, MAX_FALL)
             if self.cancelable and self.vy < 0 and not jump_held:
                 self.vy = 0.0
             if self.vy >= 0:

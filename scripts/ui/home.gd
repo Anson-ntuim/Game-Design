@@ -8,7 +8,7 @@ const CARD_GAP := 36.0
 
 enum Tab { LEVELS, DIFFICULTY, DISPLAY, MUSIC, OTHER }
 
-const TAB_LABELS: PackedStringArray = ["關卡選擇", "難度設定", "畫面設定", "自訂音樂", "其他設定"]
+const TAB_LABELS: PackedStringArray = ["關卡選擇", "難度設定", "畫面與聲音", "自訂音樂", "其他設定"]
 
 var _tab: Tab = Tab.LEVELS
 var _selected: int = 0
@@ -200,22 +200,50 @@ func _handle_display() -> void:
 		step = 1
 	if step == 0:
 		return
-	match _display_row:
-		0:
+	_step_display(_display_rows()[_display_row], step)
+
+
+func _step_display(id: String, step: int) -> void:
+	match id:
+		"quality":
 			var q := clampi(GameState.quality + step, 0, GameState.QUALITIES.size() - 1)
 			if q != GameState.quality:
 				GameState.set_quality(q)
 				_quality_bump = 1.0
 				GameState.play_sfx("pluck", 5.0, -8.0)
-		1:
-			if GameState.SKINS.size() > 1:
-				GameState.set_skin(GameState.skin + step)
-				_skin_bump = 1.0
-				GameState.play_sfx("pluck", 12.0, -6.0)
+		"skin":
+			GameState.set_skin(GameState.skin + step)
+			_skin_bump = 1.0
+			GameState.play_sfx("pluck", 12.0, -6.0)
+		"music":
+			GameState.set_music_volume(GameState.music_volume + 0.1 * step)
+			GameState.play_sfx("pluck", 5.0, -8.0)
+		"sfx":
+			GameState.set_sfx_volume(GameState.sfx_volume + 0.1 * step)
+			GameState.play_sfx("pluck", 5.0, -8.0)
+		"shake":
+			GameState.set_screen_shake(not GameState.screen_shake)
+			GameState.play_sfx("pluck", 7.0, -8.0)
+		"auto":
+			GameState.set_auto_run(not GameState.auto_run)
+			GameState.play_sfx("pluck", 7.0, -8.0)
+
+
+## 畫面設定的列：畫質、造型（有多套才顯示）、音樂音量、音效音量、畫面晃動、自動前進
+func _display_rows() -> Array[String]:
+	var rows: Array[String] = ["quality"]
+	if GameState.SKINS.size() > 1:
+		rows.append("skin")
+	rows.append_array(["music", "sfx", "shake", "auto"])
+	return rows
 
 
 func _display_row_count() -> int:
-	## 風格固定心動之城，畫面設定不再切主題
+	return _display_rows().size()
+
+
+## 前面幾列（畫質、造型）是大格，其餘是一行一格
+func _display_big_rows() -> int:
 	return 2 if GameState.SKINS.size() > 1 else 1
 
 
@@ -416,14 +444,21 @@ func _click_display(panel: Rect2, pos: Vector2) -> void:
 		if not r.has_point(pos):
 			continue
 		_display_row = i
-		match i:
-			0:
+		var id := _display_rows()[i]
+		match id:
+			"quality":
 				GameState.set_quality(posmod(GameState.quality + 1, GameState.QUALITIES.size()))
 				_quality_bump = 1.0
-			1:
+				GameState.play_sfx("pluck", 6.0, -8.0)
+			"skin":
 				GameState.set_skin(GameState.skin + 1)
 				_skin_bump = 1.0
-		GameState.play_sfx("pluck", 6.0, -8.0)
+				GameState.play_sfx("pluck", 6.0, -8.0)
+			"music", "sfx":
+				## 點左半邊調小、右半邊調大
+				_step_display(id, -1 if pos.x < r.get_center().x else 1)
+			_:
+				_step_display(id, 1)
 		return
 
 
@@ -441,7 +476,11 @@ func _tab_row_rect(nav: Rect2, index: int) -> Rect2:
 
 
 func _display_row_rect(panel: Rect2, index: int) -> Rect2:
-	return Rect2(panel.position.x + 24.0, panel.position.y + 64.0 + index * 108.0, panel.size.x - 48.0, 96.0)
+	var big := _display_big_rows()
+	if index < big:
+		return Rect2(panel.position.x + 24.0, panel.position.y + 64.0 + index * 108.0, panel.size.x - 48.0, 96.0)
+	var y := panel.position.y + 64.0 + big * 108.0 + (index - big) * 52.0
+	return Rect2(panel.position.x + 24.0, y, panel.size.x - 48.0, 44.0)
 
 
 func _other_row_rect(panel: Rect2, index: int) -> Rect2:
@@ -572,7 +611,7 @@ func _draw_card(ci: CanvasItem, i: int, center: Vector2, selected: bool, edge: C
 	ci.draw_set_transform(center, 0.0, Vector2(s, s))
 	var r := Rect2(-CARD_SIZE * 0.5, CARD_SIZE)
 	var accent := edge
-	if i == 3 or bool(info.get("tempo_stage", false)):
+	if i == 3:
 		accent = UiKit.FLOAT if selected else Color(0.55, 0.78, 0.95)
 	UiKit.panel(ci, r, accent if selected else Color(0.8, 0.85, 1.0),
 		0.55 + 0.35 * pulse if selected else 0.0, 1.0 if selected else 0.75, 16.0)
@@ -642,7 +681,7 @@ func _draw_difficulty(panel: Rect2, edge: Color, pulse: float) -> void:
 
 
 func _draw_display(panel: Rect2, edge: Color, pulse: float) -> void:
-	UiKit.text(_view, panel.position + Vector2(24, 36), -1, "畫面設定", 20, Color(edge, 0.9))
+	UiKit.text(_view, panel.position + Vector2(24, 36), -1, "畫面與聲音", 20, Color(edge, 0.9))
 	## 畫質
 	_draw_setting_block(_display_row_rect(panel, 0), "畫質", _display_row == 0, edge, _quality_bump, pulse)
 	var qn := GameState.QUALITIES.size()
@@ -659,6 +698,10 @@ func _draw_display(panel: Rect2, edge: Color, pulse: float) -> void:
 			String(GameState.QUALITIES[i]["name"]), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 16,
 			UiKit.INK if on else Color(1, 1, 1, 0.55))
 
+	var rows := _display_rows()
+	for i in range(_display_big_rows(), rows.size()):
+		_draw_compact_row(_display_row_rect(panel, i), rows[i], _display_row == i, edge, pulse)
+
 	if GameState.SKINS.size() > 1:
 		_draw_setting_block(_display_row_rect(panel, 1), "造型", _display_row == 1, edge, _skin_bump, pulse)
 		var sbox := _display_row_rect(panel, 1)
@@ -668,6 +711,29 @@ func _draw_display(panel: Rect2, edge: Color, pulse: float) -> void:
 			Vector2(1.45, 1.45), 0.0, Color.WHITE, pose)
 		UiKit.text(_view, sbox.position + Vector2(130, 62), sbox.size.x - 150,
 			String(GameState.SKINS[GameState.skin]["name"]), 22, Color.WHITE)
+
+
+func _draw_compact_row(box: Rect2, id: String, on: bool, edge: Color, pulse: float) -> void:
+	UiKit.panel(_view, box, edge, 0.35 if on else 0.08, 0.88 if on else 0.75, 10.0)
+	if on:
+		_view.draw_rect(Rect2(box.position.x + 4, box.position.y + 8, 3, box.size.y - 16), Color(edge, 0.7 + 0.3 * pulse))
+	var title: String = {"music": "音樂音量", "sfx": "音效音量", "shake": "畫面晃動", "auto": "自動前進"}[id]
+	UiKit.text(_view, box.position + Vector2(18, 28), -1, title, 15, Color(edge, 0.95 if on else 0.75))
+	var right := Rect2(box.position.x + 150.0, box.position.y + 10.0, box.size.x - 170.0, box.size.y - 20.0)
+	if id == "music" or id == "sfx":
+		var v: float = GameState.music_volume if id == "music" else GameState.sfx_volume
+		var bar := Rect2(right.position.x, right.get_center().y - 4.0, right.size.x - 64.0, 8.0)
+		_view.draw_rect(bar, Color(1, 1, 1, 0.12))
+		_view.draw_rect(Rect2(bar.position, Vector2(bar.size.x * v, bar.size.y)), Color(edge, 0.85))
+		_view.draw_string(UiKit.font(), Vector2(bar.end.x + 8.0, box.position.y + 29.0),
+			"%d%%" % roundi(v * 100.0), HORIZONTAL_ALIGNMENT_RIGHT, 56.0, 15, Color.WHITE)
+	else:
+		var value_on: bool = GameState.screen_shake if id == "shake" else GameState.auto_run
+		var label := "開" if value_on else "關"
+		if id == "auto":
+			label = "開（只管跳和衝刺）" if value_on else "關（方向鍵手動移動）"
+		_view.draw_string(UiKit.font(), Vector2(right.position.x, box.position.y + 29.0), label,
+			HORIZONTAL_ALIGNMENT_RIGHT, right.size.x, 15, Color(edge, 1.0) if value_on else Color(1, 1, 1, 0.6))
 
 
 func _draw_setting_block(box: Rect2, title: String, on: bool, edge: Color, bump: float, pulse: float) -> void:

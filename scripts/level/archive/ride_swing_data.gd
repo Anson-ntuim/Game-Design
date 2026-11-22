@@ -3,7 +3,23 @@ extends RefCounted
 ## 試作關：盪鞦韆（盪到最高那一拍放手）。
 ## 由 tools/ride_levels.py 產生。
 
-const PATTERNS: Dictionary = {}
+const PATTERNS: Dictionary = {
+	"f": {
+		"kind": "flag",
+		"notes": "",
+		"demo": "..L.............",
+	},
+	"g": {
+		"kind": "flag",
+		"notes": "",
+		"demo": "..L.............",
+	},
+	"h": {
+		"kind": "flag",
+		"notes": "",
+		"demo": "..L.............",
+	},
+}
 
 const CHUNKS: Array[Dictionary] = [
 	{
@@ -33,7 +49,7 @@ const CHUNKS: Array[Dictionary] = [
 		"mechanic": "swing_intro",
 	},
 	{
-		"hint": "盪到最高再放手\n鞦韆一小節（4 拍）來回一次。星星是往前最高的位置，盪到最高那一拍按跳才飛得過去",
+		"hint": "盪到最高再放手\n旗子前會停下，GO 後一拍在高台邊起跳抓鞦韆。星星是往前最高的位置，盪到最高那一拍按跳才飛得過去",
 		"rows": [
 			"                                  ",
 			"                                  ",
@@ -46,7 +62,7 @@ const CHUNKS: Array[Dictionary] = [
 			"                                  ",
 			"                                  ",
 			"                                  ",
-			"   C                              ",
+			"C    f                            ",
 			"#########            #############",
 			"#########            #############",
 			"#########            #############",
@@ -58,6 +74,7 @@ const CHUNKS: Array[Dictionary] = [
 		],
 		"mechanic": "swing_1",
 		"swings": [[12.5, 5, 4, 4, 1, 0]],
+		"plan": [[1.0, "L", 372]],
 	},
 	{
 		"hint": "鞦韆接力\n第一座放手後在空中抓住第二座，第二座晚三拍到頂：按、（三拍）、按",
@@ -73,7 +90,7 @@ const CHUNKS: Array[Dictionary] = [
 			"                                              ",
 			"                                              ",
 			"                                              ",
-			"   C                                          ",
+			"C    g                                        ",
 			"#########                         ############",
 			"#########                         ############",
 			"#########                         ############",
@@ -85,6 +102,7 @@ const CHUNKS: Array[Dictionary] = [
 		],
 		"mechanic": "swing_2",
 		"swings": [[12.5, 5, 4, 4, 1, 0], [25.5, 5.5, 3.5, 4, 1, 3]],
+		"plan": [[1.0, "L", 372]],
 	},
 	{
 		"hint": "慢鞦韆\n這座來回要兩小節（8 拍），抓住後慢慢數，到最高那一拍再放手，目標比較高",
@@ -100,7 +118,7 @@ const CHUNKS: Array[Dictionary] = [
 			"                                 ",
 			"                                 ",
 			"                     ############",
-			"   C                 ############",
+			"C    h               ############",
 			"#########            ############",
 			"#########            ############",
 			"#########            ############",
@@ -112,6 +130,7 @@ const CHUNKS: Array[Dictionary] = [
 		],
 		"mechanic": "swing_3",
 		"swings": [[12.5, 4, 5, 8, 1, 0]],
+		"plan": [[1.0, "L", 372]],
 	},
 	{
 		"hint": "終點",

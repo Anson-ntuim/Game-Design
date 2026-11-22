@@ -18,6 +18,8 @@ var _ferris_angle: float = 0.0
 
 
 func _ready() -> void:
+	## 大張背景縮小畫：用 mipmap 取樣，捲動時不會閃爍（背景圖 .import 已開 mipmaps）
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	z_index = -100
 	if not GameState.visual_theme_changed.is_connected(_on_theme_changed):
 		GameState.visual_theme_changed.connect(_on_theme_changed)
@@ -486,7 +488,8 @@ func _draw_ruins(tl: Vector2, size: Vector2, center: Vector2, pulse: float, deta
 
 
 func _draw_motes(tl: Vector2, size: Vector2, center: Vector2, b: float, pulse: float, groove: float) -> void:
-	var factor := 0.8
+	## 光點只跟鏡頭移動一點點（原本 0.8 轉身時會整片掃過螢幕，像雪糊到臉上）
+	var factor := 0.15
 	var shift := center.x * (1.0 - factor)
 	var base_count := 10 if quiet else GameState.quality_int("bg_motes", 36)
 	var count := base_count + (int(groove * 20.0) if not quiet and GameState.quality_int("detail", 2) >= 2 else 0)
@@ -499,7 +502,7 @@ func _draw_motes(tl: Vector2, size: Vector2, center: Vector2, b: float, pulse: f
 		var span := size.x + 200.0
 		var lx := fposmod(_hash(i) * 3000.0 - (tl.x - shift), span)
 		var x := tl.x + lx - 100.0
-		var y := tl.y + fposmod(_hash(i + 300) * size.y - b * (drift + _hash(i + 7) * (6.0 if quiet else 20.0)), size.y)
+		var y := tl.y + fposmod(_hash(i + 300) * size.y - b * (drift + _hash(i + 7) * (6.0 if quiet else 20.0)) - center.y * 0.15, size.y)
 		var r := (1.0 + _hash(i + 11) * 1.4) if quiet else (1.5 + _hash(i + 11) * 2.0 + pulse * 1.5)
 		var a := (0.12 + 0.1 * pulse) if quiet else (0.25 + 0.45 * pulse)
 		draw_circle(Vector2(x, y), r, Color(edge.lerp(Color.WHITE, 0.5), a))

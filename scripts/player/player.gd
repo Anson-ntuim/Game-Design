@@ -1,8 +1,10 @@
 class_name Player
 extends CharacterBody2D
-## 仿 Hollow Knight 的角色控制器。
-## 重點：沒有加速度的水平移動、按住越久跳越高、放開跳躍鍵立即停止上升、
-## 固定距離衝刺、蹬牆跳。沒有常駐二段跳，空中要再跳只能靠關卡裡的節奏音符。
+## 節奏跑酷角色控制器。
+## 預設自動往右跑（F 可切換成手動）；跳躍高度固定，平地上起跳後剛好 JUMP_BEATS 拍落地，
+## 不管按多久都一樣，玩家只要決定「哪一拍跳」。固定距離衝刺、蹬牆跳。
+## 沒有常駐二段跳，空中要再跳只能靠關卡裡的節奏音符。
+## 物理和 tools/sim_player.py 一致（關卡地形由它模擬產生），改數值要兩邊一起改。
 ##
 ## 角色本身不判定按鍵時機，節奏完全來自關卡：
 ##   節奏音符只在亮起的那一拍能用、光牆只在特定拍打開、節拍鼓在鼓點上把人彈高。
@@ -37,22 +39,17 @@ const APEX_SPEED := 150.0
 @export var run_speed: float = 310.0
 
 @export_group("Jump")
-## 按住跳躍時維持的固定上升速度
-@export var jump_speed: float = 560.0
-## 最短跳躍時間（輕點跳躍的高度）
-@export var jump_min_time: float = 0.08
-## 最長可維持上升的時間（按住到底的高度）
-@export var jump_max_time: float = 0.2
-## 按住超過這個時間就算長按：之後放開也會跳到最高（tools/sim_player.py 的 JUMP_COMMIT 要一起改）
-@export var jump_commit_time: float = 0.22
+## 固定跳躍：高度（px）與一般重力下的滯空拍數。重力「標稱值」2400 = 1 拍、1000（輕重力）= 2 拍，高度不變
+const JUMP_HEIGHT := 140.0
+const JUMP_BEATS := 1.0
+const NOMINAL_NORMAL := 2400.0
+const NOMINAL_LIGHT := 1000.0
+## 一拍的世界時間（世界和音樂一起變速）
+const WORLD_SPB := 0.5
+## 標稱重力（關卡資料、重力區用的數字）；實際物理用 eff_gravity()
 @export var gravity: float = 2400.0
-@export var max_fall_speed: float = 760.0
 @export var coyote_time: float = 0.08
 @export var jump_buffer_time: float = 0.1
-
-@export_group("Rhythm Orb")
-@export var orb_jump_speed: float = 560.0
-@export var orb_jump_max_time: float = 0.18
 
 @export_group("Wall")
 @export var can_wall_jump: bool = true
@@ -72,7 +69,7 @@ const APEX_SPEED := 150.0
 @export var beat_pad_time: float = 0.2
 
 var facing: int = 1
-## F 切換自動往右跑；手動方向輸入、死亡和示範會取消。
+## 自動往右跑（預設開，GameState.auto_run）。按住方向鍵只會暫時改方向，放開就繼續自動跑；F 切換自動／手動。
 var auto_running: bool = false
 ## 自動跑時在旗子前等候 3、2、1、GO（由 CueFlag 開關）
 var auto_flag_wait: bool = false
@@ -174,6 +171,7 @@ func _ready() -> void:
 
 	checkpoint_position = position
 	_gravity_strength = gravity
+	auto_running = GameState.auto_run
 
 
 func _physics_process(delta: float) -> void:
@@ -261,33 +259,16 @@ func _physics_process(delta: float) -> void:
 				recent_air_presses.append(Conductor.song_beat)
 				if recent_air_presses.size() > 8:
 					recent_air_presses.pop_front()
-	# 垂直：按住期間維持固定上升速度，放開就把上升速度歸零；按滿 jump_commit_time 就一定跳到最高
-	var jump_held := Input.is_action_pressed("jump")
-	# 等速上升（jump_max_time）結束後還在往上的期間也要計時，門檻可以比 jump_max_time 長
-	if _jumping or _jump_cancelable:
-		_jump_elapsed += delta
-		if jump_held and _jump_cancelable:
-			last_jump["held"] = _jump_elapsed
-			if _jump_elapsed >= jump_commit_time:
-				_jump_cancelable = false
-				last_jump["long"] = true
-				if _hold_note != INF:
-					GameState.play_sfx("hold", _hold_note, -9.0)
+	# 垂直：跳躍是固定拋物線（放開跳鍵不會切短）；只有節拍鼓有一小段等速上升
 	_tick_gravity_blend(delta)
 	if _jumping:
-		var holding := jump_held or not _jump_cancelable
-		if _jump_elapsed < jump_min_time or (holding and _jump_elapsed < _jump_max_current):
+		_jump_elapsed += delta
+		if _jump_elapsed < _jump_max_current:
 			velocity.y = -_jump_speed_current
 		else:
 			_jumping = false
-			if not holding:
-				velocity.y = 0.0
 	else:
-		velocity.y = minf(velocity.y + _gravity_strength * delta, max_fall_speed)
-		if _jump_cancelable and velocity.y < 0.0 and not jump_held:
-			velocity.y = 0.0
-		if velocity.y >= 0.0:
-			_jump_cancelable = false
+		velocity.y = minf(velocity.y + eff_gravity() * delta, max_fall_speed())
 
 	if _wall_sliding:
 		velocity.y = minf(velocity.y, wall_slide_speed)
@@ -372,7 +353,7 @@ func _overlapping_gate() -> bool:
 
 func _input_dir() -> int:
 	if watching:
-		auto_running = false
+		## 看示範時暫停自動跑（不改 auto_running，看完會接著自動跑）
 		auto_flag_wait = false
 		var dx := watch_x - global_position.x
 		return 0 if absf(dx) < 4.0 else (1 if dx > 0.0 else -1)
@@ -380,11 +361,9 @@ func _input_dir() -> int:
 		var dx := watch_x - global_position.x
 		return 0 if absf(dx) < 4.0 else (1 if dx > 0.0 else -1)
 	var x := Input.get_axis("move_left", "move_right")
-	if Input.is_action_pressed("move_left") or Input.is_action_pressed("move_right"):
-		auto_running = false
-		auto_flag_wait = false
-	elif Input.is_action_just_pressed("auto_run"):
+	if Input.is_action_just_pressed("auto_run"):
 		auto_running = not auto_running
+		GameState.set_auto_run(auto_running)
 		if not auto_running:
 			auto_flag_wait = false
 	if x > 0.3:
@@ -419,8 +398,7 @@ func _floor_pad() -> Node:
 func _ground_jump() -> void:
 	var note := GameState.next_note()
 	GameState.play_sfx("pluck", note)
-	_begin_jump(jump_speed, jump_max_time, true, "ground")
-	_hold_note = note
+	_begin_jump(0.0, 0.0, false, "ground")
 
 
 ## 站在節拍鼓上時，鼓點一響就被彈高（由 BeatPad 呼叫）
@@ -523,8 +501,7 @@ func _orb_jump(orb: Node) -> void:
 	_wing_timer = 0.3
 	_drum_timer = DRUM_POSE_TIME
 	_air_dash = true
-	_begin_jump(orb_jump_speed, orb_jump_max_time, true, "orb")
-	_hold_note = note
+	_begin_jump(0.0, 0.0, false, "orb")
 
 
 ## 碰著還沒亮（或已用過）的音符按跳：出聲提示按錯拍
@@ -560,19 +537,46 @@ func _check_rings() -> void:
 			last_miss = {"what": "ring", "beat": _dash_beat, "off": BeatPattern.offset(ring.notes, _dash_beat)}
 
 
+## 地面、音符、蹬牆跳都是同一條固定拋物線（speed／max_time 不使用）；
+## 節拍鼓（kind = "pad"）才用 speed 等速上升 max_time 秒
 func _begin_jump(speed: float, max_time: float, cancelable: bool, kind: String) -> void:
 	_launch_active = false
-	_jumping = true
 	_jump_elapsed = 0.0
 	_hold_note = INF
-	last_jump = {"beat": Conductor.song_beat, "x": global_position.x, "kind": kind, "long": not cancelable, "held": 0.0}
-	_jump_speed_current = speed
-	_jump_max_current = max_time
-	_jump_cancelable = cancelable
-	velocity.y = -speed
+	last_jump = {"beat": Conductor.song_beat, "x": global_position.x, "kind": kind, "long": true, "held": 0.0}
+	_jump_cancelable = false
+	if kind == "pad":
+		_jumping = true
+		_jump_speed_current = speed
+		_jump_max_current = max_time
+		velocity.y = -speed
+	else:
+		_jumping = false
+		velocity.y = -fixed_jump_speed()
 	_jump_buffer = 0.0
 	_coyote = 0.0
 	_set_squash(Vector2(0.75, 1.3))
+
+
+## 標稱重力 → 平地跳躍滯空幾拍（2400 → 1 拍、1000 → 2 拍，中間線性；和 sim_player.jump_beats 相同）
+func jump_beats() -> float:
+	var t := (NOMINAL_NORMAL - _gravity_strength) / (NOMINAL_NORMAL - NOMINAL_LIGHT)
+	return JUMP_BEATS * (1.0 + clampf(t, 0.0, 1.0))
+
+
+func eff_gravity() -> float:
+	var air := jump_beats() * WORLD_SPB
+	return 8.0 * JUMP_HEIGHT / (air * air)
+
+
+func fixed_jump_speed() -> float:
+	return sqrt(2.0 * eff_gravity() * JUMP_HEIGHT)
+
+
+## 落下最快就是一般重力起跳的初速（拋物線上下對稱）
+static func max_fall_speed() -> float:
+	var air := JUMP_BEATS * WORLD_SPB
+	return 4.0 * JUMP_HEIGHT / air
 
 
 func _wall_jump() -> void:
@@ -581,8 +585,7 @@ func _wall_jump() -> void:
 	_wall_push_dir = -_wall_dir
 	_wall_push_timer = wall_jump_push_time
 	facing = _wall_push_dir
-	_begin_jump(jump_speed, jump_max_time * 0.9, true, "wall")
-	_hold_note = note
+	_begin_jump(0.0, 0.0, false, "wall")
 	velocity.x = _wall_push_dir * run_speed
 
 
@@ -676,6 +679,8 @@ func kill(source: Node = null) -> void:
 
 func respawn_at(pos: Vector2) -> void:
 	global_position = pos
+	## 瞬移：不要從死掉的位置插值滑過來
+	reset_physics_interpolation()
 	_gravity_strength = 2400.0
 	apply_gravity_mode(2400.0)
 	_reset_motion()
@@ -687,6 +692,7 @@ func respawn_at(pos: Vector2) -> void:
 	_invincible_timer = 1.0
 	control_locked = false
 	watching = false
+	auto_running = GameState.auto_run
 
 
 func _reset_motion() -> void:
@@ -782,7 +788,7 @@ func _draw() -> void:
 		if _dash_timer > 0.0:
 			tilt = 0.35 * juice
 		elif not is_on_floor():
-			tilt = clampf(velocity.y / max_fall_speed, -1.0, 1.0) * 0.18 * juice
+			tilt = clampf(velocity.y / max_fall_speed(), -1.0, 1.0) * 0.18 * juice
 		elif absf(velocity.x) > 10.0:
 			feet.y -= absf(sin(b * TAU)) * 4.0 * juice
 			tilt = (0.1 + sin(b * TAU) * 0.06) * juice
