@@ -136,6 +136,14 @@ var _stop_timer: float = 0.0
 var _start_timer: float = 0.0
 var _was_running: bool = false
 var _hurtbox: Area2D
+## 搭乘中的機關（彈簧床、盪鞦韆、礦車）：搭乘期間由機關的 ride_step(player, delta) 決定位置，
+## 機關呼叫 end_ride() 放開角色並給一個初速。
+var ride: Node = null
+var ride_pose: String = "apex_0"
+var _ride_cooldown: float = 0.0
+## 從機關被拋出去時保留的水平速度，落地、碰牆、衝刺或再次起跳就結束
+var _launch_active: bool = false
+var _launch_vx: float = 0.0
 ## 低畫質時略過不變的重畫（節點位移仍由引擎帶動）
 var _draw_key: String = ""
 
@@ -176,12 +184,21 @@ func _physics_process(delta: float) -> void:
 		_update_visuals(delta)
 		return
 
+	if ride != null:
+		if is_instance_valid(ride):
+			ride.call("ride_step", self, delta)
+		else:
+			ride = null
+		_after_move(delta)
+		return
+
 	var on_floor := is_on_floor()
 	var input_x := _input_dir()
 
 	if on_floor:
 		_coyote = coyote_time
 		_air_dash = true
+		_launch_active = false
 		if not _was_on_floor:
 			_on_landed()
 	_was_on_floor = on_floor
@@ -189,6 +206,7 @@ func _physics_process(delta: float) -> void:
 	_wall_dir = 0 if on_floor else _detect_wall()
 	if can_wall_jump and _wall_dir != 0:
 		_air_dash = true
+		_launch_active = false
 
 	if Input.is_action_just_pressed("jump") and not watching:
 		_jump_buffer = jump_buffer_time
@@ -214,6 +232,11 @@ func _physics_process(delta: float) -> void:
 	# 水平：沒有加速度，放開方向鍵立刻停下（HK 的招牌手感）
 	if _wall_push_timer > 0.0:
 		velocity.x = _wall_push_dir * run_speed
+	elif _launch_active:
+		## 被拋出去的弧線固定，往反方向按只會煞車一半，避免一放手就失去距離
+		velocity.x = _launch_vx
+		if input_x != 0 and signf(input_x) != signf(_launch_vx):
+			velocity.x = _launch_vx * 0.5
 	else:
 		velocity.x = input_x * run_speed
 		if input_x != 0:
@@ -299,6 +322,7 @@ func _tick_timers(delta: float) -> void:
 	_hurt_timer = maxf(0.0, _hurt_timer - delta)
 	_stop_timer = maxf(0.0, _stop_timer - delta)
 	_start_timer = maxf(0.0, _start_timer - delta)
+	_ride_cooldown = maxf(0.0, _ride_cooldown - delta)
 	if _dash_timer > 0.0:
 		_dash_timer -= delta
 		if _dash_timer <= 0.0:
@@ -409,6 +433,52 @@ func launch_from_pad(pad: Node) -> bool:
 	return true
 
 
+## 機關能不能接手角色（剛被拋出去的短時間內不會又被同一個機關抓回去）
+func can_ride() -> bool:
+	return ride == null and not control_locked and not watching and _ride_cooldown <= 0.0 and _dash_timer <= 0.0
+
+
+func begin_ride(node: Node, pose: String = "apex_0") -> void:
+	ride = node
+	ride_pose = pose
+	velocity = Vector2.ZERO
+	_jumping = false
+	_jump_cancelable = false
+	_jump_buffer = 0.0
+	_launch_active = false
+	_wall_push_timer = 0.0
+	_air_dash = true
+	_trail.clear()
+	_set_squash(Vector2(1.2, 0.85))
+
+
+## 機關放開角色。carry = true 時，launch.x 會一路保持到落地（拋物線固定，關卡才算得準）
+func end_ride(launch: Vector2, carry: bool = true) -> void:
+	ride = null
+	_ride_cooldown = 0.25
+	velocity = launch
+	_launch_active = carry and absf(launch.x) > 1.0
+	_launch_vx = launch.x
+	if absf(launch.x) > 1.0:
+		facing = 1 if launch.x > 0.0 else -1
+	_jumping = false
+	_jump_cancelable = false
+	_jump_buffer = 0.0
+	_coyote = 0.0
+	_was_on_floor = false
+	if launch.y < -1.0:
+		_set_squash(Vector2(0.8, 1.25))
+
+
+## 搭乘機關用：目前的左右輸入（含自動跑）
+func ride_input_x() -> int:
+	return _input_dir()
+
+
+func fail_feedback() -> void:
+	_fail_puff = 0.35
+
+
 func _ready_orb() -> Node:
 	for area in _hurtbox.get_overlapping_areas():
 		if not area.is_in_group("rhythm_orb"):
@@ -491,6 +561,7 @@ func _check_rings() -> void:
 
 
 func _begin_jump(speed: float, max_time: float, cancelable: bool, kind: String) -> void:
+	_launch_active = false
 	_jumping = true
 	_jump_elapsed = 0.0
 	_hold_note = INF
@@ -536,6 +607,7 @@ func _try_dash(input_x: int, on_floor: bool) -> void:
 		recent_dashes.pop_front()
 	_ring_hit = null
 	_ring_missed = false
+	_launch_active = false
 	collision_mask = LAYER_WORLD
 	_open_gates()
 	if not on_floor:
@@ -620,6 +692,8 @@ func respawn_at(pos: Vector2) -> void:
 func _reset_motion() -> void:
 	auto_running = false
 	auto_flag_wait = false
+	ride = null
+	_launch_active = false
 	velocity = Vector2.ZERO
 	_jumping = false
 	_jump_cancelable = false
@@ -729,6 +803,8 @@ func _draw() -> void:
 func _pose() -> String:
 	if _hurt_timer > 0.0:
 		return "hurt_0"
+	if ride != null:
+		return ride_pose
 	if _dash_timer > 0.0:
 		if pose_frames() <= 1:
 			return "dash_1"

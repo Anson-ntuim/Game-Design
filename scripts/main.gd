@@ -422,6 +422,18 @@ func _build_level() -> void:
 		pad.world_bottom = level_size.y
 		pad.triggered.connect(_on_tempo_pad_triggered)
 		add_child(pad)
+	for t: Dictionary in data["trampolines"]:
+		var tr := Trampoline.new()
+		tr.setup(t["top_left"], t["width"], TILE)
+		add_child(tr)
+	for s: Dictionary in data["swings"]:
+		var sw := SwingRope.new()
+		sw.setup(s["anchor"], s["length"], s["period"], s["dir"], s["offset"])
+		add_child(sw)
+	for r: Dictionary in data["rails"]:
+		var rail := MineRail.new()
+		rail.setup(r["points"], r["speed"], r["spikes"], r["gaps"], r["beams"], r["marks"])
+		add_child(rail)
 	for o: Dictionary in data["orbs"]:
 		var orb := RhythmOrb.new()
 		orb.setup(o["pos"], o["notes"], o["tone"], int(o.get("subdiv", 2)))

@@ -53,6 +53,16 @@ const LEVELS: Array[Dictionary] = [
 		"patterns": TempoCourseData.PATTERNS, "chunks": TempoCourseData.CHUNKS, "tempo_stage": true},
 	{"name": "06", "desc": "", "stars": 3,
 		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true},
+	## 試作關（tools/ride_levels.py）：持續好幾拍的搭乘機關
+	{"name": "07", "desc": "", "stars": 2,
+		"patterns": RideTrampolineData.PATTERNS, "chunks": RideTrampolineData.CHUNKS,
+		"background_profile": "calm_city"},
+	{"name": "08", "desc": "", "stars": 2,
+		"patterns": RideSwingData.PATTERNS, "chunks": RideSwingData.CHUNKS,
+		"background_profile": "sakura_park"},
+	{"name": "09", "desc": "", "stars": 2,
+		"patterns": RideMinecartData.PATTERNS, "chunks": RideMinecartData.CHUNKS,
+		"background_profile": "music_festival"},
 ]
 
 ## 同一種機關（含不同按法）在整條關卡線上，前幾次才保留提示文字
@@ -123,6 +133,9 @@ static func build(level: int) -> Dictionary:
 	var gravity_zones: Array[Dictionary] = []
 	var path_blocks: Array[Dictionary] = []
 	var tempo_pads: Array[Dictionary] = []
+	var trampolines: Array[Dictionary] = []
+	var swings: Array[Dictionary] = []
+	var rails: Array[Dictionary] = []
 	## 和 hints 一一對應
 	var plans: Array = []
 	var x_offset := 0
@@ -171,6 +184,26 @@ static func build(level: int) -> Dictionary:
 		for pad: Array in chunk.get("tempo_pads", []):
 			tempo_pads.append({"pos": Vector2((x_offset + float(pad[0])) * TILE, float(pad[1]) * TILE + y_offset),
 				"bpm": float(pad[2]), "width": float(pad[3]) * TILE if pad.size() > 3 else 144.0})
+		## 彈簧床：[x, y, 寬]（格；y 是床面所在列，床面在這一列的頂端）
+		for t: Array in chunk.get("trampolines", []):
+			trampolines.append({"top_left": Vector2((x_offset + float(t[0])) * TILE, float(t[1]) * TILE + y_offset),
+				"width": float(t[2]) * TILE})
+		## 盪鞦韆：[錨點 x, 錨點 y, 繩長, 來回幾拍, 往前方向, 到頂拍位移]（格）
+		for s: Array in chunk.get("swings", []):
+			swings.append({"anchor": Vector2((x_offset + float(s[0])) * TILE, float(s[1]) * TILE + y_offset),
+				"length": float(s[2]) * TILE,
+				"period": float(s[3]) if s.size() > 3 else 2.0,
+				"dir": int(s[4]) if s.size() > 4 else 1,
+				"offset": float(s[5]) if s.size() > 5 else 0.0})
+		## 礦車軌道：{"points": [x0, y0, x1, y1, …]（格，軌面高度）, "speed": 每拍幾格, "spikes"／"beams": [拍], "gaps": [[起拍, 終拍]]}
+		for r: Dictionary in chunk.get("rails", []):
+			var pts := PackedVector2Array()
+			var raw: Array = r["points"]
+			for i in range(0, raw.size() - 1, 2):
+				pts.append(Vector2((x_offset + float(raw[i])) * TILE, float(raw[i + 1]) * TILE + y_offset))
+			rails.append({"points": pts, "speed": float(r.get("speed", 4.0)),
+				"spikes": r.get("spikes", []), "gaps": r.get("gaps", []), "beams": r.get("beams", []),
+				"marks": bool(r.get("marks", true))})
 		for o: Array in chunk.get("dual_orbs", []):
 			dual_orbs.append({
 				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE + y_offset),
@@ -219,4 +252,5 @@ static func build(level: int) -> Dictionary:
 		"gravity_zones": gravity_zones, "path_blocks": path_blocks,
 		"patterns": info["patterns"], "name": level_code(level), "stage": info.get("stage", false),
 		"tempo_pads": tempo_pads, "tempo_stage": bool(info.get("tempo_stage", false)),
+		"trampolines": trampolines, "swings": swings, "rails": rails,
 	}
