@@ -1,7 +1,7 @@
 extends SceneTree
 ## 試作關（彈簧床／盪鞦韆／礦車）自動遊玩：每段從長椅出發，用「完美玩家」的按法走到下一段。
 ## Godot --headless --path . --fixed-fps 120 --script res://tools/check_ride_levels.gd
-## 另外測：彈簧床不按會降段、鞦韆亂放手到不了對岸、礦車不跳會撞尖刺。
+## 另外測：彈簧床不按維持段數、鞦韆亂放手到不了對岸、礦車不跳會撞尖刺、不攻擊會撞木箱、亂敲會鎖住。
 
 const FIRST_RIDE_LEVEL := 6
 
@@ -33,14 +33,14 @@ func _run() -> void:
 	conductor = root.get_node("Conductor")
 	conductor.restore_builtin_music()
 	var levels = load("res://scripts/level/level_data.gd")
-	check(levels.LEVELS.size() == FIRST_RIDE_LEVEL + 3, "Three ride levels registered")
+	check(levels.LEVELS.size() == FIRST_RIDE_LEVEL + 4, "Four ride levels registered (incl. mixed)")
 	var swing_level: Dictionary = levels.build(FIRST_RIDE_LEVEL + 1)
 	var periods := []
 	for chunk: Dictionary in levels.LEVELS[FIRST_RIDE_LEVEL + 1]["chunks"]:
 		for sw: Array in chunk.get("swings", []):
 			periods.append(float(sw[3]))
 	check(periods.min() >= 4.0, "Swings take at least 4 beats per round trip %s" % [periods])
-	for index in range(FIRST_RIDE_LEVEL, FIRST_RIDE_LEVEL + 3):
+	for index in range(FIRST_RIDE_LEVEL, FIRST_RIDE_LEVEL + 4):
 		await _play_level(index)
 	await _negative_tests()
 	if had_save:
@@ -116,26 +116,34 @@ func _bot_jump(player: Node, state: Dictionary) -> bool:
 		for k: float in ride.spikes:
 			presses.append(k - 0.5)
 		for g: Array in ride.gaps:
-			if float(g[1]) - float(g[0]) > 0.9:
-				presses.append(float(g[0]) - 0.1)
-			else:
-				presses.append((float(g[0]) + float(g[1])) * 0.5 - 0.5)
+			presses.append((float(g[0]) + float(g[1])) * 0.5 - 0.5)
 		for pb: float in presses:
 			var key := "%s:%f" % [ride.get_instance_id(), pb]
 			if local >= pb and local < pb + 0.2 and not state.has(key):
 				state[key] = true
 				return true
 		return false
-	## 鞦韆關：走到高台邊緣就長按起跳去抓座椅
-	if state.get("jump_edges", []).size() > 0 and player.is_on_floor():
-		for edge: float in state["jump_edges"]:
-			if player.global_position.x >= edge - 14.0 and player.global_position.x < edge + 20.0:
-				state["hold_until"] = frame_clock + 40
-				return true
+	## 鞦韆關：走到高台邊緣，等座椅盪回來（往後到頂前 0.3~0.5 拍）再長按起跳去抓
+	if _at_swing_edge(player, state):
+		var sw: Node = state["first_swing"]
+		var frac := fposmod(b - float(sw.offset), float(sw.period))
+		var back := float(sw.period) * 0.5
+		if frac >= back * 0.5 and frac <= back * 0.6:
+			state["hold_until"] = frame_clock + 40
+			return true
 	return false
 
 
-## 礦車的衝刺：木箱前 0.2 拍、長斷軌起跳後半拍
+func _at_swing_edge(player: Node, state: Dictionary) -> bool:
+	if state.get("jump_edges", []).is_empty() or not player.is_on_floor():
+		return false
+	for edge: float in state["jump_edges"]:
+		if player.global_position.x >= edge - 14.0 and player.global_position.x < edge + 20.0:
+			return true
+	return false
+
+
+## 礦車上的攻擊（衝刺鍵）：木箱前 0.2 拍
 func _bot_dash(player: Node, state: Dictionary) -> bool:
 	var ride: Node = player.ride
 	if ride == null or not ride.is_in_group("mine_rail") or not ride.is_moving():
@@ -144,9 +152,6 @@ func _bot_dash(player: Node, state: Dictionary) -> bool:
 	var presses: Array[float] = []
 	for k: float in ride.crates:
 		presses.append(k - 0.2)
-	for g: Array in ride.gaps:
-		if float(g[1]) - float(g[0]) > 0.9:
-			presses.append(float(g[0]) + 0.4)
 	for pb: float in presses:
 		var key := "dash%s:%f" % [ride.get_instance_id(), pb]
 		if local >= pb and local < pb + 0.2 and not state.has(key):
@@ -168,7 +173,7 @@ func _play_level(index: int) -> void:
 		player.kill_y = float(hints[i]["kill_y"])
 		level.camera.position = start
 		var target_x := float(hints[i]["to"]) + 80.0
-		var state := {"jump_edges": _swing_edges(level, i)}
+		var state := {"jump_edges": _swing_edges(level, i), "first_swing": _first_swing(level, i)}
 		var reached := false
 		var died := false
 		for f in 60 * 40:
@@ -177,11 +182,13 @@ func _play_level(index: int) -> void:
 			var hold := frame_clock < int(state.get("hold_until", -1))
 			_set_action("jump", press or hold)
 			_set_action("dash", _bot_dash(player, state))
-			_set_action("move_right", player.ride == null or player.ride.is_in_group("trampoline"))
+			var wait := _at_swing_edge(player, state) and frame_clock >= int(state.get("hold_until", -1))
+			_set_action("move_right", (player.ride == null and not wait) or (player.ride != null and player.ride.is_in_group("trampoline")))
 			var was_ride = player.ride
 			await physics_frame
 			if OS.get_cmdline_user_args().has("--trace") and was_ride != player.ride:
 				print("    beat %.2f ride %s -> %s pos %s vel %s" % [conductor.song_beat, was_ride, player.ride, player.global_position, player.velocity])
+			_maybe_shot(level, player, index, i, f, state)
 			if player.control_locked:
 				died = not level._completed
 				reached = level._completed
@@ -198,6 +205,14 @@ func _play_level(index: int) -> void:
 			player.respawn_at(start)
 	level.queue_free()
 	await process_frame
+
+
+func _first_swing(level: Node, section: int) -> Node:
+	var h: Dictionary = level._hints[section]
+	for sw: Node in get_nodes_in_group("swing"):
+		if sw.global_position.x >= float(h["from"]) and sw.global_position.x <= float(h["to"]):
+			return sw
+	return null
 
 
 ## 鞦韆段：每座鞦韆前高台的右緣 x（px）
@@ -307,6 +322,66 @@ func _negative_tests() -> void:
 			break
 	_release_all()
 	check(rode and died and player.death_source != null and player.death_source.is_in_group("mine_rail"),
-		"Minecart: crates kill without a dash")
+		"Minecart: crates kill without an attack")
 	level.queue_free()
 	await process_frame
+
+	## 礦車：一直亂敲 → 揮空後鎖一拍，還是會撞上木箱
+	level = await _load_level(FIRST_RIDE_LEVEL + 2)
+	player = level.player
+	player.respawn_at(level._section_spawns[dash_section])
+	died = false
+	rode = false
+	var n := 0
+	for f in 60 * 20:
+		_tick()
+		n += 1
+		_set_action("move_right", player.ride == null and not rode)
+		_set_action("dash", rode and n % 20 < 2)
+		await physics_frame
+		rode = rode or (player.ride != null and player.ride.is_in_group("mine_rail"))
+		if player.control_locked:
+			died = true
+			break
+	_release_all()
+	check(rode and died, "Minecart: spamming attack gets locked out and hits a crate")
+	level.queue_free()
+	await process_frame
+
+	## 彈簧床：沒人站上去時床面每拍也會沉一下
+	level = await _load_level(FIRST_RIDE_LEVEL)
+	var sagged := 0
+	for f in 120 * 3:
+		_tick()
+		await physics_frame
+		await process_frame
+		for tr: Node in get_nodes_in_group("trampoline"):
+			if tr._sag > 0.5:
+				sagged += 1
+				break
+	check(sagged > 0, "Trampoline pulses on the beat with nobody on it")
+	level.queue_free()
+	await process_frame
+
+
+## 加上 `-- --shots <資料夾>`（不要 --headless）會在幾個時刻存截圖：段落開頭、礦車攻擊中、彈床升到第 2 段
+func _maybe_shot(level: Node, player: Node, index: int, section: int, f: int, state: Dictionary) -> void:
+	var args := OS.get_cmdline_user_args()
+	var at := args.find("--shots")
+	if at < 0 or at + 1 >= args.size():
+		return
+	var tag := ""
+	var ride: Node = player.ride
+	if f == 45:
+		tag = "start"
+	elif ride != null and ride.is_in_group("mine_rail") and ride._attacking(conductor.song_beat) \
+			and conductor.song_beat - float(ride._attack_at) > 0.1:
+		tag = "attack"
+	elif ride != null and ride.is_in_group("trampoline") and ride.tier() >= 1:
+		tag = "bounce"
+	if tag == "" or state.has("shot_" + tag):
+		return
+	state["shot_" + tag] = true
+	RenderingServer.force_draw(false)
+	var img: Image = root.get_texture().get_image()
+	img.save_png("%s/level%02d_s%d_%s.png" % [args[at + 1], index + 1, section, tag])

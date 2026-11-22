@@ -63,6 +63,9 @@ const LEVELS: Array[Dictionary] = [
 	{"name": "09", "desc": "", "stars": 2,
 		"patterns": RideMinecartData.PATTERNS, "chunks": RideMinecartData.CHUNKS,
 		"background_profile": "music_festival"},
+	{"name": "10", "desc": "", "stars": 3,
+		"patterns": RideMixedData.PATTERNS, "chunks": RideMixedData.CHUNKS,
+		"background_profile": "calm_city"},
 ]
 
 ## 同一種機關（含不同按法）在整條關卡線上，前幾次才保留提示文字

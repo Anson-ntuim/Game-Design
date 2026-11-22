@@ -2,7 +2,7 @@
 """產生三個「搭乘機關」試作關：彈簧床、盪鞦韆、礦車軌道。
 
 用法：python3 tools/ride_levels.py --write
-輸出 scripts/level/ride_trampoline_data.gd、ride_swing_data.gd、ride_minecart_data.gd。
+輸出 scripts/level/ride_trampoline_data.gd、ride_swing_data.gd、ride_minecart_data.gd、ride_mixed_data.gd。
 
 座標：1 格 = 40 px，每段 20 列。機關參數格式見 scripts/level/level_data.gd。
 """
@@ -56,7 +56,7 @@ def trampoline_level() -> list[dict]:
     c = Canvas(14).fill(0, 13, FLOOR, 19)
     c.put(3, FLOOR - 1, "P")
     chunks.append(chunk(
-        "彈簧床\n站上去就會跟著拍子一直自動彈跳。落回床面那一拍按跳，就升一段彈得更高；不按就維持高度",
+        "彈簧床\n床面一直跟著拍子彈，碰到就會被彈起來。落回床面那一拍按跳，就升一段彈得更高；不按就維持高度",
         c, "trampoline_intro"))
 
     # 按一次：高台第 13 列
@@ -187,19 +187,19 @@ def minecart_level() -> list[dict]:
         c, "minecart_2",
         rails=[{"points": [start, FLOOR, end, FLOOR], "speed": SPEED, "gaps": gaps}]))
 
-    # 衝刺：木箱要撞破、長斷軌要空中衝刺
+    # 攻擊：木箱要打碎；第 7.9 拍的木箱在跳過斷軌的空中，要在空中打
     start, beats = 6.0, 13
     end = rail_x(start, beats)
     width = int(end) + 12
-    gaps = [[7.0, 8.2]]
+    gaps = [[7.3, 7.7]]
     c = Canvas(width).fill(0, width - 1, FLOOR, 19)
     for g0, g1 in gaps:
         c.fill(int(rail_x(start, g0)) - 1, int(rail_x(start, g1)) + 1, FLOOR, 19, " ")
     c.put(2, FLOOR - 1, "C")
     chunks.append(chunk(
-        "衝刺撞箱\n木箱比跳得還高，經過前按衝刺撞破（藍色箭頭）。長斷軌：先跳，再在空中衝刺停半拍",
-        c, "minecart_dash",
-        rails=[{"points": [start, FLOOR, end, FLOOR], "speed": SPEED, "crates": [2, 4, 5, 11],
+        "攻擊木箱\n在車上按衝刺鍵會用鼓棒往前敲。木箱比跳得還高，看到橘色星星就敲碎它；空中也能敲，但揮空要等一拍",
+        c, "minecart_attack",
+        rails=[{"points": [start, FLOOR, end, FLOOR], "speed": SPEED, "crates": [2, 4, 5, 7.9, 11],
                 "spikes": [10], "gaps": gaps}]))
 
     # 低樑：不能跳；跳、停交替。中段有一座小丘
@@ -220,6 +220,56 @@ def minecart_level() -> list[dict]:
 
     c = Canvas(14).fill(0, 13, FLOOR, 19)
     c.put(6, FLOOR - 1, "G")
+    chunks.append(chunk("終點", c, "goal"))
+    return chunks
+
+
+# ---------------------------------------------------------------- 混合
+# 三種機關串在一起：彈簧床 → 盪鞦韆 → 礦車 → 從高處落到彈簧床。
+# 高台在第 10 列（比地面高 6 格）；鞦韆參數照盪鞦韆關，整體往上移 2 列。
+LEDGE = 10
+
+
+def mixed_level() -> list[dict]:
+    chunks = []
+
+    c = Canvas(14).fill(0, 13, FLOOR, 19)
+    c.put(3, FLOOR - 1, "P")
+    chunks.append(chunk(
+        "機關大集合\n彈簧床、盪鞦韆、礦車串在一起，每換一種機關都要重新抓節奏",
+        c, "mix_intro"))
+
+    # 彈兩段上高台，馬上接鞦韆飛過坑
+    c = Canvas(46).fill(0, 7, FLOOR, 19).fill(8, 12, 17, 19).fill(13, 21, LEDGE, 19).fill(34, 45, LEDGE, 19)
+    c.put(3, FLOOR - 1, "C")
+    chunks.append(chunk(
+        "彈上去再盪過去\n彈簧床按兩次上高台，在高台邊跳上鞦韆，盪到最高那一拍放手",
+        c, "mix_1", trampolines=[[8, FLOOR, 5]], swings=[[25.5, LEDGE - 7, 4, 4, 1, 0]]))
+
+    # 鞦韆飛到對岸直接進礦車：尖刺、木箱、斷軌、空中木箱
+    start, beats = 25.0, 11
+    end = rail_x(start, beats)
+    width = int(end) + 8
+    gaps = [[6.3, 6.7]]
+    c = Canvas(width).fill(0, 8, LEDGE, 19).fill(21, width - 1, LEDGE, 19)
+    for g0, g1 in gaps:
+        c.fill(int(rail_x(start, g0)) - 1, int(rail_x(start, g1)) + 1, LEDGE, 19, " ")
+    c.put(3, LEDGE - 1, "C")
+    chunks.append(chunk(
+        "盪進礦車\n落地後走進礦車。黃色跳、橘色敲：斷軌跳起來後，空中還有一個木箱要敲",
+        c, "mix_2", swings=[[12.5, LEDGE - 7, 4, 4, 1, 0]],
+        rails=[{"points": [start, LEDGE, end, LEDGE], "speed": SPEED, "spikes": [3, 9],
+                "crates": [2, 5, 6.9], "gaps": gaps}]))
+
+    # 從高台跳下去落在彈簧床上，一碰到就開始彈；按三次彈到最高的第 7 列
+    c = Canvas(30).fill(0, 5, LEDGE, 19).fill(6, 7, FLOOR, 19).fill(8, 14, 17, 19).fill(15, 29, 7, 19)
+    c.put(2, LEDGE - 1, "C")
+    chunks.append(chunk(
+        "跳下彈簧床\n從高台直接跳到床上，床會馬上把你彈起來；連按三次彈到最高",
+        c, "mix_3", trampolines=[[8, FLOOR, 7]]))
+
+    c = Canvas(14).fill(0, 13, 7, 19)
+    c.put(6, 6, "G")
     chunks.append(chunk("終點", c, "goal"))
     return chunks
 
@@ -258,6 +308,7 @@ LEVELS = [
     ("RideTrampolineData", "ride_trampoline_data.gd", "試作關：彈簧床（跟拍彈跳、落床按跳升段）。", trampoline_level),
     ("RideSwingData", "ride_swing_data.gd", "試作關：盪鞦韆（盪到最高那一拍放手）。", swing_level),
     ("RideMinecartData", "ride_minecart_data.gd", "試作關：礦車軌道（障礙依拍擺放）。", minecart_level),
+    ("RideMixedData", "ride_mixed_data.gd", "試作關：彈簧床、盪鞦韆、礦車混合。", mixed_level),
 ]
 
 

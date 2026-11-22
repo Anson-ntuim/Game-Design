@@ -7,7 +7,7 @@ const PATTERNS: Dictionary = {}
 
 const CHUNKS: Array[Dictionary] = [
 	{
-		"hint": "彈簧床\n站上去就會跟著拍子一直自動彈跳。落回床面那一拍按跳，就升一段彈得更高；不按就維持高度",
+		"hint": "彈簧床\n床面一直跟著拍子彈，碰到就會被彈起來。落回床面那一拍按跳，就升一段彈得更高；不按就維持高度",
 		"rows": [
 			"              ",
 			"              ",

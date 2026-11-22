@@ -1,6 +1,7 @@
 class_name Trampoline
 extends StaticBody2D
-## 彈簧床：站上去就會跟著拍子自動彈跳，每一次都在整拍落回床面。
+## 彈簧床：沒人的時候床面也跟著拍子一直彈（每拍一沉、提示圈每拍縮一次），看得出節奏。
+## 一碰到床面（走上去或從空中落下）馬上被彈起，第一下只到下一個整拍，之後每一次都在整拍落回床面。
 ## 落回床面的那一拍按跳（判定窗同音符），下一下就彈高一段；不按就維持同樣高度一直自動彈。
 ## 四段高度與滯空：1.5 → 3.5 格各 1 拍，7 → 10 格各 2 拍（越高越慢，節奏是 1、1、2、2）。
 ## 彈跳時仍可左右移動；移出床面就照當下的垂直速度掉出去，落到旁邊的高台就算抵達。
@@ -24,6 +25,9 @@ var _waiting: bool = false
 var _next_beat: float = 0.0
 var _bounce_start: float = 0.0
 var _bounce_len: float = 1.0
+## 這一下的高度（第一下依剩下的時間縮放，之後就是 TIERS[_tier].h）
+var _bounce_h: float = 60.0
+var _idle_tick: int = -99999
 var _tier: int = 0
 ## 剛落地那一拍判定前的段數（晚按時用來補判）
 var _tier_before: int = 0
@@ -68,10 +72,12 @@ func _physics_process(_delta: float) -> void:
 	if _rider != null:
 		return
 	var p := get_tree().get_first_node_in_group("player") as Player
-	if p == null or not p.can_ride() or not p.is_on_floor():
+	if p == null or not p.can_ride():
 		return
 	var feet_y := p.global_position.y + Player.BODY_SIZE.y * 0.5
-	if absf(feet_y - global_position.y) > 6.0:
+	## 站在床上，或從空中往下掉、腳快碰到床面
+	var landing := not p.is_on_floor() and p.velocity.y >= 0.0 and feet_y >= global_position.y - 10.0 and feet_y <= global_position.y + 6.0
+	if not landing and (not p.is_on_floor() or absf(feet_y - global_position.y) > 6.0):
 		return
 	if p.global_position.x < global_position.x or p.global_position.x > global_position.x + width:
 		return
@@ -83,17 +89,23 @@ func _board(p: Player) -> void:
 	p.begin_ride(self, "land_1")
 	p.add_collision_exception_with(self)
 	var b := Conductor.song_beat
-	_next_beat = ceilf(b)
-	if _next_beat - b < 0.05:
-		_next_beat += 1.0
-	_waiting = true
+	## 床一直在彈：碰到就馬上彈起，落在下一個整拍（太近就再下一拍）
+	var land := ceilf(b)
+	if land - b < 0.35:
+		land += 1.0
+	_next_beat = land
+	_waiting = false
+	_bounce_start = b
+	_bounce_len = land - b
+	_bounce_h = float(TIERS[0]["h"]) * _bounce_len * _bounce_len
 	_tier = 0
 	_tier_before = 0
-	_h_display = 0.0
+	_h_display = _bounce_h
 	_landing_judged = true
 	_last_press = -INF
 	_sag = 1.0
-	GameState.play_sfx("block", 0.0, -10.0)
+	_rider.call("_set_squash", Vector2(1.3, 0.72))
+	GameState.play_sfx("pluck", GameState.next_note() - 12.0, -7.0)
 
 
 func _release_rider() -> void:
@@ -119,6 +131,7 @@ func _start_bounce(boundary: float, _first: bool) -> void:
 	_landing_judged = ok
 	_bounce_start = boundary
 	_bounce_len = float(TIERS[_tier]["beats"])
+	_bounce_h = float(TIERS[_tier]["h"])
 	_waiting = false
 	_sag = 1.0
 	_rider.call("_set_squash", Vector2(1.3, 0.72))
@@ -139,6 +152,7 @@ func ride_step(p: Player, delta: float) -> void:
 			_landing_judged = true
 			_tier = mini(_tier_before + 1, TIERS.size() - 1)
 			_bounce_len = float(TIERS[_tier]["beats"])
+			_bounce_h = float(TIERS[_tier]["h"])
 			_on_tier_up()
 		elif not _waiting and (b - _bounce_start) > 0.25 and (_bounce_start + _bounce_len - b) > 0.25:
 			p.fail_feedback()
@@ -149,7 +163,7 @@ func ride_step(p: Player, delta: float) -> void:
 	elif b >= _bounce_start + _bounce_len:
 		_start_bounce(_bounce_start + _bounce_len, false)
 
-	var target_h := 0.0 if _waiting else float(TIERS[_tier]["h"])
+	var target_h := 0.0 if _waiting else _bounce_h
 	_h_display = lerpf(_h_display, target_h, 1.0 - exp(-30.0 * delta))
 	var t := 0.0 if _waiting else clampf((b - _bounce_start) / _bounce_len, 0.0, 1.0)
 	var lift := 4.0 * _h_display * t * (1.0 - t)
@@ -176,6 +190,12 @@ func ride_step(p: Player, delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	## 沒人在床上也每拍沉一下
+	var tick := floori(Conductor.song_beat)
+	if tick != _idle_tick:
+		_idle_tick = tick
+		if _rider == null:
+			_sag = maxf(_sag, 0.7)
 	_sag = maxf(0.0, _sag - delta * 5.0)
 	_flash = maxf(0.0, _flash - delta * 2.5)
 	queue_redraw()
@@ -215,16 +235,21 @@ func _draw() -> void:
 	for i in TIERS.size():
 		var on := lit and i <= _tier and not _waiting
 		var pc := Vector2(cx + (i - 1.5) * 14.0, tile * 0.62)
-		draw_circle(pc, 5.0, Color(COLOR, 0.95) if on else Color(0.1, 0.08, 0.16, 0.85))
+		var off_col := Color(0.1, 0.08, 0.16, 0.85)
+		if not lit and i == 0:
+			off_col = off_col.lerp(COLOR, 0.25 + 0.5 * _sag)
+		draw_circle(pc, 5.0, Color(COLOR, 0.95) if on else off_col)
 		if on and _flash > 0.0:
 			draw_circle(pc, 5.0 + _flash * 6.0, Color(COLOR, _flash * 0.5))
-	## 下一次落床的提示圈：一拍內從大縮到床面
+	## 下一次落床的提示圈：一拍內從大縮到床面；沒人時每拍都縮一次
+	var land := ceilf(Conductor.song_beat)
 	if lit:
-		var land := _next_beat if _waiting else _bounce_start + _bounce_len
-		var until := land - Conductor.song_beat
-		if until <= 1.0 and until >= 0.0:
-			var k := 1.0 - until
-			var r := lerpf(46.0, 14.0, k * k)
-			draw_arc(Vector2(sag_x, 2.0), r, PI, TAU, 24, Color(1, 1, 1, 0.25 + 0.6 * k), 2.5, true)
+		land = _next_beat if _waiting else _bounce_start + _bounce_len
+	var until := land - Conductor.song_beat
+	if until <= 1.0 and until >= 0.0:
+		var k := 1.0 - until
+		var r := lerpf(46.0, 14.0, k * k)
+		var a := (0.25 + 0.6 * k) if lit else (0.12 + 0.3 * k)
+		draw_arc(Vector2(sag_x, 2.0), r, PI, TAU, 24, Color(1, 1, 1, a), 2.5, true)
 	if _flash > 0.0:
 		draw_rect(Rect2(0, -2, width, 6), Color(1, 1, 1, _flash * 0.4))
