@@ -52,7 +52,8 @@ func _run() -> void:
 			await _flow_level(index)
 		else:
 			await _play_level(index)
-			await _cheat_level(index)
+			if not _args().has("--archive"):
+				await _cheat_level(index)
 	if had_save:
 		var f := FileAccess.open(save_path, FileAccess.WRITE)
 		f.store_buffer(saved_bytes)
@@ -122,7 +123,16 @@ func _play_level(index: int, cheat := false) -> void:
 			continue
 		var hint: Dictionary = hints[i]
 		var title := String(chunk["hint"]).split("\n")[0]
-		if cheat:
+		var expect_pass := false
+		if cheat and not chunk.get("trampolines", []).is_empty():
+			## 彈簧床漏按最後一下、下一次落床再補按：不會死，晚一點飛出去也到得了
+			var last: Array = plan[-1]
+			var tier_beats := [1.0, 1.0, 2.0, 2.0]
+			var need := int(chunk["trampolines"][0][3])
+			plan = plan.slice(0, plan.size() - 1)
+			plan.append([float(last[0]) + tier_beats[need - 1], "L", last[2]])
+			expect_pass = true
+		elif cheat:
 			## 偷懶玩法：黃色音符全部不踩，改在第一顆音符前半拍空中衝刺一次
 			var orbs := plan.filter(func(st: Array) -> bool: return String(st[1]) in ["O", "o"])
 			if orbs.is_empty():
@@ -192,7 +202,11 @@ func _play_level(index: int, cheat := false) -> void:
 		await physics_frame
 		if died:
 			print("    died at %s beat %.2f (plan base %.2f) source %s" % [player.death_pos, player.death_beat, base, player.death_source])
-		if cheat:
+		if cheat and expect_pass and not reached:
+			print("    stuck: ride=%s vel=%s floor=%s auto_wait=%s locked=%s target=%.0f" % [player.ride, player.velocity, player.is_on_floor(), player.auto_flag_wait, player.control_locked, target_x])
+		if cheat and expect_pass:
+			check(reached, "Level %02d「%s」missed press can be retried on the next landing (pos %s)" % [index + 1, title, player.global_position])
+		elif cheat:
 			check(not reached, "Level %02d「%s」cannot be skipped with one jump + dash (pos %s)" % [index + 1, title, player.global_position])
 		else:
 			check(flag == null or waited, "Level %02d「%s」flag releases the player on the beat" % [index + 1, title])
@@ -249,6 +263,23 @@ func _flow_level(index: int) -> void:
 					dash = true
 				else:
 					jump = true
+		## 間奏平地的小坑：跑到起跳點就跳
+		if player.is_on_floor():
+			for i in hints.size():
+				for hx in chunks[i].get("hops", []):
+					var wx := float(hints[i]["from"]) + float(hx)
+					var key := "hop%d:%d" % [i, hx]
+					if absf(player.global_position.x - wx) < 3.0 and not seen.has(key):
+						seen[key] = true
+						jump = true
+		## --respawn：第三面旗子放行後，跑到下一塊長椅平地時倒下一次，看重生後能不能直接接上下一面旗子
+		if _args().has("--respawn") and seen.size() >= 3 and not seen.has("killed") and player.is_on_floor():
+			for i in hints.size():
+				if String(chunks[i]["hint"]).begins_with("長椅") or String(chunks[i]["hint"]).begins_with("間奏"):
+					var h: Dictionary = hints[i]
+					if player.global_position.x > float(h["from"]) + 20.0 and player.global_position.x < float(h["from"]) + 60.0:
+						seen["killed"] = true
+						player.kill()
 		## 被光柱擋住（自動跑卻停在原地）：下一個正拍光柱打開時衝刺
 		if player.is_on_floor() and player.auto_running and not player.auto_flag_wait and absf(player.velocity.x) < 1.0 \
 				and b - floorf(b) < 0.01 and player._dash_cooldown_timer <= 0.0:
@@ -266,9 +297,12 @@ func _flow_level(index: int) -> void:
 		await physics_frame
 		if player.auto_flag_wait:
 			wait_frames += 1
-		if player.control_locked:
+		if player.control_locked and not (seen.has("killed") and not seen.has("respawned")):
 			died = not level._completed
 			break
+		if seen.has("killed") and not seen.has("respawned") and not player.control_locked:
+			seen["respawned"] = true
+			print("    respawned at %s beat %.2f" % [player.global_position, b])
 	_set_action("jump", false)
 	_set_action("dash", false)
 	print("  flag stops: ", ", ".join(waits))

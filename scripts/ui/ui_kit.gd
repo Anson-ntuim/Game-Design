@@ -1,15 +1,29 @@
 class_name UiKit
 extends RefCounted
-## 介面共用的畫法：字型、切角霓虹面板、按鍵小方塊、音符難度、關卡縮圖。
-## 顏色跟著 GameState 的色盤（edge）走，換段落時介面會一起換色。
+## 介面共用的畫法：字型、圓角卡片面板、按鍵小方塊、音符難度、關卡縮圖。
+## 2026 改版（設計稿「Heart Beat UI 改版提案」）：月夜紫底、圓角卡片、粗框，
+## 三個重點色對應三種動作：粉＝跳、青＝衝刺、黃＝音符。各場景主題不再各畫一種面板，統一用同一套卡片。
 ## 佈局依 game-ui-ux：錨在邊角 + 安全邊距（notch／圓角／過掃描），不要寫死貼邊座標。
 
 ## 網頁版沒有系統字型，只能用專案裡的字型檔；它只含遊戲用到的字，改了文字要重跑 tools/subset_font.py
 const FONT_PATH := "res://assets/fonts/NotoSansTC-Game.ttf"
-const PANEL := Color(0.03, 0.035, 0.09, 0.84)
-const INK := Color(0.02, 0.02, 0.07)
-const GOLD := Color(1.0, 0.86, 0.42)
-const FLOAT := Color(0.45, 0.85, 1.0)
+## 標題、數字用的圓體（Google Fonts 的 Fredoka，SIL OFL 授權，見 assets/fonts/Fredoka-OFL.txt）。
+## 只有拉丁字母和數字；中文字自動退回思源黑體
+const DISPLAY_FONT_PATH := "res://assets/fonts/Fredoka.ttf"
+## 改版色盤
+const NIGHT := Color("1A1036")
+const CARD := Color("261A4D")
+const LINE := Color("4A3A80")
+const PINK := Color("FF6FAE")
+const PINK_DARK := Color("B23A74")
+const CYAN := Color("5BE7F2")
+const YELLOW := Color("FFD45C")
+const TEXT := Color("FFF6FB")
+const MUTED := Color("C9BEE8")
+const PANEL := Color(0.149, 0.102, 0.302, 0.9)
+const INK := Color("1A1036")
+const GOLD := YELLOW
+const FLOAT := CYAN
 const CUT := 12.0
 const KEY_H := 24.0
 ## 桌面／網頁至少留這圈；手機再疊 DisplayServer safe area
@@ -70,8 +84,23 @@ static func font(embolden: float = 0.0) -> Font:
 	return _fonts[key]
 
 
+## 標題字：Fredoka 粗體（可變字型 wght 700），中文退回加粗的思源黑體
 static func title_font() -> Font:
-	return font(0.9)
+	return display_font(700)
+
+
+static func display_font(weight: int = 700) -> Font:
+	var key := "display%d" % weight
+	if not _fonts.has(key):
+		if not ResourceLoader.exists(DISPLAY_FONT_PATH):
+			_fonts[key] = font(0.9)
+		else:
+			var fv := FontVariation.new()
+			fv.base_font = load(DISPLAY_FONT_PATH)
+			fv.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): weight}
+			fv.fallbacks = [font(0.9)]
+			_fonts[key] = fv
+	return _fonts[key]
 
 
 ## 網頁字型是精簡子集：自訂歌檔名等未收錄的字改成 '.'，避免方框亂碼。
@@ -117,104 +146,73 @@ static func bold_text(ci: CanvasItem, pos: Vector2, width: float, s: String, siz
 	ci.draw_string(f, pos, s, align, width, size, fill)
 
 
-## 左上、右下切角的多邊形
+## 圓角矩形的多邊形（舊名 chamfer 保留給既有呼叫：現在一律是圓角）；cut 決定圓角大小
 static func chamfer(rect: Rect2, cut: float = CUT) -> PackedVector2Array:
-	var p := rect.position
-	var e := rect.end
-	return PackedVector2Array([
-		Vector2(p.x + cut, p.y), Vector2(e.x, p.y), Vector2(e.x, e.y - cut),
-		Vector2(e.x - cut, e.y), Vector2(p.x, e.y), Vector2(p.x, p.y + cut)])
+	var r := minf(cut * 1.4, minf(rect.size.x, rect.size.y) * 0.5)
+	var pts := PackedVector2Array()
+	var corners := [
+		[Vector2(rect.end.x - r, rect.position.y + r), -PI * 0.5],
+		[Vector2(rect.end.x - r, rect.end.y - r), 0.0],
+		[Vector2(rect.position.x + r, rect.end.y - r), PI * 0.5],
+		[Vector2(rect.position.x + r, rect.position.y + r), PI],
+	]
+	for c: Array in corners:
+		for k in 6:
+			var a: float = float(c[1]) + PI * 0.5 * k / 5.0
+			pts.append((c[0] as Vector2) + Vector2(cos(a), sin(a)) * r)
+	return pts
 
 
-## 霓虹面板：深色底、細框、切角處一小段亮線；glow > 0 時外面多一圈光暈
+static var _card_style: StyleBoxFlat
+
+
+## 卡片面板：月夜紫底、3px 框、圓角。glow > 0 時框換成重點色並多一圈淡光（選中、強調）
 static func panel(ci: CanvasItem, rect: Rect2, edge: Color, glow: float = 0.0, alpha: float = 1.0,
 		cut: float = CUT, fill: Color = PANEL) -> void:
-	if glow > 0.0:
-		for k in 3:
-			var g := chamfer(rect.grow(3.0 + k * 3.0), cut + 2.0 + k * 2.0)
-			g.append(g[0])
-			ci.draw_polyline(g, Color(edge, glow * alpha * (0.3 - k * 0.08)), 3.0, true)
-	var pts := chamfer(rect, cut)
-	ci.draw_colored_polygon(pts, Color(fill, fill.a * alpha))
-	ci.draw_line(Vector2(rect.position.x + cut, rect.position.y + 1.5), Vector2(rect.end.x - 1, rect.position.y + 1.5),
-		Color(1, 1, 1, 0.07 * alpha), 2.0)
-	var loop := pts.duplicate()
-	loop.append(pts[0])
-	ci.draw_polyline(loop, Color(edge, (0.45 + 0.4 * minf(glow, 1.0)) * alpha), 1.5, true)
-	ci.draw_line(pts[5], pts[0], Color(edge.lerp(Color.WHITE, 0.4), alpha), 3.0, true)
-	ci.draw_line(pts[2], pts[3], Color(edge.lerp(Color.WHITE, 0.4), alpha), 3.0, true)
+	if _card_style == null:
+		_card_style = StyleBoxFlat.new()
+		_card_style.anti_aliasing = true
+	var radius := int(minf(cut * 1.5, minf(rect.size.x, rect.size.y) * 0.5))
+	var g := clampf(glow, 0.0, 1.0)
+	if g > 0.0:
+		var halo := StyleBoxFlat.new()
+		halo.anti_aliasing = true
+		halo.set_corner_radius_all(radius + 6)
+		halo.bg_color = Color(edge, 0.18 * g * alpha)
+		ci.draw_style_box(halo, rect.grow(6.0))
+	var st := _card_style
+	st.set_corner_radius_all(radius)
+	st.set_border_width_all(3 if rect.size.y > 40.0 else 2)
+	st.bg_color = Color(fill, fill.a * alpha)
+	st.border_color = Color(LINE.lerp(edge, g), alpha)
+	ci.draw_style_box(st, rect)
 
 
-## 心動之城的柔和面板：圓角、葡萄紫半透明底與粉彩細框，保留文字對比。
+## 重點按鈕：實心重點色、下方一條深色「厚度」（設計稿的主按鈕）
+static func solid_button(ci: CanvasItem, rect: Rect2, label: String, fill: Color = PINK,
+		shade: Color = PINK_DARK, size: int = 22, alpha: float = 1.0) -> void:
+	var st := StyleBoxFlat.new()
+	st.anti_aliasing = true
+	st.set_corner_radius_all(int(minf(20.0, rect.size.y * 0.3)))
+	st.bg_color = Color(shade, alpha)
+	ci.draw_style_box(st, Rect2(rect.position + Vector2(0, 5), rect.size))
+	st.bg_color = Color(fill, alpha)
+	ci.draw_style_box(st, rect)
+	ci.draw_string(font(0.6), Vector2(rect.position.x, rect.get_center().y + size * 0.36), label,
+		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, size, Color(INK, alpha))
+
+
+## 舊的各場景主題面板：改版後統一成同一種卡片
 static func soft_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0) -> void:
-	if _soft_panel_style == null:
-		_soft_panel_style = StyleBoxFlat.new()
-		_soft_panel_style.set_border_width_all(2)
-		_soft_panel_style.set_corner_radius_all(12)
-		_soft_panel_style.shadow_size = 8
-		_soft_panel_style.anti_aliasing = true
-	var style := _soft_panel_style
-	style.bg_color = Color(0.10, 0.055, 0.15, 0.88 * alpha)
-	style.border_color = Color(0.94, 0.66, 0.82, 0.72 * alpha)
-	style.shadow_color = Color(0.08, 0.025, 0.12, 0.34 * alpha)
-	ci.draw_style_box(style, rect)
-	var inner := rect.grow(-5.0)
-	ci.draw_line(inner.position + Vector2(10, 0), Vector2(inner.end.x - 10, inner.position.y),
-		Color(1.0, 0.88, 0.95, 0.13 * alpha), 1.0, true)
-	for i in 5:
-		var y := inner.position.y + 10.0 + i * maxf(8.0, inner.size.y / 6.0)
-		var inset := 14.0 + fposmod(i * 23.0, 31.0)
-		ci.draw_line(Vector2(inner.position.x + inset, y),
-			Vector2(inner.end.x - inset * 1.4, y), Color(0.95, 0.75, 0.88, 0.025 * alpha), 1.0)
+	panel(ci, rect, LINE, 0.0, alpha)
 
 
-## 櫻花樂園：梅紫玻璃底、暖粉細框與很淡的花瓣角飾。
-static func sakura_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0,
-		accent: float = 0.0) -> void:
-	if _sakura_panel_style == null:
-		_sakura_panel_style = StyleBoxFlat.new()
-		_sakura_panel_style.set_border_width_all(2)
-		_sakura_panel_style.set_corner_radius_all(13)
-		_sakura_panel_style.shadow_size = 9
-		_sakura_panel_style.anti_aliasing = true
-	var style := _sakura_panel_style
-	style.bg_color = Color(0.16, 0.075, 0.18, (0.80 + accent * 0.05) * alpha)
-	style.border_color = Color(0.91, 0.61, 0.72, (0.68 + accent * 0.18) * alpha)
-	style.shadow_color = Color(0.18, 0.06, 0.18, 0.30 * alpha)
-	ci.draw_style_box(style, rect)
-	var inner := rect.grow(-5.0)
-	ci.draw_line(inner.position + Vector2(12, 0), Vector2(inner.end.x - 12, inner.position.y),
-		Color(1.0, 0.89, 0.84, 0.16 * alpha), 1.0, true)
-	## 只放兩組小花瓣點，避免裝飾搶過文字。
-	for side: float in [-1.0, 1.0]:
-		var c := Vector2(rect.get_center().x + side * (rect.size.x * 0.5 - 14.0), rect.position.y + 13.0)
-		ci.draw_circle(c, 2.2, Color(1.0, 0.78, 0.84, 0.42 * alpha))
-		ci.draw_circle(c + Vector2(-side * 3.2, 2.8), 1.7, Color(1.0, 0.88, 0.78, 0.30 * alpha))
+static func sakura_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0, accent: float = 0.0) -> void:
+	panel(ci, rect, PINK, accent * 0.6, alpha)
 
 
-## 霓虹音樂祭：深靛玻璃底、桃紅／電光藍雙色框與舞台燈點。
-static func festival_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0,
-		accent: float = 0.0) -> void:
-	if _festival_panel_style == null:
-		_festival_panel_style = StyleBoxFlat.new()
-		_festival_panel_style.set_border_width_all(2)
-		_festival_panel_style.set_corner_radius_all(10)
-		_festival_panel_style.shadow_size = 10
-		_festival_panel_style.anti_aliasing = true
-	var style := _festival_panel_style
-	style.bg_color = Color(0.035, 0.025, 0.13, (0.84 + accent * 0.04) * alpha)
-	style.border_color = Color(0.87, 0.31, 0.91, (0.68 + accent * 0.18) * alpha)
-	style.shadow_color = Color(0.12, 0.02, 0.22, 0.36 * alpha)
-	ci.draw_style_box(style, rect)
-	var inner := rect.grow(-5.0)
-	ci.draw_line(inner.position + Vector2(8, 0), Vector2(inner.get_center().x - 5, inner.position.y),
-		Color(1.0, 0.40, 0.87, 0.45 * alpha), 1.5, true)
-	ci.draw_line(Vector2(inner.get_center().x + 5, inner.position.y), Vector2(inner.end.x - 8, inner.position.y),
-		Color(0.35, 0.88, 1.0, 0.45 * alpha), 1.5, true)
-	for i in 5:
-		var x := lerpf(inner.position.x + 18.0, inner.end.x - 18.0, float(i) / 4.0)
-		var color := Color("ff65d7") if i % 2 == 0 else Color("62e5ff")
-		ci.draw_circle(Vector2(x, rect.end.y - 7.0), 1.7, Color(color, 0.35 * alpha))
+static func festival_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0, accent: float = 0.0) -> void:
+	panel(ci, rect, PINK, accent * 0.6, alpha)
 
 
 ## 按鍵小方塊：pos 是左上角，回傳寬度
@@ -224,28 +222,17 @@ static func keycap(ci: CanvasItem, pos: Vector2, label: String, edge: Color, alp
 	var f := font()
 	var w := maxf(KEY_H, width_of(label, size, f) + 14.0)
 	var r := Rect2(pos, Vector2(w, KEY_H))
-	var shadow := INK
-	var fill := Color(0.16, 0.17, 0.26)
-	var border := edge
-	if soft:
-		shadow = Color("2b1833")
-		fill = Color("392440")
-		border = Color("dfa2bd")
-	if sakura:
-		shadow = Color("351d38")
-		fill = Color("56384f")
-		border = Color("e7a0b8")
-	if festival:
-		shadow = Color("150b2e")
-		fill = Color("292052")
-		border = Color("65e5ff")
-	ci.draw_rect(Rect2(r.position + Vector2(0, 3), r.size), Color(shadow, 0.8 * alpha))
-	ci.draw_rect(r, Color(fill, 0.92 * alpha))
-	ci.draw_rect(r, Color(border, 0.62 * alpha), false, 1.0)
-	ci.draw_line(r.position + Vector2(2, 1.5), Vector2(r.end.x - 2, r.position.y + 1.5),
-		Color(1, 0.9, 0.96, 0.16 * alpha), 1.0)
+	var st := StyleBoxFlat.new()
+	st.anti_aliasing = true
+	st.set_corner_radius_all(7)
+	st.bg_color = Color(NIGHT, 0.9 * alpha)
+	ci.draw_style_box(st, Rect2(r.position + Vector2(0, 3), r.size))
+	st.bg_color = Color(CARD, 0.95 * alpha)
+	st.set_border_width_all(2)
+	st.border_color = Color(LINE, alpha)
+	ci.draw_style_box(st, r)
 	ci.draw_string(f, Vector2(r.position.x, r.position.y + KEY_H * 0.5 + size * 0.36), label,
-		HORIZONTAL_ALIGNMENT_CENTER, w, size, Color(Color("fff4ee"), alpha))
+		HORIZONTAL_ALIGNMENT_CENTER, w, size, Color(TEXT, alpha))
 	return w
 
 

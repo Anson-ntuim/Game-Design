@@ -47,6 +47,8 @@ var _last_player_x: float = -INF
 var last_sync_beat: float = -INF
 ## 這面旗子多久可以放行一次（拍）：段落裡的機關若是 4 拍一輪（tools/campaign.py 會折成 4 拍），GO 就每 4 拍一次
 var cycle_beats: float = CYCLE_BEATS
+## 設計時連招第 0 拍落在 8 拍小節的第幾拍（關卡產生器算的；-1 = 沒有）。重生時對齊它，後面 8 拍一輪的段落才不會差半小節
+var phase8: float = -1.0
 
 
 func setup(feet: Vector2, demo_pattern: String) -> void:

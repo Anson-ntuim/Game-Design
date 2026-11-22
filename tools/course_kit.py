@@ -560,7 +560,7 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
         course.wait_check(flow)
     course.dash_check(flow)
     course.orb_check(flow)
-    course.ring_check(flow)
+    course.ring_check(flow and require_ring_use)
     if course.gates:
         no_gate = course.sim(gates=[])
         print(f"  沒有光牆時標準節奏：{first_hit(no_gate) or '也能過'}")

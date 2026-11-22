@@ -6,6 +6,10 @@ extends StaticBody2D
 ## 四段高度與滯空：1.5 → 3.5 格各 1 拍，7 → 10 格各 2 拍（越高越慢，節奏是 1、1、2、2）。
 ## 彈跳時仍可左右移動；移出床面就照當下的垂直速度掉出去，落到旁邊的高台就算抵達。
 ## 床面在這一格的頂端；整格是實心的，玩家可以從旁邊走上去。
+##
+## 連段模式（need > 0，正式版關卡用）：站上去就停在床中間（自動跑不會把人帶走），
+## 每次落床那一拍按跳就升一段；升到第 need 段就把人往前彈出去、飛上對面的高台。
+## 沒按到不會死：維持同一段繼續彈，下一次落床再按就好。比較晚飛出去時，下一段的起跳旗會重新對拍。
 
 ## 各段：h = 彈起的高度（px）、beats = 一次彈跳佔幾拍
 const TIERS: Array[Dictionary] = [
@@ -19,6 +23,12 @@ const FRAME := Color(0.22, 0.17, 0.3)
 
 var width: float = 160.0
 var tile: float = 40.0
+## 連段模式要按幾次（0 = 一般模式：不按維持高度、走出床面離開）
+var need: int = 0
+## 連段模式：這一拍落床沒按準，等判定窗過了還沒補按就掉下去
+var _pending_fail: float = INF
+## 連段模式沒按準：讓這個人穿過床面掉下去（掉到床面下方夠遠才恢復碰撞）
+var _dropping: Player = null
 
 var _rider: Player = null
 var _waiting: bool = false
@@ -38,10 +48,11 @@ var _sag: float = 0.0
 var _flash: float = 0.0
 
 
-func setup(top_left: Vector2, w: float, tile_size: float = 40.0) -> void:
+func setup(top_left: Vector2, w: float, tile_size: float = 40.0, need_presses: int = 0) -> void:
 	position = top_left
 	width = w
 	tile = tile_size
+	need = need_presses
 
 
 func _ready() -> void:
@@ -67,6 +78,13 @@ func is_riding(p: Node) -> bool:
 
 
 func _physics_process(_delta: float) -> void:
+	if _dropping != null:
+		if not is_instance_valid(_dropping) or _dropping.global_position.y > global_position.y + 80.0 \
+				or _dropping.control_locked:
+			if is_instance_valid(_dropping):
+				_dropping.remove_collision_exception_with(self)
+			_dropping = null
+		return
 	if _rider != null and (not is_instance_valid(_rider) or _rider.ride != self):
 		_release_rider()
 	if _rider != null:
@@ -103,6 +121,7 @@ func _board(p: Player) -> void:
 	_h_display = _bounce_h
 	_landing_judged = true
 	_last_press = -INF
+	_pending_fail = INF
 	_sag = 1.0
 	_rider.call("_set_squash", Vector2(1.3, 0.72))
 	GameState.play_sfx("pluck", GameState.next_note() - 12.0, -7.0)
@@ -140,7 +159,19 @@ func _start_bounce(boundary: float, _first: bool) -> void:
 
 func _on_tier_up() -> void:
 	_flash = 1.0
+	_pending_fail = INF
 	GameState.play_cue("cue", 12.0 + _tier * 4.0, -5.0)
+
+
+## 連段模式：升到第 need 段 → 往前彈出去（高度就是這一段的高度，往前跟跑步一樣快）
+func _launch(p: Player) -> void:
+	var h := float(TIERS[_tier]["h"])
+	var vy := sqrt(2.0 * p.eff_gravity() * h)
+	_release_rider()
+	p.facing = 1
+	p.end_ride(Vector2(p.run_speed, -vy), true)
+	GameState.play_cue("cue", 24.0, -4.0)
+
 
 
 func ride_step(p: Player, delta: float) -> void:
@@ -163,13 +194,22 @@ func ride_step(p: Player, delta: float) -> void:
 	elif b >= _bounce_start + _bounce_len:
 		_start_bounce(_bounce_start + _bounce_len, false)
 
+	if need > 0:
+		if _tier >= need and _landing_judged:
+			_launch(p)
+			return
+
 	var target_h := 0.0 if _waiting else _bounce_h
 	_h_display = lerpf(_h_display, target_h, 1.0 - exp(-30.0 * delta))
 	var t := 0.0 if _waiting else clampf((b - _bounce_start) / _bounce_len, 0.0, 1.0)
 	var lift := 4.0 * _h_display * t * (1.0 - t)
 	var target_y := global_position.y - lift - Player.BODY_SIZE.y * 0.5 - 1.0
 
-	var dir := p.ride_input_x()
+	var dir := 0 if need > 0 else p.ride_input_x()
+	if need > 0:
+		## 連段模式：停在床中間
+		var cx := global_position.x + width * 0.5
+		p.move_and_collide(Vector2((cx - p.global_position.x) * minf(1.0, 12.0 * delta), 0.0))
 	if dir != 0:
 		p.facing = dir
 		p.move_and_collide(Vector2(dir * p.run_speed * delta, 0.0))
@@ -232,9 +272,11 @@ func _draw() -> void:
 		draw_polyline(zig, Color(0.8, 0.85, 0.95, 0.7), 1.5)
 	## 段數燈：四顆
 	var cx := width * 0.5
-	for i in TIERS.size():
-		var on := lit and i <= _tier and not _waiting
-		var pc := Vector2(cx + (i - 1.5) * 14.0, tile * 0.62)
+	## 連段模式只畫要按的次數（need 顆），一般模式畫四段
+	var lights := need if need > 0 else TIERS.size()
+	for i in lights:
+		var on := lit and (i < _tier if need > 0 else i <= _tier) and not _waiting
+		var pc := Vector2(cx + (i - (lights - 1) * 0.5) * 14.0, tile * 0.62)
 		var off_col := Color(0.1, 0.08, 0.16, 0.85)
 		if not lit and i == 0:
 			off_col = off_col.lerp(COLOR, 0.25 + 0.5 * _sag)

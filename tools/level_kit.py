@@ -112,6 +112,12 @@ def render_chunk(chunk):
         for i in range(0, len(p), 8):
             out.append("\t\t\t" + ", ".join(f'[{b}, "{c}", {x}]' for (b, c, x) in p[i:i + 8]) + ",")
         out.append("\t\t],")
+    if chunk.get("trampolines"):
+        out.append('\t\t"trampolines": ' + json.dumps(chunk["trampolines"]) + ',')
+    if chunk.get("mechanic"):
+        out.append(f'\t\t"mechanic": "{chunk["mechanic"]}",')
+    if chunk.get("hops"):
+        out.append('\t\t"hops": ' + json.dumps(chunk["hops"]) + ',')
     if chunk.get("ghost"):
         g = chunk["ghost"]
         out.append('\t\t"ghost": [')

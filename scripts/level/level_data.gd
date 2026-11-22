@@ -39,9 +39,15 @@ const MOVER_TRAVEL_TILES := 6
 ## 關卡只顯示編號；name／desc 留給舊 UI 相容，畫面以 index+1 為準
 ## 正式版關卡（tools/campaign.py）：每一關加入新東西，再和學過的混在一起
 const LEVELS: Array[Dictionary] = [
-	{"name": "01", "desc": "教學", "stars": 1,
+	{"name": "01", "desc": "教學", "stars": 1, "tags": ["跳躍", "尖刺", "光柱", "黃色音符"],
 		"patterns": Campaign1Data.PATTERNS, "chunks": Campaign1Data.CHUNKS,
 		"background_profile": "calm_city"},
+	{"name": "02", "desc": "環與平台", "stars": 2, "tags": ["衝刺環", "節拍平台", "旋律平台"],
+		"patterns": Campaign2Data.PATTERNS, "chunks": Campaign2Data.CHUNKS,
+		"background_profile": "sakura_park"},
+	{"name": "03", "desc": "彈簧床與反拍", "stars": 2, "tags": ["彈簧床", "反拍"],
+		"patterns": Campaign3Data.PATTERNS, "chunks": Campaign3Data.CHUNKS,
+		"background_profile": "music_festival"},
 ]
 
 ## 封存的舊關卡（scripts/level/archive/，tools/gen_demo.py、tools/ride_levels.py）：選單不顯示，
@@ -208,10 +214,10 @@ static func build(level: int) -> Dictionary:
 		for pad: Array in chunk.get("tempo_pads", []):
 			tempo_pads.append({"pos": Vector2((x_offset + float(pad[0])) * TILE, float(pad[1]) * TILE + y_offset),
 				"bpm": float(pad[2]), "width": float(pad[3]) * TILE if pad.size() > 3 else 144.0})
-		## 彈簧床：[x, y, 寬]（格；y 是床面所在列，床面在這一列的頂端）
+		## 彈簧床：[x, y, 寬, 連段要按幾次（可省略＝一般模式）]（格；y 是床面所在列，床面在這一列的頂端）
 		for t: Array in chunk.get("trampolines", []):
 			trampolines.append({"top_left": Vector2((x_offset + float(t[0])) * TILE, float(t[1]) * TILE + y_offset),
-				"width": float(t[2]) * TILE})
+				"width": float(t[2]) * TILE, "need": int(t[3]) if t.size() > 3 else 0})
 		## 盪鞦韆：[錨點 x, 錨點 y, 繩長, 來回幾拍, 往前方向, 到頂拍位移]（格）
 		for s: Array in chunk.get("swings", []):
 			swings.append({"anchor": Vector2((x_offset + float(s[0])) * TILE, float(s[1]) * TILE + y_offset),

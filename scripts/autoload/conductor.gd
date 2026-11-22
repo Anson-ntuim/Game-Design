@@ -42,10 +42,15 @@ var _duck: float = 0.0
 ## 玩家校正的音訊延遲（秒）：耳機／網頁／藍牙常讓聲音比時鐘晚；正值＝聲音晚到，時鐘會往後挪去對齊
 var user_offset: float = 0.0
 
+## 暫停中：時鐘停在暫停那一刻，音樂也暫停
+var paused: bool = false
+
 var song_position: float:
 	get:
 		if not _running:
 			return 0.0
+		if paused:
+			return _anchor_position - first_beat_offset - user_offset * rate
 		return _anchor_position + float(Time.get_ticks_usec() - _anchor_usec) / 1000000.0 * rate \
 			- first_beat_offset - user_offset * rate
 
@@ -179,11 +184,27 @@ func _apply_rate() -> void:
 
 func stop() -> void:
 	_running = false
+	paused = false
 	_player.stop()
 
 
+## 暫停／繼續：把目前位置記下來、音樂停住；繼續時從同一個位置接著走
+func set_paused(on: bool) -> void:
+	if on == paused or not _running:
+		paused = on and _running
+		return
+	var now := Time.get_ticks_usec()
+	if on:
+		_anchor_position += float(now - _anchor_usec) / 1000000.0 * rate
+	_anchor_usec = now
+	paused = on
+	_player.stream_paused = on
+	if not on:
+		_seek_guard_until = now + 150000
+
+
 func _process(_delta: float) -> void:
-	if not _running:
+	if not _running or paused:
 		return
 	var now := Time.get_ticks_usec()
 	var real_dt := float(now - _anchor_usec) / 1000000.0

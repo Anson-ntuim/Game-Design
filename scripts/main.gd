@@ -94,6 +94,12 @@ func _ready() -> void:
 
 ## 記下最近兩個物理步的角色位置，畫面更新時依插值比例取中間點（2D 沒有現成的插值變換可讀）
 func _physics_process(_delta: float) -> void:
+	if _respawn_at_beat != INF:
+		if not player.control_locked:
+			## 已經用別的方式回來了（重來、跳段）：取消排好的重生
+			_respawn_at_beat = INF
+		elif Conductor.song_beat >= _respawn_at_beat:
+			_do_respawn(_respawn_pos)
 	_player_prev = _player_curr
 	_player_curr = player.global_position
 
@@ -213,7 +219,11 @@ func _process(delta: float) -> void:
 			hud.show_message("畫質　%s" % String(GameState.QUALITIES[q]["name"]), 1.2)
 
 	if Input.is_action_just_pressed("back"):
-		get_tree().change_scene_to_file(SELECT_SCENE)
+		if _completed:
+			GameState.set_meta("home_screen", "levels")
+			get_tree().change_scene_to_file(SELECT_SCENE)
+		else:
+			_open_pause()
 	elif Input.is_action_just_pressed("restart"):
 		get_tree().reload_current_scene()
 	elif _completed and (Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("jump")):
@@ -221,6 +231,7 @@ func _process(delta: float) -> void:
 			GameState.level_index += 1
 			get_tree().reload_current_scene()
 		else:
+			GameState.set_meta("home_screen", "levels")
 			get_tree().change_scene_to_file(SELECT_SCENE)
 
 
@@ -233,6 +244,47 @@ func _unhandled_input(event: InputEvent) -> void:
 	if idx >= 0 and idx < LevelData.LEVELS.size():
 		GameState.level_index = idx
 		get_tree().reload_current_scene()
+
+
+## 暫停選單：整棵場景樹和節奏時鐘一起停
+var _pause: PauseMenu = null
+
+
+func _open_pause() -> void:
+	if _pause != null:
+		return
+	_pause = PauseMenu.new()
+	add_child(_pause)
+	_pause.chosen.connect(_on_pause_chosen)
+	Conductor.set_paused(true)
+	get_tree().paused = true
+
+
+func _on_pause_chosen(action: String) -> void:
+	_close_pause()
+	if action == "回到長椅":
+		if not player.control_locked:
+			_do_respawn(player.checkpoint_position)
+	elif action == "從頭再來":
+		get_tree().reload_current_scene()
+	elif action == "回選關":
+		GameState.set_meta("home_screen", "levels")
+		get_tree().change_scene_to_file(SELECT_SCENE)
+
+
+func _close_pause() -> void:
+	if _pause == null:
+		return
+	_pause.queue_free()
+	_pause = null
+	get_tree().paused = false
+	Conductor.set_paused(false)
+
+
+func _exit_tree() -> void:
+	if get_tree():
+		get_tree().paused = false
+	Conductor.set_paused(false)
 
 
 ## 正在示範中的起跳旗（沒有就回傳 null）
@@ -339,9 +391,105 @@ func _on_player_died() -> void:
 	tw.tween_callback(func() -> void:
 		if _tempo_pad_mode:
 			set_world_tempo(_checkpoint_tempo_bpm, false)
-		player.respawn_at(player.checkpoint_position)
-		camera.position = player.global_position
-		_camera_ground_y = player.global_position.y)
+		_plan_synced_respawn())
+
+
+## HUD 用：目前段落在「有連招的段落」裡是第幾段、共幾段、標題
+func hud_section_info() -> Dictionary:
+	var timed: Array[int] = []
+	for i in _plans.size():
+		if not (_plans[i] as Array).is_empty():
+			timed.append(i)
+	var cur := -1
+	for k in timed.size():
+		if timed[k] <= _section_index:
+			cur = k
+	var title := ""
+	if _section_index < _hints.size():
+		title = String(_hints[_section_index]["text"]).split("\n")[0]
+	return {"index": cur, "total": timed.size(), "title": title}
+
+
+## HUD 節拍軌用：接下來要按的動作 [{beat, act}]（整首歌的拍數）。
+## 已經放行的段落用旗子記下的拍；還沒到的下一段，用「照現在速度跑到起跑點」推算它會在哪一拍出發
+func track_events() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if not player:
+		return out
+	var b := Conductor.song_beat
+	var px := player.global_position.x
+	for i in range(maxi(0, _section_index - 1), mini(_hints.size(), _section_index + 3)):
+		if i >= _plans.size() or (_plans[i] as Array).is_empty():
+			continue
+		var flag: CueFlag = null
+		for f in _flags:
+			if f.position.x >= float(_hints[i]["from"]) and f.position.x < float(_hints[i]["to"]):
+				flag = f
+		if flag == null:
+			continue
+		var base := INF
+		if flag._auto_waiting:
+			base = flag._auto_go_at
+		elif flag.last_sync_beat > -INF and px >= flag._start_x() - 8.0 and b - flag.last_sync_beat < 24.0:
+			base = flag.last_sync_beat
+		elif px < flag._start_x():
+			var t := (flag._start_x() - px) / CueFlag.RUN_PER_BEAT
+			var cyc := flag.cycle_beats
+			base = ceilf((b + t + CueFlag.GO_LEAD - 0.07) / cyc) * cyc
+		if base == INF:
+			continue
+		for step: Dictionary in _plans[i]:
+			out.append({"beat": base + float(step["beat"]), "act": String(step["act"])})
+	return out
+
+
+## 重生對拍：算好什麼時候、在長椅附近哪裡出現，讓自動跑剛好在下一面旗子的 GO 拍跑到起跑點直接通過，
+## 不用在旗子前等。來得及就馬上在算好的位置出現；來不及就在「回到長椅……」畫面多等一下再出現。
+var _respawn_at_beat: float = INF
+var _respawn_pos := Vector2.ZERO
+
+
+func _plan_synced_respawn() -> void:
+	var cp := player.checkpoint_position
+	var flag := _next_flag_after(cp.x)
+	if flag == null or not GameState.auto_run or absf(flag.position.y - (cp.y + Player.BODY_SIZE.y * 0.5 + 1.0)) > 30.0:
+		_do_respawn(cp)
+		return
+	var b := Conductor.song_beat
+	var sx := flag._start_x()
+	var x_max := sx - 40.0
+	var x_min := cp.x - 80.0
+	if x_max <= x_min:
+		_do_respawn(cp)
+		return
+	var lead := CueFlag.GO_LEAD
+	var cyc := flag.cycle_beats
+	## 有設計小節位置就對齊 8 拍（例如第 4 拍開始的段落），否則對齊旗子自己的週期
+	var offset := 0.0
+	if flag.phase8 >= 0.0:
+		offset = fposmod(flag.phase8, cyc)
+	var go := ceilf((b + (sx - x_max) / CueFlag.RUN_PER_BEAT + lead - offset) / cyc) * cyc + offset - lead
+	var x := sx - (go - b) * CueFlag.RUN_PER_BEAT
+	if x >= x_min:
+		_do_respawn(Vector2(x, cp.y))
+		return
+	_respawn_pos = Vector2(x_min, cp.y)
+	_respawn_at_beat = go - (sx - x_min) / CueFlag.RUN_PER_BEAT
+
+
+func _next_flag_after(x: float) -> CueFlag:
+	var best: CueFlag = null
+	for f in _flags:
+		if f.position.x > x and (best == null or f.position.x < best.position.x):
+			best = f
+	return best
+
+
+func _do_respawn(pos: Vector2) -> void:
+	_respawn_at_beat = INF
+	player.respawn_at(pos)
+	camera.position = player.global_position
+	_camera_ground_y = player.global_position.y
 
 
 func _on_checkpoint_activated(cp: Checkpoint) -> void:
@@ -447,7 +595,7 @@ func _build_level() -> void:
 		add_child(pad)
 	for t: Dictionary in data["trampolines"]:
 		var tr := Trampoline.new()
-		tr.setup(t["top_left"], t["width"], TILE)
+		tr.setup(t["top_left"], t["width"], TILE, int(t.get("need", 0)))
 		add_child(tr)
 	for s: Dictionary in data["swings"]:
 		var sw := SwingRope.new()
@@ -622,6 +770,7 @@ func _add_pattern_tile(pat: Dictionary, grid: Array[String], x: int, y: int, run
 			var flag := CueFlag.new()
 			flag.setup(top_left + Vector2(TILE * 0.5, TILE), pat.get("demo", ""))
 			flag.cycle_beats = float(pat.get("cycle", CueFlag.CYCLE_BEATS))
+			flag.phase8 = float(pat.get("phase", -1.0))
 			_flags.append(flag)
 			add_child(flag)
 		"platform":

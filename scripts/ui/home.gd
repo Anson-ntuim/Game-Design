@@ -1,50 +1,49 @@
 extends Node2D
-## 整合主選單：關卡選擇／難度／畫面／自訂音樂／其他設定，一個介面搞定。
+## 主選單與選關（照設計稿「Heart Beat UI 改版提案」的主選單、選擇關卡兩個畫面）。
+##   主選單：大標題、角色、四個按鈕（開始遊戲＝接續上次的關、選擇關卡、自訂音樂、設定）。
+##   選擇關卡：關卡卡片沿著一條路線排、右邊是選中那關的詳細資料、判定難度和開始按鈕。
+##   設定：用暫停選單同一個面板（PauseMenu），左邊換成返回、延遲校正、機關說明、關卡設計台。
+## 從遊戲裡「回選關」會直接進到選擇關卡（GameState 的 meta "home_screen"）。
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const CHART_SCENE := "res://scenes/chart_studio.tscn"
-const CARD_SIZE := Vector2(280, 200)
-const CARD_GAP := 36.0
+## 關卡卡片的場景縮圖：背景主題 → 天空、近景兩層
+const THUMBS := {
+	"calm_city": ["res://assets/themes/heartbeat_city/bg/sky.png", "res://assets/themes/heartbeat_city/bg/city_near.png"],
+	"sakura_park": ["res://assets/themes/sakura_park/bg/sky.png", "res://assets/themes/sakura_park/bg/park_near.png"],
+	"music_festival": ["res://assets/themes/music_festival/bg/sky.png", "res://assets/themes/music_festival/bg/festival_near.png"],
+}
+const THEME_NAMES := {"calm_city": "月夜城市", "sakura_park": "櫻花公園", "music_festival": "音樂祭"}
+const MENU_ITEMS := ["開始遊戲", "選擇關卡", "自訂音樂", "設定"]
+const NEXT_UP := "天花板尖刺、雷射：即將推出"
 
-enum Tab { LEVELS, DIFFICULTY, DISPLAY, MUSIC, OTHER }
+enum Screen { MAIN, LEVELS }
 
-const TAB_LABELS: PackedStringArray = ["關卡選擇", "難度設定", "畫面與聲音", "自訂音樂", "其他設定"]
+static var _thumb_cache: Dictionary = {}
 
-var _tab: Tab = Tab.LEVELS
+var _screen: Screen = Screen.MAIN
+var _menu_row: int = 0
 var _selected: int = 0
-var _section: int = 0
-var _display_row: int = 0
-var _music_row: int = 0
-var _other_row: int = 0
 var _view: Control
-## 選關卡卡片裁切層：避免左右滑出面板框
-var _levels_clip: Control
 var _camera: Camera2D
-var _slide: float = 0.0
-var _levels_panel: Rect2 = Rect2()
-var _levels_pulse: float = 0.0
-var _levels_edge: Color = Color.WHITE
 var _fade: float = 1.0
 var _fade_out: float = 0.0
 var _bump: float = 0.0
-var _diff_bump: float = 0.0
-var _quality_bump: float = 0.0
-var _theme_bump: float = 0.0
-var _skin_bump: float = 0.0
-var _blink: float = 0.0
 var _input_lock: float = 0.35
 var _starting: bool = false
 var _guide: MechanicGuide
 var _calibrator: LatencyCalibrator
 var _music_setup: MusicSetup
+var _settings: PauseMenu
 
 
 func _ready() -> void:
 	Engine.time_scale = 1.0
 	_selected = clampi(GameState.level_index, 0, maxi(0, LevelData.LEVELS.size() - 1))
 	GameState.level_index = _selected
-	_section = clampi(GameState.start_section, 0, maxi(0, LevelData.section_titles(_selected).size() - 1))
-	_slide = float(_selected)
+	if String(GameState.get_meta("home_screen", "")) == "levels":
+		_screen = Screen.LEVELS
+	GameState.set_meta("home_screen", "")
 
 	add_child(Background.new())
 	_camera = Camera2D.new()
@@ -61,274 +60,108 @@ func _ready() -> void:
 	layer.add_child(_view)
 	_view.draw.connect(_on_view_draw)
 	_view.gui_input.connect(_on_gui_input)
-	_levels_clip = Control.new()
-	_levels_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_levels_clip.clip_contents = true
-	_view.add_child(_levels_clip)
-	_levels_clip.draw.connect(_on_levels_clip_draw)
-
-	UiKit.clear_minimaps()
-	for i in LevelData.LEVELS.size():
-		UiKit.minimap(i)
 
 	GameState.reset_stats()
 	Conductor.start(false, not (Conductor.custom_music and Conductor.is_music_playing()))
 	var tw := create_tween()
-	tw.tween_property(self, "_fade", 0.0, 0.7).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "_fade", 0.0, 0.6).set_ease(Tween.EASE_OUT)
 
 
 func _process(delta: float) -> void:
 	_camera.position.x += 28.0 * delta
-	_blink += delta
 	_input_lock = maxf(0.0, _input_lock - delta)
 	_bump = move_toward(_bump, 0.0, delta * 4.0)
-	_diff_bump = move_toward(_diff_bump, 0.0, delta * 4.0)
-	_quality_bump = move_toward(_quality_bump, 0.0, delta * 4.0)
-	_theme_bump = move_toward(_theme_bump, 0.0, delta * 4.0)
-	_skin_bump = move_toward(_skin_bump, 0.0, delta * 4.0)
-	_slide = lerpf(_slide, float(_selected), 1.0 - exp(-12.0 * delta))
 	_view.queue_redraw()
-	if is_instance_valid(_levels_clip):
-		_levels_clip.queue_redraw()
-
 	if _fade_out > 0.0:
 		_fade_out = minf(1.0, _fade_out + delta * 2.4)
 		if _fade_out >= 1.0 and _starting:
 			get_tree().change_scene_to_file(MAIN_SCENE)
 		return
-
-	if _starting or _fade > 0.05 or _input_lock > 0.0:
-		return
-	if is_instance_valid(_guide) or is_instance_valid(_calibrator) or is_instance_valid(_music_setup):
-		return
-	_handle_input()
-
-
-func _overlay_open() -> bool:
-	return is_instance_valid(_guide) or is_instance_valid(_calibrator) or is_instance_valid(_music_setup)
-
-
-func _handle_input() -> void:
-	## Tab／[ ] 切分頁
-	var tab_step := 0
-	if Input.is_action_just_pressed("quality_down") or Input.is_action_just_pressed("ui_focus_prev"):
-		tab_step = -1
-	elif Input.is_action_just_pressed("quality_up") or Input.is_action_just_pressed("ui_focus_next"):
-		tab_step = 1
-	if tab_step != 0:
-		_set_tab(posmod(int(_tab) + tab_step, TAB_LABELS.size()))
-		return
-
-	if Input.is_action_just_pressed("music_setup"):
-		if _tab != Tab.MUSIC:
-			_set_tab(Tab.MUSIC)
-		_open_music_setup()
+	if _starting or _fade > 0.05 or _input_lock > 0.0 or _overlay_open():
 		return
 	if Input.is_action_just_pressed("guide"):
 		_open_guide()
-		return
-	if Input.is_action_just_pressed("calibrate"):
+	elif Input.is_action_just_pressed("calibrate"):
 		_open_calibrator()
-		return
-
-	match _tab:
-		Tab.LEVELS:
-			_handle_levels()
-		Tab.DIFFICULTY:
-			_handle_difficulty()
-		Tab.DISPLAY:
-			_handle_display()
-		Tab.MUSIC:
-			_handle_music()
-		Tab.OTHER:
-			_handle_other()
+	elif Input.is_action_just_pressed("music_setup"):
+		_open_music_setup()
+	elif _screen == Screen.MAIN:
+		_handle_main()
+	else:
+		_handle_levels()
 
 
-func _set_tab(index: int) -> void:
-	_tab = index as Tab
-	_display_row = 0
-	_music_row = 0
-	_other_row = 0
-	GameState.play_sfx("pluck", 4.0, -10.0)
+func _overlay_open() -> bool:
+	return is_instance_valid(_guide) or is_instance_valid(_calibrator) or is_instance_valid(_music_setup) \
+		or is_instance_valid(_settings)
+
+
+## 「開始遊戲」接續的關卡：還沒通關的第一關，全破就是上次玩的那關
+func _continue_level() -> int:
+	for i in LevelData.LEVELS.size():
+		if not GameState.records.has(i):
+			return i
+	return clampi(GameState.level_index, 0, LevelData.LEVELS.size() - 1)
+
+
+func _handle_main() -> void:
+	if Input.is_action_just_pressed("up"):
+		_menu_row = posmod(_menu_row - 1, MENU_ITEMS.size())
+		GameState.play_sfx("pluck", 3.0, -10.0)
+	elif Input.is_action_just_pressed("down"):
+		_menu_row = posmod(_menu_row + 1, MENU_ITEMS.size())
+		GameState.play_sfx("pluck", 3.0, -10.0)
+	elif Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("jump"):
+		_activate_menu(_menu_row)
+
+
+func _activate_menu(i: int) -> void:
+	match i:
+		0:
+			_start_level(_continue_level())
+		1:
+			_screen = Screen.LEVELS
+			_input_lock = 0.15
+			GameState.play_sfx("pluck", 7.0, -6.0)
+		2:
+			_open_music_setup()
+		3:
+			_open_settings()
 
 
 func _handle_levels() -> void:
+	if Input.is_action_just_pressed("back"):
+		_screen = Screen.MAIN
+		_input_lock = 0.15
+		GameState.play_sfx("pluck", 2.0, -8.0)
+		return
 	var step := 0
-	if Input.is_action_just_pressed("move_left"):
+	if Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("up"):
 		step = -1
-	elif Input.is_action_just_pressed("move_right"):
+	elif Input.is_action_just_pressed("move_right") or Input.is_action_just_pressed("down"):
 		step = 1
 	if step != 0:
 		var next := clampi(_selected + step, 0, LevelData.LEVELS.size() - 1)
 		if next != _selected:
 			_selected = next
-			_section = 0
 			_bump = 1.0
 			GameState.play_sfx("pluck", GameState.next_note(), -6.0)
+	if Input.is_action_just_pressed("easier") or Input.is_action_just_pressed("harder"):
+		var d := GameState.difficulty + (-1 if Input.is_action_just_pressed("easier") else 1)
+		GameState.set_difficulty(clampi(d, 0, GameState.DIFFICULTIES.size() - 1))
+		GameState.play_sfx("pluck", 7.0, -8.0)
 	if Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("jump"):
 		_start_level(_selected)
 
 
-func _handle_difficulty() -> void:
-	var step := 0
-	if Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("easier"):
-		step = -1
-	elif Input.is_action_just_pressed("move_right") or Input.is_action_just_pressed("harder") \
-			or Input.is_action_just_pressed("confirm"):
-		step = 1
-	if step != 0:
-		var d := clampi(GameState.difficulty + step, 0, GameState.DIFFICULTIES.size() - 1)
-		if d != GameState.difficulty:
-			GameState.set_difficulty(d)
-			_diff_bump = 1.0
-			GameState.play_sfx("pluck", 7.0, -8.0)
-
-
-func _handle_display() -> void:
-	var rows := _display_row_count()
-	if Input.is_action_just_pressed("up"):
-		_display_row = posmod(_display_row - 1, rows)
-		GameState.play_sfx("pluck", 3.0, -10.0)
-	elif Input.is_action_just_pressed("down"):
-		_display_row = posmod(_display_row + 1, rows)
-		GameState.play_sfx("pluck", 3.0, -10.0)
-	var step := 0
-	if Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("easier"):
-		step = -1
-	elif Input.is_action_just_pressed("move_right") or Input.is_action_just_pressed("harder") \
-			or Input.is_action_just_pressed("confirm"):
-		step = 1
-	if step == 0:
-		return
-	_step_display(_display_rows()[_display_row], step)
-
-
-func _step_display(id: String, step: int) -> void:
-	match id:
-		"quality":
-			var q := clampi(GameState.quality + step, 0, GameState.QUALITIES.size() - 1)
-			if q != GameState.quality:
-				GameState.set_quality(q)
-				_quality_bump = 1.0
-				GameState.play_sfx("pluck", 5.0, -8.0)
-		"skin":
-			GameState.set_skin(GameState.skin + step)
-			_skin_bump = 1.0
-			GameState.play_sfx("pluck", 12.0, -6.0)
-		"music":
-			GameState.set_music_volume(GameState.music_volume + 0.1 * step)
-			GameState.play_sfx("pluck", 5.0, -8.0)
-		"sfx":
-			GameState.set_sfx_volume(GameState.sfx_volume + 0.1 * step)
-			GameState.play_sfx("pluck", 5.0, -8.0)
-		"shake":
-			GameState.set_screen_shake(not GameState.screen_shake)
-			GameState.play_sfx("pluck", 7.0, -8.0)
-		"auto":
-			GameState.set_auto_run(not GameState.auto_run)
-			GameState.play_sfx("pluck", 7.0, -8.0)
-
-
-## 畫面設定的列：畫質、造型（有多套才顯示）、音樂音量、音效音量、畫面晃動、自動前進
-func _display_rows() -> Array[String]:
-	var rows: Array[String] = ["quality"]
-	if GameState.SKINS.size() > 1:
-		rows.append("skin")
-	rows.append_array(["music", "sfx", "shake", "auto"])
-	return rows
-
-
-func _display_row_count() -> int:
-	return _display_rows().size()
-
-
-## 前面幾列（畫質、造型）是大格，其餘是一行一格
-func _display_big_rows() -> int:
-	return 2 if GameState.SKINS.size() > 1 else 1
-
-
-func _handle_music() -> void:
-	if Input.is_action_just_pressed("up"):
-		_music_row = posmod(_music_row - 1, 2)
-		GameState.play_sfx("pluck", 3.0, -10.0)
-	elif Input.is_action_just_pressed("down"):
-		_music_row = posmod(_music_row + 1, 2)
-		GameState.play_sfx("pluck", 3.0, -10.0)
-	elif Input.is_action_just_pressed("back"):
-		_set_tab(Tab.LEVELS)
-	elif Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("jump"):
-		## 尚未自訂曲時，「推薦速度」列的 Enter 改開選歌，避免像卡住
-		if _music_row == 1 and Conductor.custom_music:
-			_toggle_recommended_tempo()
-		else:
-			_music_row = 0
-			_open_music_setup()
-	elif _music_row == 1 and (
-			Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("move_right")
-			or Input.is_action_just_pressed("easier") or Input.is_action_just_pressed("harder")):
-		_toggle_recommended_tempo()
-
-
-func _toggle_recommended_tempo() -> void:
-	if not Conductor.custom_music:
-		_music_row = 0
-		GameState.play_sfx("pluck", 5.0, -8.0)
-		_open_music_setup()
-		return
-	GameState.set_prefer_reference_tempo(not Conductor.prefer_reference_tempo)
-	GameState.play_sfx("pluck", 8.0 if Conductor.prefer_reference_tempo else 2.0, -8.0)
-
-
-func _other_items() -> Array[String]:
-	var items: Array[String] = [
-		"延遲校正",
-		"機關說明",
-		"關卡設計台",
-	]
-	if not OS.has_feature("web"):
-		items.append("離開遊戲")
-	return items
-
-
-func _handle_other() -> void:
-	var items := _other_items()
-	if Input.is_action_just_pressed("up"):
-		_other_row = posmod(_other_row - 1, items.size())
-		GameState.play_sfx("pluck", 3.0, -10.0)
-	elif Input.is_action_just_pressed("down"):
-		_other_row = posmod(_other_row + 1, items.size())
-		GameState.play_sfx("pluck", 3.0, -10.0)
-	elif Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("jump"):
-		_activate_other(items[_other_row])
-
-
-func _activate_other(item: String) -> void:
-	if item == "延遲校正":
-		_open_calibrator()
-	elif item == "機關說明":
-		_open_guide()
-	elif item == "關卡設計台":
-		get_tree().change_scene_to_file(CHART_SCENE)
-	elif item == "離開遊戲":
-		get_tree().quit()
-
-
 func _unhandled_input(event: InputEvent) -> void:
-	if _starting or _overlay_open() or _fade > 0.05:
-		return
 	var key := event as InputEventKey
-	if key == null or not key.pressed or key.echo:
+	if _starting or _overlay_open() or key == null or not key.pressed or key.echo:
 		return
 	var digit := key.physical_keycode - KEY_1
-	if digit >= 0 and digit < TAB_LABELS.size() and key.alt_pressed:
-		_set_tab(digit)
-		return
-	if _tab == Tab.LEVELS:
-		if digit >= 0 and digit < LevelData.LEVELS.size():
-			_selected = digit
-			_start_level(digit)
-	elif digit >= 0 and digit < TAB_LABELS.size():
-		_set_tab(digit)
+	if _screen == Screen.LEVELS and digit >= 0 and digit < LevelData.LEVELS.size():
+		_selected = digit
+		_start_level(digit)
 
 
 func _start_level(idx: int) -> void:
@@ -354,475 +187,353 @@ func _open_calibrator() -> void:
 
 
 func _open_music_setup() -> void:
-	if is_instance_valid(_music_setup):
-		if not _music_setup.is_inside_tree():
-			_music_setup = null
-		else:
-			return
-	_music_row = 0
+	if is_instance_valid(_music_setup) and _music_setup.is_inside_tree():
+		return
 	_music_setup = MusicSetup.new()
 	_music_setup.closed.connect(func() -> void:
 		_input_lock = 0.2
-		_music_setup = null
-	)
+		_music_setup = null)
 	_music_setup.tree_exited.connect(func() -> void:
 		_music_setup = null
-		_input_lock = maxf(_input_lock, 0.15)
-	)
+		_input_lock = maxf(_input_lock, 0.15))
 	add_child(_music_setup)
 	GameState.play_sfx("pluck", 7.0, -6.0)
 
 
+## 設定：和遊戲中暫停同一個面板
+func _open_settings() -> void:
+	_settings = PauseMenu.new()
+	_settings.title = "設定"
+	_settings.subtitle = "SETTINGS"
+	var acts: Array = ["返回", "延遲校正", "機關說明", "關卡設計台"]
+	if not OS.has_feature("web"):
+		acts.append("離開遊戲")
+	_settings.actions = acts
+	_settings.settings = ["music", "sfx", "quality", "skin", "shake", "auto", "judge"]
+	add_child(_settings)
+	_settings.chosen.connect(_on_settings_chosen)
+	GameState.play_sfx("pluck", 7.0, -6.0)
+
+
+func _on_settings_chosen(action: String) -> void:
+	_settings.queue_free()
+	_settings = null
+	_input_lock = 0.2
+	if action == "延遲校正":
+		_open_calibrator()
+	elif action == "機關說明":
+		_open_guide()
+	elif action == "關卡設計台":
+		get_tree().change_scene_to_file(CHART_SCENE)
+	elif action == "離開遊戲":
+		get_tree().quit()
+
+
+# ---------------------------------------------------------------- 滑鼠
+
+func _menu_rect(i: int) -> Rect2:
+	if i == 0:
+		return Rect2(88, 352, 380, 76)
+	return Rect2(88, 442 + (i - 1) * 74.0, 380, 60)
+
+
 func _on_gui_input(event: InputEvent) -> void:
-	if _starting or _overlay_open() or _fade > 0.05 or _input_lock > 0.0:
-		return
 	var mb := event as InputEventMouseButton
-	if mb == null or not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+	if mb == null or not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT or _overlay_open() or _starting:
 		return
-	var safe := UiKit.safe_rect(_view.size)
-	var nav := _nav_rect(safe)
-	for i in TAB_LABELS.size():
-		if _tab_row_rect(nav, i).has_point(mb.position):
-			_set_tab(i)
+	if _screen == Screen.MAIN:
+		for i in MENU_ITEMS.size():
+			if _menu_rect(i).has_point(mb.position):
+				_menu_row = i
+				_activate_menu(i)
+				return
+		return
+	if Rect2(64, 48, 48, 48).has_point(mb.position):
+		_screen = Screen.MAIN
+		return
+	for c: Dictionary in _card_layout():
+		if (c["rect"] as Rect2).has_point(mb.position):
+			if int(c["index"]) == _selected:
+				_start_level(_selected)
+			else:
+				_selected = int(c["index"])
+				_bump = 1.0
 			return
-	var panel := _panel_rect(safe)
-	match _tab:
-		Tab.LEVELS:
-			for i in LevelData.LEVELS.size():
-				var offset := (i - _slide) * (CARD_SIZE.x + CARD_GAP)
-				var c := Vector2(panel.get_center().x + offset, panel.position.y + 150.0)
-				if Rect2(c - CARD_SIZE * 0.5, CARD_SIZE).has_point(mb.position):
-					if i == _selected:
-						_start_level(i)
-					else:
-						_selected = i
-						_section = 0
-						_bump = 1.0
-						GameState.play_sfx("pluck", GameState.next_note(), -6.0)
-					return
-		Tab.DIFFICULTY:
-			_nudge_diff_at(panel, mb.position)
-		Tab.DISPLAY:
-			_click_display(panel, mb.position)
-		Tab.MUSIC:
-			var info := Rect2(panel.position + Vector2(24, 70), Vector2(panel.size.x - 48, 120))
-			if info.has_point(mb.position) or _music_setup_rect(panel).has_point(mb.position):
-				_music_row = 0
-				_open_music_setup()
-				return
-			if _music_tempo_rect(panel).has_point(mb.position):
-				_music_row = 1
-				_toggle_recommended_tempo()
-				return
-		Tab.OTHER:
-			var items := _other_items()
-			for i in items.size():
-				if _other_row_rect(panel, i).has_point(mb.position):
-					_other_row = i
-					_activate_other(items[i])
-					return
-
-
-func _nudge_diff_at(panel: Rect2, pos: Vector2) -> void:
-	var box := Rect2(panel.position + Vector2(24, 72), Vector2(panel.size.x - 48, 120))
-	if not box.has_point(pos):
-		return
+	var panel := _detail_rect()
 	var n := GameState.DIFFICULTIES.size()
-	var seg_w := (box.size.x - 36.0 - 6.0 * (n - 1)) / n
-	for i in n:
-		var r := Rect2(box.position + Vector2(18.0 + i * (seg_w + 6.0), 42), Vector2(seg_w, 40))
-		if r.has_point(pos):
-			GameState.set_difficulty(i)
-			_diff_bump = 1.0
-			GameState.play_sfx("pluck", 7.0, -8.0)
+	for d in n:
+		if _difficulty_rect(panel, d, n).has_point(mb.position):
+			GameState.set_difficulty(d)
 			return
+	if _start_rect(panel).has_point(mb.position):
+		_start_level(_selected)
 
 
-func _click_display(panel: Rect2, pos: Vector2) -> void:
-	for i in _display_row_count():
-		var r := _display_row_rect(panel, i)
-		if not r.has_point(pos):
-			continue
-		_display_row = i
-		var id := _display_rows()[i]
-		match id:
-			"quality":
-				GameState.set_quality(posmod(GameState.quality + 1, GameState.QUALITIES.size()))
-				_quality_bump = 1.0
-				GameState.play_sfx("pluck", 6.0, -8.0)
-			"skin":
-				GameState.set_skin(GameState.skin + 1)
-				_skin_bump = 1.0
-				GameState.play_sfx("pluck", 6.0, -8.0)
-			"music", "sfx":
-				## 點左半邊調小、右半邊調大
-				_step_display(id, -1 if pos.x < r.get_center().x else 1)
-			_:
-				_step_display(id, 1)
-		return
-
-
-func _nav_rect(safe: Rect2) -> Rect2:
-	return Rect2(safe.position.x, safe.position.y + 78.0, 196.0, safe.size.y - 120.0)
-
-
-func _panel_rect(safe: Rect2) -> Rect2:
-	var nav := _nav_rect(safe)
-	return Rect2(nav.end.x + 18.0, nav.position.y, safe.end.x - nav.end.x - 18.0, nav.size.y)
-
-
-func _tab_row_rect(nav: Rect2, index: int) -> Rect2:
-	return Rect2(nav.position.x + 8.0, nav.position.y + 16.0 + index * 58.0, nav.size.x - 16.0, 48.0)
-
-
-func _display_row_rect(panel: Rect2, index: int) -> Rect2:
-	var big := _display_big_rows()
-	if index < big:
-		return Rect2(panel.position.x + 24.0, panel.position.y + 64.0 + index * 108.0, panel.size.x - 48.0, 96.0)
-	var y := panel.position.y + 64.0 + big * 108.0 + (index - big) * 52.0
-	return Rect2(panel.position.x + 24.0, y, panel.size.x - 48.0, 44.0)
-
-
-func _other_row_rect(panel: Rect2, index: int) -> Rect2:
-	return Rect2(panel.position.x + 40.0, panel.position.y + 70.0 + index * 52.0, panel.size.x - 80.0, 44.0)
-
-
-func _music_setup_rect(panel: Rect2) -> Rect2:
-	return Rect2(panel.position.x + 40.0, panel.position.y + 210.0, panel.size.x - 80.0, 44.0)
-
-
-func _music_tempo_rect(panel: Rect2) -> Rect2:
-	return Rect2(panel.position.x + 40.0, panel.position.y + 268.0, panel.size.x - 80.0, 72.0)
-
+# ---------------------------------------------------------------- 畫面
 
 func _on_view_draw() -> void:
 	var size := _view.size
-	var safe := UiKit.safe_rect(size)
-	var edge := GameState.color("edge")
-	var pulse := Conductor.pulse(6.0) * GameState.anim_amount()
-
-	_view.draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.18))
-	var shade := size.y * 0.32
-	_view.draw_polygon(
-		PackedVector2Array([Vector2(0, size.y - shade), Vector2(size.x, size.y - shade), size, Vector2(0, size.y)]),
-		PackedColorArray([Color(0, 0, 0, 0), Color(0, 0, 0, 0), Color(0, 0, 0, 0.55), Color(0, 0, 0, 0.55)]))
-
-	_draw_title(safe, edge, pulse)
-	var nav := _nav_rect(safe)
-	var panel := _panel_rect(safe)
-	_draw_nav(nav, edge, pulse)
-	UiKit.panel(_view, panel, edge, 0.15 + 0.1 * pulse, 0.92, 16.0)
-
-	if is_instance_valid(_levels_clip):
-		_levels_clip.visible = _tab == Tab.LEVELS
-	match _tab:
-		Tab.LEVELS:
-			_draw_levels(panel, edge, pulse)
-		Tab.DIFFICULTY:
-			_draw_difficulty(panel, edge, pulse)
-		Tab.DISPLAY:
-			_draw_display(panel, edge, pulse)
-		Tab.MUSIC:
-			_draw_music(panel, edge, pulse)
-		Tab.OTHER:
-			_draw_other(panel, edge, pulse)
-
-	_draw_hints(safe, edge)
-	if absf(GameState.audio_offset_ms) >= 0.5:
-		var off := "延遲 %+.0f ms" % GameState.audio_offset_ms
-		UiKit.pill(_view, Vector2(safe.end.x - UiKit.width_of(off, 13) - 28.0, safe.position.y + 8.0),
-			off, Color(UiKit.FLOAT, 0.9), UiKit.INK, 13)
-
+	if _screen == Screen.MAIN:
+		_draw_main(size)
+	else:
+		_draw_levels(size)
 	if _fade > 0.0:
-		_view.draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.03, 0.06, _fade))
+		_view.draw_rect(Rect2(Vector2.ZERO, size), Color(UiKit.NIGHT, _fade))
 	if _fade_out > 0.0:
-		_view.draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.03, 0.06, _fade_out))
+		_view.draw_rect(Rect2(Vector2.ZERO, size), Color(UiKit.NIGHT, _fade_out))
 
 
-func _draw_title(safe: Rect2, edge: Color, pulse: float) -> void:
-	var title := GameState.GAME_TITLE
-	var tw := UiKit.width_of(title, 34, UiKit.title_font())
-	UiKit.text(_view, Vector2(safe.position.x, safe.position.y + 42), -1, title, 34,
-		Color(0.92, 0.95, 1.0, 0.95), HORIZONTAL_ALIGNMENT_LEFT, UiKit.title_font())
-	_view.draw_line(Vector2(safe.position.x, safe.position.y + 56),
-		Vector2(safe.position.x + maxf(tw * 0.55, 120.0), safe.position.y + 56), Color(edge, 0.45 + 0.2 * pulse), 1.5)
-	UiKit.text(_view, Vector2(safe.position.x + tw + 16.0, safe.position.y + 38), -1, "主選單", 14, Color(edge, 0.75))
+func _round(r: Rect2, fill: Color, radius: float, border: Color = Color(0, 0, 0, 0), bw: int = 0) -> void:
+	var st := StyleBoxFlat.new()
+	st.anti_aliasing = true
+	st.set_corner_radius_all(int(radius))
+	st.bg_color = fill
+	if bw > 0:
+		st.set_border_width_all(bw)
+		st.border_color = border
+	_view.draw_style_box(st, r)
 
 
-func _draw_nav(nav: Rect2, edge: Color, pulse: float) -> void:
-	UiKit.panel(_view, nav, edge, 0.08, 0.9, 14.0)
-	for i in TAB_LABELS.size():
-		var r := _tab_row_rect(nav, i)
-		var on := i == int(_tab)
+func _chip(pos: Vector2, label: String, dot: Color = Color(0, 0, 0, 0)) -> float:
+	var w := UiKit.width_of(label, 15) + 32.0 + (16.0 if dot.a > 0.0 else 0.0)
+	var r := Rect2(pos, Vector2(w, 40))
+	_round(r, Color(UiKit.NIGHT, 0.82), 20, UiKit.LINE, 2)
+	var x := pos.x + 16
+	if dot.a > 0.0:
+		_view.draw_circle(Vector2(x + 4, pos.y + 20), 4.0, dot)
+		x += 16
+	UiKit.text(_view, Vector2(x, pos.y + 26), -1, label, 15, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
+	return w
+
+
+func _draw_main(size: Vector2) -> void:
+	_view.draw_rect(Rect2(Vector2.ZERO, size), Color(0.078, 0.039, 0.173, 0.55))
+	## RHYTHM RUNNER ＋ 四顆節拍點
+	var beat := posmod(floori(Conductor.song_beat), 4)
+	var dots := [UiKit.PINK, UiKit.CYAN, UiKit.YELLOW, Color(UiKit.TEXT, 0.4)]
+	for i in 4:
+		_view.draw_circle(Vector2(93 + i * 16, 104), 5.0 + (1.5 if i == beat else 0.0), dots[i])
+	UiKit.text(_view, Vector2(166, 110), -1, "RHYTHM RUNNER", 16, UiKit.MUTED, HORIZONTAL_ALIGNMENT_LEFT, UiKit.display_font(600))
+	## 大標題：粉色錯位陰影
+	var f := UiKit.title_font()
+	_view.draw_string(f, Vector2(94, 218), GameState.GAME_TITLE, HORIZONTAL_ALIGNMENT_LEFT, -1, 112, UiKit.PINK)
+	_view.draw_string(f, Vector2(88, 212), GameState.GAME_TITLE, HORIZONTAL_ALIGNMENT_LEFT, -1, 112, UiKit.TEXT)
+	UiKit.text(_view, Vector2(88, 262), -1, "跟著拍子跑，一拍一跳", 22, UiKit.YELLOW, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
+
+	## 角色（右下）
+	var bob := sin(Conductor.song_beat * PI) * 4.0
+	Player.draw_skin(_view, GameState.skin, Vector2(size.x - 330, size.y - 70 + bob), Vector2(7.0, 7.0), 0.0,
+		Color.WHITE, Player.idle_pose(Conductor.song_beat))
+	_view.draw_set_transform(Vector2.ZERO)
+
+	## 四個按鈕
+	var cont := _continue_level()
+	for i in MENU_ITEMS.size():
+		var r := _menu_rect(i)
+		var on := i == _menu_row
+		if i == 0:
+			UiKit.solid_button(_view, r, "", UiKit.PINK, UiKit.PINK_DARK, 28)
+			UiKit.text(_view, Vector2(r.position.x + 28, r.get_center().y + 10), -1, MENU_ITEMS[0], 28, UiKit.INK, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.9))
+			UiKit.text(_view, Vector2(r.end.x - 150, r.get_center().y + 7), 124, "繼續 %s ›" % LevelData.level_code(cont), 18, UiKit.INK, HORIZONTAL_ALIGNMENT_RIGHT, UiKit.font(0.6))
+		else:
+			_round(r, Color(UiKit.CARD if on else UiKit.NIGHT, 0.86), 18, UiKit.PINK if on else UiKit.LINE, 2)
+			UiKit.text(_view, Vector2(r.position.x + 28, r.get_center().y + 8), -1, MENU_ITEMS[i], 21, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
 		if on:
-			_view.draw_colored_polygon(UiKit.chamfer(r, 8.0), Color(edge, 0.22 + 0.12 * pulse))
-			_view.draw_rect(Rect2(r.position.x, r.position.y + 8.0, 4.0, r.size.y - 16.0), Color(edge, 0.95))
-		UiKit.text(_view, Vector2(r.position.x + 18.0, r.get_center().y + 7.0), -1, TAB_LABELS[i],
-			18 if on else 16, Color(1, 1, 1, 0.98) if on else Color(1, 1, 1, 0.55))
-		UiKit.text(_view, Vector2(r.end.x - 28.0, r.get_center().y + 6.0), -1, str(i + 1), 13,
-			Color(edge, 0.8) if on else Color(1, 1, 1, 0.28))
+			_round(Rect2(r.position.x - 16, r.position.y + 14, 5, r.size.y - 28), UiKit.YELLOW, 2)
+
+	## 右上：延遲、目前音樂
+	var music := "♪ %s · %d BPM" % [UiKit.safe_text(Conductor.track_name), roundi(Conductor.bpm)]
+	var mw := UiKit.width_of(music, 15) + 32.0
+	_chip(Vector2(size.x - 88 - mw, 72), music)
+	var off := "延遲 %+.0f ms" % GameState.audio_offset_ms
+	var ow := UiKit.width_of(off, 15) + 48.0
+	_chip(Vector2(size.x - 88 - mw - 10 - ow, 72), off, UiKit.CYAN)
+
+	## 左下操作說明
+	var x := 88.0
+	for pair: Array in [["↑ ↓", "選擇"], ["Enter", "確定"], ["H", "機關說明"], ["O", "延遲校正"]]:
+		UiKit.text(_view, Vector2(x, size.y - 40), -1, pair[0], 15, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
+		x += UiKit.width_of(pair[0], 15) + 10
+		UiKit.text(_view, Vector2(x, size.y - 40), -1, pair[1], 15, UiKit.MUTED)
+		x += UiKit.width_of(pair[1], 15) + 26
 
 
-func _levels_clip_rect(panel: Rect2) -> Rect2:
-	## 標題下方到面板內；卡片不會畫出框外
-	return Rect2(
-		panel.position.x + 14.0,
-		panel.position.y + 48.0,
-		maxi(8.0, panel.size.x - 28.0),
-		maxi(8.0, panel.size.y - 48.0 - 18.0)
-	)
-
-
-func _draw_levels(panel: Rect2, edge: Color, pulse: float) -> void:
-	UiKit.text(_view, panel.position + Vector2(24, 36), -1, "選擇關卡", 20, Color(edge, 0.9))
-	_levels_panel = panel
-	_levels_edge = edge
-	_levels_pulse = pulse
-	var clip := _levels_clip_rect(panel)
-	_levels_clip.visible = true
-	_levels_clip.position = clip.position
-	_levels_clip.size = clip.size
-
-
-func _on_levels_clip_draw() -> void:
-	if _tab != Tab.LEVELS or not _levels_clip.visible:
-		return
-	var panel := _levels_panel
-	var edge := _levels_edge
-	var pulse := _levels_pulse
-	## 轉成裁切層本地座標
-	var origin := _levels_clip.position
-	var center_y := panel.position.y + 150.0 - origin.y
-	for i in LevelData.LEVELS.size():
-		var offset := (i - _slide) * (CARD_SIZE.x + CARD_GAP)
-		var center := Vector2(panel.get_center().x - origin.x + offset, center_y)
-		## 完全在裁切區外就跳過
-		var half := CARD_SIZE * 0.55
-		if center.x + half.x < -4.0 or center.x - half.x > _levels_clip.size.x + 4.0:
-			continue
-		_draw_card(_levels_clip, i, center, i == _selected, edge, pulse)
-	_draw_dots(_levels_clip, Vector2(panel.get_center().x - origin.x, center_y + CARD_SIZE.y * 0.5 + 28.0), edge)
-
-
-func _draw_card(ci: CanvasItem, i: int, center: Vector2, selected: bool, edge: Color, pulse: float) -> void:
-	var info: Dictionary = LevelData.LEVELS[i]
-	var s := 1.03 + 0.012 * pulse + 0.035 * _bump if selected else 0.88
-	var alpha := 1.0 if selected else 0.42
-	ci.draw_set_transform(center, 0.0, Vector2(s, s))
-	var r := Rect2(-CARD_SIZE * 0.5, CARD_SIZE)
-	var accent := edge
-	if i == 3:
-		accent = UiKit.FLOAT if selected else Color(0.55, 0.78, 0.95)
-	UiKit.panel(ci, r, accent if selected else Color(0.8, 0.85, 1.0),
-		0.55 + 0.35 * pulse if selected else 0.0, 1.0 if selected else 0.75, 16.0)
-	var x := r.position.x + 20.0
-	var y := r.position.y
-	var w := r.size.x - 40.0
-	var code := LevelData.level_code(i)
-	UiKit.text(ci, Vector2(x, y + 28), w, "STAGE", 12, Color(accent, 0.9 * alpha), HORIZONTAL_ALIGNMENT_CENTER)
-	var nw := UiKit.width_of(code, 52, UiKit.title_font())
-	UiKit.bold_text(ci, Vector2(r.get_center().x - nw * 0.5, y + 88), -1, code, 52, Color(1, 1, 1, alpha), accent)
-	UiKit.draw_minimap(ci, i, Rect2(x, y + 110, w, 36), edge, alpha)
-	var rec: Dictionary = GameState.records.get(i, {})
-	var fy := r.end.y - 28.0
-	if rec.is_empty():
-		UiKit.text(ci, Vector2(x, fy + 14), w, "尚未通關", 14, Color(1, 1, 1, 0.45 * alpha), HORIZONTAL_ALIGNMENT_CENTER)
-	else:
-		UiKit.text(ci, Vector2(x, fy + 14), w,
-			"最佳 %.1f 秒　死 %d" % [float(rec["time"]), int(rec["deaths"])], 14, Color(UiKit.GOLD, alpha), HORIZONTAL_ALIGNMENT_CENTER)
-	ci.draw_set_transform(Vector2.ZERO)
-
-
-func _draw_dots(ci: CanvasItem, c: Vector2, edge: Color) -> void:
+## 卡片排法：最多同時看三張，選中的那張大一點、往上提
+func _card_layout() -> Array[Dictionary]:
 	var n := LevelData.LEVELS.size()
-	if n <= 0:
-		return
-	var total := (n - 1) * 16.0 + 18.0
-	var x := c.x - total * 0.5
-	for i in n:
-		var on := i == _selected
-		var w := 24.0 if on else 8.0
-		var r := Rect2(x, c.y - 3, w, 7)
-		ci.draw_rect(Rect2(r.position + Vector2(3, 0), r.size - Vector2(6, 0)),
-			Color(edge, 1.0) if on else Color(1, 1, 1, 0.28))
-		ci.draw_circle(r.position + Vector2(3, 3.5), 3.5, Color(edge, 1.0) if on else Color(1, 1, 1, 0.28))
-		ci.draw_circle(Vector2(r.end.x - 3, r.position.y + 3.5), 3.5,
-			Color(edge, 1.0) if on else Color(1, 1, 1, 0.28))
-		x += w + 8.0
+	var first := clampi(_selected - 1, 0, maxi(0, n - 3))
+	var out: Array[Dictionary] = []
+	for k in range(first, mini(n, first + 3)):
+		var slot := k - first
+		var sel := k == _selected
+		var w := 250.0 if sel else 230.0
+		var h := 330.0 if sel else 300.0
+		var x := 64.0 + slot * 275.0 + (0.0 if sel else 10.0)
+		var y := 140.0 if sel else 180.0
+		out.append({"index": k, "rect": Rect2(x, y, w, h), "selected": sel})
+	return out
 
 
-func _draw_difficulty(panel: Rect2, edge: Color, pulse: float) -> void:
-	UiKit.text(_view, panel.position + Vector2(24, 36), -1, "判定難度", 20, Color(edge, 0.9))
-	var box := Rect2(panel.position + Vector2(24, 72), Vector2(panel.size.x - 48, 150))
-	UiKit.panel(_view, box, edge, 0.45 * _diff_bump, 0.85, 12.0)
+func _detail_rect() -> Rect2:
+	return Rect2(_view.size.x - 64 - 360, 140, 360, 520)
+
+
+func _difficulty_rect(panel: Rect2, d: int, n: int) -> Rect2:
+	var w := (panel.size.x - 56.0 - 6.0 * (n - 1)) / n
+	return Rect2(panel.position.x + 28 + d * (w + 6.0), panel.position.y + 290, w, 44)
+
+
+func _start_rect(panel: Rect2) -> Rect2:
+	return Rect2(panel.position.x + 28, panel.end.y - 100, panel.size.x - 56, 72)
+
+
+func _plan_sections(i: int) -> int:
+	var n := 0
+	for chunk: Dictionary in LevelData.level_info(i)["chunks"]:
+		if not (chunk.get("plan", []) as Array).is_empty():
+			n += 1
+	return n
+
+
+func _draw_levels(size: Vector2) -> void:
+	_view.draw_rect(Rect2(Vector2.ZERO, size), Color(UiKit.NIGHT, 0.88))
+	## 標題列
+	var back := Rect2(64, 48, 48, 48)
+	_round(back, Color(UiKit.NIGHT, 0.0), 14, UiKit.LINE, 2)
+	UiKit.text(_view, Vector2(back.position.x, back.position.y + 33), back.size.x, "‹", 24, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.8))
+	UiKit.text(_view, Vector2(128, 84), -1, "選擇關卡", 36, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.9))
+	UiKit.text(_view, Vector2(128 + UiKit.width_of("選擇關卡", 36) + 16, 82), -1, "每一關加入一樣新東西，再和學過的混在一起", 16, UiKit.MUTED)
+
+	## 路線虛線
+	var y_line := 390.0
+	var xx := 104.0
+	while xx < 780.0:
+		_view.draw_line(Vector2(xx, y_line), Vector2(xx + 6, y_line), UiKit.LINE, 4.0)
+		xx += 14.0
+	for c: Dictionary in _card_layout():
+		_draw_card(int(c["index"]), c["rect"], bool(c["selected"]))
+	## 下一關預告
+	var next := Rect2(204, 560, 520, 90)
+	var dash := StyleBoxFlat.new()
+	dash.bg_color = Color(0, 0, 0, 0)
+	_round(next, Color(UiKit.NIGHT, 0.4), 22, UiKit.LINE, 3)
+	UiKit.text(_view, Vector2(next.position.x, next.get_center().y + 8), next.size.x,
+		"%02d　%s" % [LevelData.LEVELS.size() + 1, NEXT_UP], 16, Color("A598D1"), HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.6))
+
+	_draw_detail(_detail_rect())
+	## 底部操作說明
+	var x := 64.0
+	for pair: Array in [["← →", "選關"], ["Q E", "判定"], ["Enter", "開始"], ["Esc", "返回"]]:
+		UiKit.text(_view, Vector2(x, size.y - 24), -1, pair[0], 14, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
+		x += UiKit.width_of(pair[0], 14) + 8
+		UiKit.text(_view, Vector2(x, size.y - 24), -1, pair[1], 14, UiKit.MUTED)
+		x += UiKit.width_of(pair[1], 14) + 24
+
+
+func _draw_card(i: int, r: Rect2, selected: bool) -> void:
+	var info := LevelData.level_info(i)
+	var s := 1.0 + 0.03 * _bump if selected else 1.0
+	var c := r.get_center()
+	_view.draw_set_transform(c, 0.0, Vector2(s, s))
+	var lr := Rect2(-r.size * 0.5, r.size)
+	if selected:
+		var halo := StyleBoxFlat.new()
+		halo.anti_aliasing = true
+		halo.set_corner_radius_all(28)
+		halo.bg_color = Color(UiKit.PINK, 0.18)
+		_view.draw_style_box(halo, lr.grow(6))
+	var st := StyleBoxFlat.new()
+	st.anti_aliasing = true
+	st.set_corner_radius_all(22)
+	st.bg_color = Color("2E1F5C") if selected else UiKit.CARD
+	st.set_border_width_all(3)
+	st.border_color = UiKit.PINK if selected else UiKit.LINE
+	_view.draw_style_box(st, lr)
+	var thumb := Rect2(lr.position + Vector2(12, 12), Vector2(lr.size.x - 24, 128 if selected else 116))
+	_draw_thumb(String(info.get("background_profile", "calm_city")), thumb)
+	var x := lr.position.x + 16
+	var y := thumb.end.y
+	_view.draw_string(UiKit.title_font(), Vector2(x, y + 46), LevelData.level_code(i), HORIZONTAL_ALIGNMENT_LEFT, -1, 40 if selected else 34, UiKit.TEXT)
+	var rec: Dictionary = GameState.records.get(i, {})
+	if not rec.is_empty():
+		UiKit.text(_view, Vector2(lr.end.x - 96, y + 38), 80, "已通關", 14, UiKit.YELLOW, HORIZONTAL_ALIGNMENT_RIGHT, UiKit.font(0.6))
+	UiKit.text(_view, Vector2(x, y + 78), -1, String(info.get("desc", "")), 20 if selected else 18, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.8))
+	var tx := x
+	var ty := y + 92
+	var tags: Array = info.get("tags", [])
+	if selected:
+		var nw := UiKit.width_of("新", 12) + 20.0
+		_round(Rect2(tx, ty, nw, 24), UiKit.PINK, 10)
+		UiKit.text(_view, Vector2(tx, ty + 17), nw, "新", 12, UiKit.INK, HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.8))
+		tx += nw + 6
+	for t: String in tags:
+		var tw := UiKit.width_of(t, 12) + 20.0
+		if tx + tw > lr.end.x - 12:
+			tx = x
+			ty += 30
+		## 標籤太多就不畫到最下面那行紀錄上
+		if ty + 24 > lr.end.y - 34:
+			break
+		_round(Rect2(tx, ty, tw, 24), Color("3B2A6B"), 10)
+		UiKit.text(_view, Vector2(tx, ty + 17), tw, t, 12, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.6))
+		tx += tw + 6
+	var line := "尚未通關" if rec.is_empty() else "最佳 %s · 倒下 %d" % [_fmt_time(float(rec["time"])), int(rec["deaths"])]
+	UiKit.text(_view, Vector2(x, lr.end.y - 16), -1, line, 13, UiKit.CYAN if not rec.is_empty() else UiKit.MUTED)
+	_view.draw_set_transform(Vector2.ZERO)
+
+
+func _draw_detail(panel: Rect2) -> void:
+	_round(panel, UiKit.CARD, 24, UiKit.LINE, 3)
+	var i := _selected
+	var info := LevelData.level_info(i)
+	var p := panel.position
+	UiKit.text(_view, p + Vector2(28, 44), -1, "STAGE %s" % LevelData.level_code(i), 14, UiKit.PINK, HORIZONTAL_ALIGNMENT_LEFT, UiKit.display_font(600))
+	UiKit.text(_view, p + Vector2(28, 84), panel.size.x - 56, String(info.get("desc", "")), 30, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.9))
+	var theme := String(THEME_NAMES.get(String(info.get("background_profile", "")), ""))
+	UiKit.text(_view, p + Vector2(28, 114), -1, "%s · %d 段" % [theme, _plan_sections(i)], 15, UiKit.MUTED)
+	var rec: Dictionary = GameState.records.get(i, {})
+	var tiles := [
+		["最佳時間", _fmt_time(float(rec["time"])) if not rec.is_empty() else "—"],
+		["最少倒下", str(int(rec["deaths"])) if not rec.is_empty() else "—"],
+		["新機關", str((info.get("tags", []) as Array).size())],
+	]
+	var tw := (panel.size.x - 56.0 - 20.0) / 3.0
+	for k in 3:
+		var r := Rect2(p.x + 28 + k * (tw + 10), p.y + 140, tw, 78)
+		_round(r, UiKit.NIGHT, 14)
+		UiKit.text(_view, r.position + Vector2(12, 26), -1, tiles[k][0], 12, UiKit.MUTED)
+		UiKit.text(_view, r.position + Vector2(12, 60), -1, tiles[k][1], 24, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.display_font(700))
+	UiKit.text(_view, p + Vector2(28, 272), -1, "判定難度", 14, UiKit.MUTED, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
 	var n := GameState.DIFFICULTIES.size()
-	var seg_w := (box.size.x - 36.0 - 6.0 * (n - 1)) / n
-	for i in n:
-		var on := i == GameState.difficulty
-		var r := Rect2(box.position + Vector2(18.0 + i * (seg_w + 6.0), 48), Vector2(seg_w, 40))
-		if on:
-			r = r.grow(2.0 * _diff_bump)
-			_view.draw_colored_polygon(UiKit.chamfer(r, 8.0), Color(edge, 0.85 + 0.15 * pulse))
-		else:
-			var loop := UiKit.chamfer(r, 8.0)
-			_view.draw_colored_polygon(loop, Color(1, 1, 1, 0.06))
-			loop.append(loop[0])
-			_view.draw_polyline(loop, Color(1, 1, 1, 0.22), 1.0, true)
-		_view.draw_string(UiKit.font(), Vector2(r.position.x, r.position.y + 26),
-			String(GameState.DIFFICULTIES[i]["name"]), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 18,
-			UiKit.INK if on else Color(1, 1, 1, 0.55))
-	var d: Dictionary = GameState.DIFFICULTIES[GameState.difficulty]
-	var sub := "音符、衝刺環、光牆隨時可用，不用對拍" if GameState.free_rhythm() else \
-		"早 %d 幀／晚 %d 幀內按下都算準（60fps）" % [int(d["early"]), int(d["late"])]
-	UiKit.text(_view, Vector2(box.position.x, box.end.y - 28), box.size.x, sub, 15,
-		Color(1, 1, 1, 0.7), HORIZONTAL_ALIGNMENT_CENTER)
-	UiKit.text(_view, panel.position + Vector2(24, panel.size.y - 48), panel.size.x - 48,
-		"←→ 或 Q／E 調整判定窗寬度", 14, Color(1, 1, 1, 0.45))
+	for d in n:
+		var r := _difficulty_rect(panel, d, n)
+		var on := d == GameState.difficulty
+		_round(r, UiKit.PINK if on else Color(0, 0, 0, 0), 12, UiKit.PINK if on else UiKit.LINE, 2)
+		UiKit.text(_view, Vector2(r.position.x, r.position.y + 29), r.size.x, String(GameState.DIFFICULTIES[d]["name"]), 15,
+			UiKit.INK if on else UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.6))
+	var dd: Dictionary = GameState.DIFFICULTIES[GameState.difficulty]
+	var sub := "音符、衝刺環、光柱隨時可用，不用對拍" if GameState.free_rhythm() else \
+		"早 %d 幀／晚 %d 幀內按下都算準" % [int(dd["early"]), int(dd["late"])]
+	UiKit.text(_view, p + Vector2(28, 362), panel.size.x - 56, sub, 13, UiKit.MUTED)
+	UiKit.solid_button(_view, _start_rect(panel), "開始", UiKit.PINK, UiKit.PINK_DARK, 26)
 
 
-func _draw_display(panel: Rect2, edge: Color, pulse: float) -> void:
-	UiKit.text(_view, panel.position + Vector2(24, 36), -1, "畫面與聲音", 20, Color(edge, 0.9))
-	## 畫質
-	_draw_setting_block(_display_row_rect(panel, 0), "畫質", _display_row == 0, edge, _quality_bump, pulse)
-	var qn := GameState.QUALITIES.size()
-	var qbox := _display_row_rect(panel, 0)
-	var seg_w := (qbox.size.x - 36.0 - 6.0 * (qn - 1)) / qn
-	for i in qn:
-		var on := i == GameState.quality
-		var r := Rect2(qbox.position + Vector2(18.0 + i * (seg_w + 6.0), 42), Vector2(seg_w, 34))
-		if on:
-			_view.draw_colored_polygon(UiKit.chamfer(r, 7.0), Color(edge, 0.85 + 0.1 * pulse))
-		else:
-			_view.draw_colored_polygon(UiKit.chamfer(r, 7.0), Color(1, 1, 1, 0.06))
-		_view.draw_string(UiKit.font(), Vector2(r.position.x, r.position.y + 23),
-			String(GameState.QUALITIES[i]["name"]), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 16,
-			UiKit.INK if on else Color(1, 1, 1, 0.55))
-
-	var rows := _display_rows()
-	for i in range(_display_big_rows(), rows.size()):
-		_draw_compact_row(_display_row_rect(panel, i), rows[i], _display_row == i, edge, pulse)
-
-	if GameState.SKINS.size() > 1:
-		_draw_setting_block(_display_row_rect(panel, 1), "造型", _display_row == 1, edge, _skin_bump, pulse)
-		var sbox := _display_row_rect(panel, 1)
-		var feet := sbox.position + Vector2(70, 88)
-		var pose := "jump_0" if _skin_bump > 0.3 else Player.idle_pose(Conductor.song_beat)
-		Player.draw_skin(_view, GameState.skin, feet + Vector2(0, -sin(_skin_bump * PI) * 12.0),
-			Vector2(1.45, 1.45), 0.0, Color.WHITE, pose)
-		UiKit.text(_view, sbox.position + Vector2(130, 62), sbox.size.x - 150,
-			String(GameState.SKINS[GameState.skin]["name"]), 22, Color.WHITE)
+func _fmt_time(sec: float) -> String:
+	return "%d:%02d" % [floori(sec / 60.0), floori(fposmod(sec, 60.0))]
 
 
-func _draw_compact_row(box: Rect2, id: String, on: bool, edge: Color, pulse: float) -> void:
-	UiKit.panel(_view, box, edge, 0.35 if on else 0.08, 0.88 if on else 0.75, 10.0)
-	if on:
-		_view.draw_rect(Rect2(box.position.x + 4, box.position.y + 8, 3, box.size.y - 16), Color(edge, 0.7 + 0.3 * pulse))
-	var title: String = {"music": "音樂音量", "sfx": "音效音量", "shake": "畫面晃動", "auto": "自動前進"}[id]
-	UiKit.text(_view, box.position + Vector2(18, 28), -1, title, 15, Color(edge, 0.95 if on else 0.75))
-	var right := Rect2(box.position.x + 150.0, box.position.y + 10.0, box.size.x - 170.0, box.size.y - 20.0)
-	if id == "music" or id == "sfx":
-		var v: float = GameState.music_volume if id == "music" else GameState.sfx_volume
-		var bar := Rect2(right.position.x, right.get_center().y - 4.0, right.size.x - 64.0, 8.0)
-		_view.draw_rect(bar, Color(1, 1, 1, 0.12))
-		_view.draw_rect(Rect2(bar.position, Vector2(bar.size.x * v, bar.size.y)), Color(edge, 0.85))
-		_view.draw_string(UiKit.font(), Vector2(bar.end.x + 8.0, box.position.y + 29.0),
-			"%d%%" % roundi(v * 100.0), HORIZONTAL_ALIGNMENT_RIGHT, 56.0, 15, Color.WHITE)
-	else:
-		var value_on: bool = GameState.screen_shake if id == "shake" else GameState.auto_run
-		var label := "開" if value_on else "關"
-		if id == "auto":
-			label = "開（只管跳和衝刺）" if value_on else "關（方向鍵手動移動）"
-		_view.draw_string(UiKit.font(), Vector2(right.position.x, box.position.y + 29.0), label,
-			HORIZONTAL_ALIGNMENT_RIGHT, right.size.x, 15, Color(edge, 1.0) if value_on else Color(1, 1, 1, 0.6))
-
-
-func _draw_setting_block(box: Rect2, title: String, on: bool, edge: Color, bump: float, pulse: float) -> void:
-	UiKit.panel(_view, box, edge, (0.35 if on else 0.08) + 0.35 * bump, 0.88 if on else 0.75, 12.0)
-	UiKit.text(_view, box.position + Vector2(18, 26), -1, title, 14, Color(edge, 0.95 if on else 0.7))
-	if on:
-		_view.draw_rect(Rect2(box.position.x + 4, box.position.y + 12, 3, box.size.y - 24), Color(edge, 0.7 + 0.3 * pulse))
-
-
-func _draw_music(panel: Rect2, edge: Color, pulse: float) -> void:
-	UiKit.text(_view, panel.position + Vector2(24, 36), -1, "自訂音樂", 20, Color(edge, 0.9))
-	var box := Rect2(panel.position + Vector2(24, 70), Vector2(panel.size.x - 48, 120))
-	UiKit.panel(_view, box, edge, 0.2, 0.9, 12.0)
-	var title := Conductor.track_name if Conductor.track_name != "" else "內建音樂"
-	## 自訂檔名可能含字型子集沒有的漢字，顯示前先過濾
-	title = UiKit.safe_text(title)
-	var line2 := "%.1f BPM" % Conductor.bpm
-	if Conductor.custom_music:
-		line2 += "　自訂曲"
-		if not Conductor.rhythm_sections.is_empty():
-			line2 += "　%d 段節奏" % Conductor.rhythm_sections.size()
-	else:
-		line2 += "　內建曲"
-	UiKit.text(_view, box.position + Vector2(24, 42), box.size.x - 48, title, 24, Color.WHITE)
-	UiKit.text(_view, box.position + Vector2(24, 78), box.size.x - 48, line2, 15, Color(1, 1, 1, 0.7))
-	UiKit.text(_view, box.position + Vector2(24, 104), box.size.x - 48,
-		"選歌 → 試聽 → 打拍校正 → 套用", 14, Color(UiKit.FLOAT, 0.85))
-
-	var setup_r := _music_setup_rect(panel)
-	var setup_on := _music_row == 0
-	## 永遠畫成可點按鈕，避免看起來像停用
-	UiKit.panel(_view, setup_r, edge, 0.4 if setup_on else 0.22, 0.95, 10.0)
-	if setup_on:
-		_view.draw_rect(Rect2(setup_r.position.x + 4, setup_r.position.y + 10, 3, setup_r.size.y - 20),
-			Color(edge, 0.8 + 0.2 * pulse))
-	UiKit.text(_view, Vector2(setup_r.position.x + 18.0, setup_r.get_center().y + 7.0), -1,
-		"開啟音樂設定　Enter / 點這裡", 18, Color(1, 1, 1, 0.98))
-
-	var tempo_r := _music_tempo_rect(panel)
-	var tempo_on := _music_row == 1
-	var can_reco := Conductor.custom_music
-	var reco_on := Conductor.prefer_reference_tempo and can_reco
-	UiKit.panel(_view, tempo_r, edge, 0.35 if tempo_on else 0.12, 0.9 if tempo_on else 0.75, 10.0)
-	if tempo_on:
-		_view.draw_rect(Rect2(tempo_r.position.x + 4, tempo_r.position.y + 12, 3, tempo_r.size.y - 24),
-			Color(edge, 0.75 + 0.25 * pulse))
-	var state := "開" if reco_on else "關"
-	if not can_reco:
-		state = "需自訂曲"
-	UiKit.text(_view, tempo_r.position + Vector2(18, 28), -1, "推薦速度　%s" % state, 18,
-		Color(1, 1, 1, 0.98) if tempo_on else Color(1, 1, 1, 0.6))
-	var reco_rate := Conductor.recommended_rate()
-	var sub := "把世界節奏對齊 120 BPM 設計手感（歌曲 %.2f×）" % reco_rate if can_reco \
-		else "先套用自訂歌曲後才能開啟"
-	if reco_on:
-		sub = "已開啟　歌曲 %.2f×　世界約 %.0f BPM 手感" % [
-			Conductor.rate, Conductor.REFERENCE_BPM * Conductor.world_rate]
-	UiKit.text(_view, tempo_r.position + Vector2(18, 56), tempo_r.size.x - 36, sub, 13, Color(1, 1, 1, 0.55))
-
-
-func _draw_other(panel: Rect2, edge: Color, pulse: float) -> void:
-	UiKit.text(_view, panel.position + Vector2(24, 36), -1, "其他設定", 20, Color(edge, 0.9))
-	var items := _other_items()
-	for i in items.size():
-		var r := _other_row_rect(panel, i)
-		var on := i == _other_row
-		if on:
-			_view.draw_colored_polygon(UiKit.chamfer(r, 8.0), Color(edge, 0.2 + 0.12 * pulse))
-		UiKit.text(_view, Vector2(r.position.x + 18.0, r.get_center().y + 7.0), -1, items[i],
-			18 if on else 16, Color(1, 1, 1, 0.98) if on else Color(1, 1, 1, 0.55))
-	## 右下角角色陪伴
-	var feet := Vector2(panel.end.x - 90.0, panel.end.y - 36.0)
-	Player.draw_skin(_view, GameState.skin, feet + Vector2(0, sin(_blink * 1.4) * 2.0),
-		Vector2(1.5, 1.5), 0.0, Color(1, 1, 1, 0.92), Player.idle_pose(Conductor.song_beat))
-
-
-func _draw_hints(safe: Rect2, edge: Color) -> void:
-	var hints: Array = [[["[", "]"], "分頁"]]
-	match _tab:
-		Tab.LEVELS:
-			hints.append_array([[["←", "→"], "選關"], [["Enter"], "開始"]])
-		Tab.DIFFICULTY:
-			hints.append_array([[["←", "→"], "調整"], [["Q", "E"], "判定"]])
-		Tab.DISPLAY:
-			hints.append_array([[["↑", "↓"], "項目"], [["←", "→"], "調整"]])
-		Tab.MUSIC:
-			hints.append_array([[["↑", "↓"], "項目"], [["Enter"], "確定／切換"]])
-		Tab.OTHER:
-			hints.append_array([[["↑", "↓"], "選擇"], [["Enter"], "確定"]])
-	hints.append([["H"], "機關"])
-	hints.append([["O"], "校正"])
-	UiKit.key_hints(_view, safe.get_center().x, safe.end.y - 16, hints, edge, 0.9)
+func _draw_thumb(profile: String, rect: Rect2) -> void:
+	var paths: Array = THUMBS.get(profile, THUMBS["calm_city"])
+	_round(rect, UiKit.NIGHT, 14)
+	for k in paths.size():
+		var path: String = paths[k]
+		if not _thumb_cache.has(path):
+			_thumb_cache[path] = load(path) if ResourceLoader.exists(path) else null
+		var tex: Texture2D = _thumb_cache[path]
+		if tex == null:
+			continue
+		var ts := tex.get_size()
+		var aspect := rect.size.x / rect.size.y
+		var src_h := ts.x / aspect
+		var src := Rect2(0, 0 if k == 0 else maxf(0.0, ts.y - src_h), ts.x, minf(src_h, ts.y))
+		_view.draw_texture_rect_region(tex, rect.grow(-2.0), src)
