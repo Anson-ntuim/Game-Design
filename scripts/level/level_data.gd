@@ -45,7 +45,7 @@ const LEVELS: Array[Dictionary] = [
 	{"name": "02", "desc": "環與平台", "stars": 2, "tags": ["衝刺環", "節拍平台", "旋律平台"],
 		"patterns": Campaign2Data.PATTERNS, "chunks": Campaign2Data.CHUNKS,
 		"background_profile": "sakura_park"},
-	{"name": "03", "desc": "彈簧床與反拍", "stars": 2, "tags": ["彈簧床", "反拍"],
+	{"name": "03", "desc": "彈簧床與反拍", "stars": 2, "tags": ["彈簧床", "反拍", "音符串"],
 		"patterns": Campaign3Data.PATTERNS, "chunks": Campaign3Data.CHUNKS,
 		"background_profile": "music_festival"},
 ]
@@ -204,12 +204,14 @@ static func build(level: int) -> Dictionary:
 				"notes": o[2],
 				"tone": float(o[3]) if o.size() > 3 else 12.0,
 				"subdiv": int(o[4]) if o.size() > 4 else 2,
+				"quiet": bool(o[5]) if o.size() > 5 else false,
 			})
 		for o: Array in chunk.get("rings", []):
 			rings.append({
 				"pos": Vector2((x_offset + float(o[0])) * TILE, float(o[1]) * TILE + y_offset),
 				"notes": o[2],
 				"tone": float(o[3]) if o.size() > 3 else 19.0,
+				"quiet": bool(o[4]) if o.size() > 4 else false,
 			})
 		for pad: Array in chunk.get("tempo_pads", []):
 			tempo_pads.append({"pos": Vector2((x_offset + float(pad[0])) * TILE, float(pad[1]) * TILE + y_offset),
@@ -217,7 +219,8 @@ static func build(level: int) -> Dictionary:
 		## 彈簧床：[x, y, 寬, 連段要按幾次（可省略＝一般模式）]（格；y 是床面所在列，床面在這一列的頂端）
 		for t: Array in chunk.get("trampolines", []):
 			trampolines.append({"top_left": Vector2((x_offset + float(t[0])) * TILE, float(t[1]) * TILE + y_offset),
-				"width": float(t[2]) * TILE, "need": int(t[3]) if t.size() > 3 else 0})
+				"width": float(t[2]) * TILE, "need": int(t[3]) if t.size() > 3 else 0,
+				"phase": float(t[4]) if t.size() > 4 else -1.0})
 		## 盪鞦韆：[錨點 x, 錨點 y, 繩長, 來回幾拍, 往前方向, 到頂拍位移]（格）
 		for s: Array in chunk.get("swings", []):
 			swings.append({"anchor": Vector2((x_offset + float(s[0])) * TILE, float(s[1]) * TILE + y_offset),

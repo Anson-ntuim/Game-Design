@@ -9,7 +9,8 @@ extends StaticBody2D
 ##
 ## 連段模式（need > 0，正式版關卡用）：站上去就停在床中間（自動跑不會把人帶走），
 ## 每次落床那一拍按跳就升一段；升到第 need 段就把人往前彈出去、飛上對面的高台。
-## 沒按到不會死：維持同一段繼續彈，下一次落床再按就好。比較晚飛出去時，下一段的起跳旗會重新對拍。
+## 任何一次落床那一拍按跳都會升一段（不限哪一拍）；沒按到就維持同一段再彈一次。
+## 飛出去之後空中的衝刺環、音符每一拍都亮，晚幾拍飛出去也接得上；下一段的起跳旗會重新對拍。
 
 ## 各段：h = 彈起的高度（px）、beats = 一次彈跳佔幾拍
 const TIERS: Array[Dictionary] = [
@@ -48,7 +49,7 @@ var _sag: float = 0.0
 var _flash: float = 0.0
 
 
-func setup(top_left: Vector2, w: float, tile_size: float = 40.0, need_presses: int = 0) -> void:
+func setup(top_left: Vector2, w: float, tile_size: float = 40.0, need_presses: int = 0, _press_phase: float = -1.0) -> void:
 	position = top_left
 	width = w
 	tile = tile_size
@@ -157,6 +158,12 @@ func _start_bounce(boundary: float, _first: bool) -> void:
 	GameState.play_sfx("pluck", GameState.next_note() - 12.0 + _tier * 5.0, -7.0)
 
 
+func p_fail_hint() -> void:
+	if _rider != null:
+		_rider.fail_feedback()
+	GameState.play_sfx("miss", 0.0, -8.0)
+
+
 func _on_tier_up() -> void:
 	_flash = 1.0
 	_pending_fail = INF
@@ -164,12 +171,16 @@ func _on_tier_up() -> void:
 
 
 ## 連段模式：升到第 need 段 → 往前彈出去（高度就是這一段的高度，往前跟跑步一樣快）
+## 拋物線和這一段在床上的彈跳一樣：高度 h、整段 beats 拍，所以剛好在出發後半段（正拍）到最高點，
+## 空中的衝刺環、音符可以放在正拍上（tools/campaign.py 照同一條拋物線擺）
 func _launch(p: Player) -> void:
 	var h := float(TIERS[_tier]["h"])
-	var vy := sqrt(2.0 * p.eff_gravity() * h)
+	var air := float(TIERS[_tier]["beats"]) * Player.WORLD_SPB
+	var g := 8.0 * h / (air * air)
+	var vy := 4.0 * h / air
 	_release_rider()
 	p.facing = 1
-	p.end_ride(Vector2(p.run_speed, -vy), true)
+	p.end_ride(Vector2(p.run_speed, -vy), true, g)
 	GameState.play_cue("cue", 24.0, -4.0)
 
 
@@ -185,6 +196,7 @@ func ride_step(p: Player, delta: float) -> void:
 			_bounce_len = float(TIERS[_tier]["beats"])
 			_bounce_h = float(TIERS[_tier]["h"])
 			_on_tier_up()
+			_pending_fail = INF
 		elif not _waiting and (b - _bounce_start) > 0.25 and (_bounce_start + _bounce_len - b) > 0.25:
 			p.fail_feedback()
 

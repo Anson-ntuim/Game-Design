@@ -198,7 +198,7 @@ static func solid_button(ci: CanvasItem, rect: Rect2, label: String, fill: Color
 	ci.draw_style_box(st, Rect2(rect.position + Vector2(0, 5), rect.size))
 	st.bg_color = Color(fill, alpha)
 	ci.draw_style_box(st, rect)
-	ci.draw_string(font(0.6), Vector2(rect.position.x, rect.get_center().y + size * 0.36), label,
+	ci.draw_string(font(0.25), Vector2(rect.position.x, rect.get_center().y + size * 0.36), label,
 		HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, size, Color(INK, alpha))
 
 

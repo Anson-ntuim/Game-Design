@@ -34,6 +34,9 @@ var _message_timer: float = 0.0
 var _message_duration: float = 1.0
 var _hint: String = ""
 var _hint_alpha: float = 0.0
+## 段落提示出現多久了：顯示 HINT_SHOW 秒後淡出，不要一直擋在畫面上
+var _hint_age: float = 0.0
+const HINT_SHOW := 5.0
 var _fade: float = 0.0
 var _results: Dictionary = {}
 var _results_t: float = 0.0
@@ -73,7 +76,9 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_message_timer = maxf(0.0, _message_timer - delta)
 	_tip_timer = maxf(0.0, _tip_timer - delta)
-	_hint_alpha = move_toward(_hint_alpha, 1.0 if _hint != "" else 0.0, delta * 3.0)
+	_hint_age += delta
+	var hint_on := _hint != "" and _hint_age < HINT_SHOW
+	_hint_alpha = move_toward(_hint_alpha, 1.0 if hint_on else 0.0, delta * (3.0 if hint_on else 1.5))
 	_bars = move_toward(_bars, 1.0 if _watching else 0.0, delta * 3.0)
 	_dark = move_toward(_dark, _dark_target, delta * 20.0)
 	if not _results.is_empty():
@@ -105,6 +110,7 @@ func set_hint(text: String) -> void:
 	if text != _hint:
 		_hint = text
 		_hint_alpha = 0.0
+		_hint_age = 0.0
 
 
 ## 看起跳旗示範的期間畫面上下出現黑邊
@@ -378,55 +384,17 @@ func _draw_tip(safe: Rect2) -> void:
 	UiKit.text(_view, Vector2(chip.end.x + 12, box.position.y + 30), -1, _tip, 16, Color(UiKit.TEXT, a))
 
 
-## 下方中央：節拍軌。拍線從右往左流到判定圈，接下來要按的動作（跳／音符／衝）也一起流過來，
-## 流到圈上那一刻就是該按的時機（取代原本看不懂的「律動」條）
-const TRACK_W := 760.0
-const TRACK_H := 74.0
-const TRACK_PX_PER_BEAT := 60.0
-const TRACK_HIT_X := 112.0
-
-
+## 下方中央：只留一個跟著拍子跳的小節拍點（不顯示接下來要按什麼，畫面下方保持乾淨）
 func _draw_beat_bar(safe: Rect2, _edge: Color) -> void:
-	var lane := Rect2(safe.get_center().x - TRACK_W * 0.5, safe.end.y - TRACK_H + 2.0, TRACK_W, TRACK_H)
-	var st := StyleBoxFlat.new()
-	st.anti_aliasing = true
-	st.set_corner_radius_all(int(TRACK_H * 0.5))
-	st.bg_color = Color(UiKit.NIGHT, 0.82)
-	_view.draw_style_box(st, lane)
-	var mid := lane.get_center().y
-	var hit_x := lane.position.x + TRACK_HIT_X
-	_view.draw_line(Vector2(lane.position.x + 30, mid), Vector2(lane.end.x - 30, mid), Color(UiKit.LINE, 1.0), 2.0)
+	var c := Vector2(safe.get_center().x, safe.end.y - 14.0)
 	var b := Conductor.song_beat
-	var max_dt := (lane.end.x - 40.0 - hit_x) / TRACK_PX_PER_BEAT
-	for k in range(floori(b), ceili(b + max_dt) + 1):
-		var x := hit_x + (float(k) - b) * TRACK_PX_PER_BEAT
-		if x < lane.position.x + 34.0 or x > lane.end.x - 34.0:
-			continue
-		var bar := posmod(k, 4) == 0
-		var h := 30.0 if bar else 14.0
-		_view.draw_line(Vector2(x, mid - h * 0.5), Vector2(x, mid + h * 0.5), Color(1, 1, 1, 0.6 if bar else 0.3), 2.0)
 	var p := Conductor.pulse(8.0)
-	_view.draw_arc(Vector2(hit_x, mid), 24.0 + p * 3.0, 0.0, TAU, 40, UiKit.PINK, 4.0, true)
-	var main := get_tree().get_first_node_in_group("main")
-	if main == null:
-		return
-	for ev: Dictionary in main.call("track_events"):
-		var dt := float(ev["beat"]) - b
-		if dt < -0.35 or dt > max_dt:
-			continue
-		var x := hit_x + dt * TRACK_PX_PER_BEAT
-		var act := String(ev["act"])
-		var col := UiKit.PINK
-		var label := "跳"
-		if act in ["O", "o"]:
-			col = UiKit.YELLOW
-			label = "♪"
-		elif act in ["D", "R"]:
-			col = UiKit.CYAN
-			label = "衝"
-		var a := 1.0 if dt >= 0.0 else clampf(1.0 + dt / 0.35, 0.0, 1.0)
-		_view.draw_circle(Vector2(x, mid), 18.0, Color(col, a))
-		_view.draw_string(UiKit.font(0.6), Vector2(x - 18.0, mid + 6.0), label, HORIZONTAL_ALIGNMENT_CENTER, 36.0, 15, Color(UiKit.INK, a))
+	var bar := posmod(floori(b), 4)
+	for i in 4:
+		var x := c.x + (i - 1.5) * 18.0
+		var on := i == bar
+		var col: Color = [UiKit.PINK, UiKit.CYAN, UiKit.YELLOW, UiKit.TEXT][i]
+		_view.draw_circle(Vector2(x, c.y), (5.0 + 2.5 * p) if on else 3.5, Color(col, 0.95 if on else 0.3))
 
 
 ## 結算：左邊大字 CLEAR!，右邊成績卡（評等、時間、倒下、最佳紀錄），下方三個按鍵

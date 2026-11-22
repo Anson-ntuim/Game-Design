@@ -141,6 +141,8 @@ var _ride_cooldown: float = 0.0
 ## 從機關被拋出去時保留的水平速度，落地、碰牆、衝刺或再次起跳就結束
 var _launch_active: bool = false
 var _launch_vx: float = 0.0
+## 被拋出去期間用的重力（0 = 一般）：彈簧床的拋物線要剛好一拍到最高點，重力和一般跳不同
+var _launch_gravity: float = 0.0
 ## 低畫質時略過不變的重畫（節點位移仍由引擎帶動）
 var _draw_key: String = ""
 
@@ -196,7 +198,9 @@ func _physics_process(delta: float) -> void:
 	if on_floor:
 		_coyote = coyote_time
 		_air_dash = true
-		_launch_active = false
+		## 剛被彈出去的那一幀，is_on_floor 還是上車前的舊值：往上飛的時候不算落地
+		if velocity.y >= 0.0:
+			_launch_active = false
 		if not _was_on_floor:
 			_on_landed()
 	_was_on_floor = on_floor
@@ -431,7 +435,8 @@ func begin_ride(node: Node, pose: String = "apex_0") -> void:
 
 
 ## 機關放開角色。carry = true 時，launch.x 會一路保持到落地（拋物線固定，關卡才算得準）
-func end_ride(launch: Vector2, carry: bool = true) -> void:
+func end_ride(launch: Vector2, carry: bool = true, launch_gravity: float = 0.0) -> void:
+	_launch_gravity = launch_gravity
 	ride = null
 	_ride_cooldown = 0.25
 	velocity = launch
@@ -565,6 +570,8 @@ func jump_beats() -> float:
 
 
 func eff_gravity() -> float:
+	if _launch_active and _launch_gravity > 0.0:
+		return _launch_gravity
 	var air := jump_beats() * WORLD_SPB
 	return 8.0 * JUMP_HEIGHT / (air * air)
 

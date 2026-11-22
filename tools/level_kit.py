@@ -101,8 +101,10 @@ def render_chunk(chunk):
     for key in ("orbs", "rings"):
         if chunk.get(key):
             out.append(f'\t\t"{key}": [')
-            for (x, y, n, t) in chunk[key]:
-                out.append(f'\t\t\t[{x}, {y}, "{n}", {t}],')
+            for item in chunk[key]:
+                x, y, n, t = item[:4]
+                extra = "".join(", " + ("true" if v is True else "false" if v is False else str(v)) for v in item[4:])
+                out.append(f'\t\t\t[{x}, {y}, "{n}", {t}{extra}],')
             out.append("\t\t],")
     if chunk.get("tempo_pads"):
         out.append('\t\t"tempo_pads": ' + json.dumps(chunk["tempo_pads"]) + ',')

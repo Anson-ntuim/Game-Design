@@ -126,11 +126,18 @@ func _play_level(index: int, cheat := false) -> void:
 		var expect_pass := false
 		if cheat and not chunk.get("trampolines", []).is_empty():
 			## 彈簧床漏按最後一下、下一次落床再補按：不會死，晚一點飛出去也到得了
-			var last: Array = plan[-1]
+			## 漏按最後一下：維持同一段再彈一次，下一次落床補按；之後的空中動作也一起晚這麼多
 			var tier_beats := [1.0, 1.0, 2.0, 2.0]
 			var need := int(chunk["trampolines"][0][3])
-			plan = plan.slice(0, plan.size() - 1)
-			plan.append([float(last[0]) + tier_beats[need - 1], "L", last[2]])
+			var last_l := -1
+			for k in plan.size():
+				if String(plan[k][1]) == "L":
+					last_l = k
+			var shifted: Array = []
+			for k in plan.size():
+				var st: Array = plan[k]
+				shifted.append([float(st[0]) + (tier_beats[need - 1] if k >= last_l else 0.0), st[1], st[2]])
+			plan = shifted
 			expect_pass = true
 		elif cheat:
 			## 偷懶玩法：黃色音符全部不踩，改在第一顆音符前半拍空中衝刺一次

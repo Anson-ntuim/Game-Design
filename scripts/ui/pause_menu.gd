@@ -111,7 +111,15 @@ func _on_gui_input(event: InputEvent) -> void:
 		var r := _setting_rect(i)
 		if r.has_point(mb.position):
 			_row = actions.size() + i
-			_adjust(-1 if mb.position.x < r.get_center().x and settings[i] in ["music", "sfx", "judge", "quality", "skin"] else 1)
+			if settings[i] == "skin":
+				## 直接點哪一隻就換哪一隻
+				var right := Rect2(r.position.x + 190, r.position.y, r.size.x - 210, r.size.y)
+				var n := GameState.SKINS.size()
+				var k := clampi(int((mb.position.x - right.position.x) / (right.size.x / n)), 0, n - 1)
+				GameState.set_skin(k)
+				GameState.play_sfx("pluck", 6.0, -8.0)
+				return
+			_adjust(-1 if mb.position.x < r.get_center().x and settings[i] in ["music", "sfx", "judge", "quality"] else 1)
 			return
 
 
@@ -177,7 +185,10 @@ func _on_draw() -> void:
 						names.append(String(q["name"]))
 					cur = GameState.quality
 				else:
-					names = [String(GameState.SKINS[GameState.skin]["name"])]
+					## 每個造型一格，目前用的那格亮起來（原本只畫目前那一個，看起來像只剩一隻角色）
+					for sk in GameState.SKINS:
+						names.append(String(sk["name"]))
+					cur = GameState.skin
 				var nq := names.size()
 				var sq := (right.size.x - 6.0 * (nq - 1)) / nq
 				for d in nq:
@@ -190,7 +201,7 @@ func _on_draw() -> void:
 					st3.set_border_width_all(2)
 					st3.border_color = Color(UiKit.PINK if sel2 else UiKit.LINE, k)
 					_view.draw_style_box(st3, sr2)
-					UiKit.text(_view, Vector2(sr2.position.x, sr2.position.y + 25), sr2.size.x, ("‹ %s ›" % names[d]) if id == "skin" else String(names[d]),
+					UiKit.text(_view, Vector2(sr2.position.x, sr2.position.y + 25), sr2.size.x, String(names[d]),
 						15, Color(UiKit.INK if sel2 else UiKit.TEXT, k), HORIZONTAL_ALIGNMENT_CENTER)
 			"judge":
 				var n := GameState.DIFFICULTIES.size()

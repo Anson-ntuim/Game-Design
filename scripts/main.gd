@@ -410,39 +410,6 @@ func hud_section_info() -> Dictionary:
 	return {"index": cur, "total": timed.size(), "title": title}
 
 
-## HUD 節拍軌用：接下來要按的動作 [{beat, act}]（整首歌的拍數）。
-## 已經放行的段落用旗子記下的拍；還沒到的下一段，用「照現在速度跑到起跑點」推算它會在哪一拍出發
-func track_events() -> Array[Dictionary]:
-	var out: Array[Dictionary] = []
-	if not player:
-		return out
-	var b := Conductor.song_beat
-	var px := player.global_position.x
-	for i in range(maxi(0, _section_index - 1), mini(_hints.size(), _section_index + 3)):
-		if i >= _plans.size() or (_plans[i] as Array).is_empty():
-			continue
-		var flag: CueFlag = null
-		for f in _flags:
-			if f.position.x >= float(_hints[i]["from"]) and f.position.x < float(_hints[i]["to"]):
-				flag = f
-		if flag == null:
-			continue
-		var base := INF
-		if flag._auto_waiting:
-			base = flag._auto_go_at
-		elif flag.last_sync_beat > -INF and px >= flag._start_x() - 8.0 and b - flag.last_sync_beat < 24.0:
-			base = flag.last_sync_beat
-		elif px < flag._start_x():
-			var t := (flag._start_x() - px) / CueFlag.RUN_PER_BEAT
-			var cyc := flag.cycle_beats
-			base = ceilf((b + t + CueFlag.GO_LEAD - 0.07) / cyc) * cyc
-		if base == INF:
-			continue
-		for step: Dictionary in _plans[i]:
-			out.append({"beat": base + float(step["beat"]), "act": String(step["act"])})
-	return out
-
-
 ## 重生對拍：算好什麼時候、在長椅附近哪裡出現，讓自動跑剛好在下一面旗子的 GO 拍跑到起跑點直接通過，
 ## 不用在旗子前等。來得及就馬上在算好的位置出現；來不及就在「回到長椅……」畫面多等一下再出現。
 var _respawn_at_beat: float = INF
@@ -595,7 +562,7 @@ func _build_level() -> void:
 		add_child(pad)
 	for t: Dictionary in data["trampolines"]:
 		var tr := Trampoline.new()
-		tr.setup(t["top_left"], t["width"], TILE, int(t.get("need", 0)))
+		tr.setup(t["top_left"], t["width"], TILE, int(t.get("need", 0)), float(t.get("phase", -1.0)))
 		add_child(tr)
 	for s: Dictionary in data["swings"]:
 		var sw := SwingRope.new()
@@ -608,10 +575,12 @@ func _build_level() -> void:
 	for o: Dictionary in data["orbs"]:
 		var orb := RhythmOrb.new()
 		orb.setup(o["pos"], o["notes"], o["tone"], int(o.get("subdiv", 2)))
+		orb.quiet = bool(o.get("quiet", false))
 		add_child(orb)
 	for o: Dictionary in data["rings"]:
 		var ring := DashRing.new()
 		ring.setup(o["pos"], o["notes"], o["tone"])
+		ring.quiet = bool(o.get("quiet", false))
 		add_child(ring)
 	# 相鄰同重力的區塊合成一片光幕，只有實際重力改變才畫邊線。
 	var spans := _gravity_visual_spans()

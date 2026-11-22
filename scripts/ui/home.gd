@@ -333,11 +333,11 @@ func _draw_main(size: Vector2) -> void:
 		var on := i == _menu_row
 		if i == 0:
 			UiKit.solid_button(_view, r, "", UiKit.PINK, UiKit.PINK_DARK, 28)
-			UiKit.text(_view, Vector2(r.position.x + 28, r.get_center().y + 10), -1, MENU_ITEMS[0], 28, UiKit.INK, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.9))
-			UiKit.text(_view, Vector2(r.end.x - 150, r.get_center().y + 7), 124, "繼續 %s ›" % LevelData.level_code(cont), 18, UiKit.INK, HORIZONTAL_ALIGNMENT_RIGHT, UiKit.font(0.6))
+			UiKit.text(_view, Vector2(r.position.x + 28, r.get_center().y + 10), -1, MENU_ITEMS[0], 27, UiKit.INK, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.25))
+			UiKit.text(_view, Vector2(r.end.x - 150, r.get_center().y + 7), 124, "繼續 %s ›" % LevelData.level_code(cont), 18, UiKit.INK, HORIZONTAL_ALIGNMENT_RIGHT, UiKit.font(0.15))
 		else:
 			_round(r, Color(UiKit.CARD if on else UiKit.NIGHT, 0.86), 18, UiKit.PINK if on else UiKit.LINE, 2)
-			UiKit.text(_view, Vector2(r.position.x + 28, r.get_center().y + 8), -1, MENU_ITEMS[i], 21, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
+			UiKit.text(_view, Vector2(r.position.x + 28, r.get_center().y + 8), -1, MENU_ITEMS[i], 21, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.15))
 		if on:
 			_round(Rect2(r.position.x - 16, r.position.y + 14, 5, r.size.y - 28), UiKit.YELLOW, 2)
 

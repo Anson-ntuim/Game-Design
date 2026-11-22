@@ -57,6 +57,8 @@ func _active_slot() -> int:
 
 
 func is_ready() -> bool:
+	if quiet and not _awake:
+		return false
 	var s := _active_slot()
 	return s != -1 and (GameState.free_rhythm() or s != _used_slot)
 
@@ -67,6 +69,7 @@ func consume() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	_update_awake()
 	if GameState.free_rhythm():
 		var p := get_tree().get_first_node_in_group("player") as Player
 		if p and p.is_on_floor():
@@ -74,7 +77,7 @@ func _physics_process(_delta: float) -> void:
 	var s := floori(Conductor.song_beat * float(subdiv))
 	if s != _last_cue_slot and notes[posmod(s, notes.length())] == "x":
 		_last_cue_slot = s
-		if BeatPattern.near_player(self, 700.0):
+		if BeatPattern.near_player(self, 700.0) and (_awake or not quiet):
 			GameState.play_cue("cue", tone, -12.0)
 
 
@@ -103,7 +106,7 @@ func _draw() -> void:
 	## 三連音用偏暖的外圈提示
 	var ring_col := Color(1.0, 0.55, 0.4) if subdiv == 3 else COLOR
 	var until := _beats_to_next()
-	if until < 1.0:
+	if until < 1.0 and (_awake or not quiet):
 		var t := 1.0 - until
 		draw_arc(Vector2.ZERO, lerpf(RADIUS * 3.0, RADIUS, t), 0.0, TAU, 40, Color(ring_col, 0.25 + 0.6 * t), 2.5, true)
 	if lit:
@@ -116,3 +119,25 @@ func _draw() -> void:
 		draw_string(ThemeDB.fallback_font, Vector2(-5, -RADIUS - 4), "3", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(ring_col, 0.85))
 	if _burst > 0.0:
 		draw_arc(Vector2.ZERO, RADIUS + (1.0 - _burst) * 30.0, 0.0, TAU, 40, Color(1, 1, 1, _burst), 3.0, true)
+
+
+## 安靜模式（彈簧床飛出去之後要踩的音符／環用）：平常只是暗暗的不閃不響，
+## 在彈簧床上彈的時候也不動；真的被彈出去、飛在附近的空中才「醒來」開始跟拍子亮、外圈縮小；落地就再睡。
+var quiet: bool = false
+var _awake: bool = false
+
+
+func _update_awake() -> void:
+	if not quiet:
+		_awake = true
+		return
+	var p := get_tree().get_first_node_in_group("player") as Player
+	if p == null:
+		_awake = false
+		return
+	var near := absf(p.global_position.x - global_position.x) < 900.0
+	var riding := p.ride != null and p.ride.is_in_group("trampoline")
+	if riding or p.is_on_floor():
+		_awake = false
+	elif near:
+		_awake = true

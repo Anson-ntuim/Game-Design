@@ -24,6 +24,8 @@ D = lambda b: (b, "dash", 0)
 R = lambda b: (b, "ring", 0)
 ## 教學關：落腳處不長刺（尖刺留到「彈出尖刺」那段才教）
 F = dict(flag=True, island_spikes=False)
+## 長段落跑酷：音符底下不鋪地板、引導環不必非用不可
+FX = dict(F, orb_footholds=True, require_ring_use=False)
 ## 引導環：環標出該衝刺的那一拍和位置，穿過去就好，不一定要接第二下（拿掉環衝刺一樣過得去，所以不檢查「非用環不可」）
 FR = dict(F, require_ring_use=False)
 ## 有黃色音符的段落：跳和碰音符都在正拍，音符底下不鋪地板（orb_footholds），靠踩音符前進
@@ -294,49 +296,141 @@ TRAMP_BEATS = [1.0, 1.0, 2.0, 2.0]
 GRAVITY_PX = 4480.0
 
 
-def trampoline(pat, hint, need=2, approach=7, mat=3, mechanic=""):
-    """自動跑走上彈簧床 → 停在床中間 → 每次落床那拍按跳，按滿 need 下就往前彈上高台。
-    落床沒按：穿過床掉進下面的坑。回傳的 plan 就是每一下要按的拍（相對 GO 後的第 0 拍）。"""
-    ## 走上床面的時間：GO（第 -1 拍）時在起跑點 START_X，一拍跑 RUN
-    board = -LEAD + (approach * TILE_PX - START_X) / RUN
-    land = float(int(board) + 1)
+NORMAL_G = 4480.0
+JUMP_V = 1120.0
+DT = 1.0 / 120.0
+SPB_S = 0.5
+
+
+def _notes_at(beat):
+    n = ["."] * 16
+    n[round(beat * 2) % 16] = "x"
+    return "".join(n)
+
+
+EVERY_BEAT_NOTES = "x.x.x.x.x.x.x.x."
+
+
+def _launch_path(x0, h, beats, actions):
+    """彈出後的軌跡（和 player.gd 一樣）：先走彈簧床的拋物線（h 高、beats 拍，正中間是最高點），
+    actions = [(動作, 彈出後第幾拍), …] 依序：R 穿環／D 衝刺（0.2 秒 850px/s 水平；R 結束往上彈 360）、
+    O 踩音符（重新起跳，一般重力）。回傳 [(t 秒, x, 腳離床面高度)] 和每個動作那一刻的位置。"""
+    air = beats * SPB_S
+    g = 8 * h / (air * air)
+    vy = 4 * h / air
+    x, y, vx = x0, 0.0, 310.0
+    t = 0.0
+    pts = []
+    acts = []
+    pending = list(actions)
+    dash_left = 0.0
+    pop = False
+    while t < 5.0 and y > -400:
+        if pending and t >= pending[0][1] * SPB_S - 1e-6:
+            kind = pending.pop(0)[0]
+            acts.append((x, y))
+            if kind in ("R", "D"):
+                dash_left = 0.2
+                pop = kind == "R"
+                g = NORMAL_G
+            elif kind == "O":
+                vy = JUMP_V
+                g = NORMAL_G
+        if dash_left > 0:
+            x += 850.0 * DT
+            dash_left -= DT
+            if dash_left <= 0:
+                vy = 360.0 if pop else 0.0
+        else:
+            vy -= g * DT
+            x += vx * DT
+            y += vy * DT
+        t += DT
+        pts.append((t, x, y))
+    return pts, acts
+
+
+def trampoline(pat, hint, need=2, approach=7, mat=3, mechanic="", pre_jump=False, after=None, rise=None):
+    """彈簧床（連段模式）段落。pre_jump：先跳過一個小坑、直接落在床上。
+    after = [(R|O|D, 彈出後第幾拍), …]：飛出去之後在空中依序穿環／踩音符／衝刺（這些東西每一拍都亮，
+    晚幾拍飛出去也接得上），落到更遠或更高的高台。rise：高台比床面高幾格（None = 自動）。"""
+    if after and isinstance(after[0], str):
+        after = [after]
+    after = after or []
+    if pre_jump:
+        approach = 8
+        board = 1.0
+    else:
+        board = -LEAD + (approach * TILE_PX - START_X) / RUN
+    land = float(int(board) + 1) if board != int(board) else board + 1.0
     if land - board < 0.35:
         land += 1.0
     presses = [land]
     for k in range(1, need):
         presses.append(presses[-1] + TRAMP_BEATS[k])
     h = TRAMP_H[need]
-    ## 高台比彈出高度低 80px；牆放在「腳高過台面」那段時間的中間經過的位置
-    rows = int((h - 80) // TILE_PX)
-    top_px = rows * TILE_PX
-    vy = (2 * GRAVITY_PX * h) ** 0.5
-    disc = (vy * vy - 2 * GRAVITY_PX * top_px) ** 0.5
-    t1, t2 = (vy - disc) / GRAVITY_PX, (vy + disc) / GRAVITY_PX
     x_c = (approach + mat / 2) * TILE_PX
-    vx = 310.0
-    wall_x = x_c + 12 + vx * (t1 + t2) / 2
+    pts, acts = _launch_path(x_c, h, TRAMP_BEATS[need], after)
+    last = after[-1][0] if after else None
+    if rise is None:
+        rise = {None: int((h - 80) // TILE_PX), "O": int((h + 60) // TILE_PX)}.get(last, int((h - 120) // TILE_PX))
+    top = rise * TILE_PX
+    ## 最後一個動作之後、腳高過台面 8px 的那段時間：牆放在這段中間，落點是之後第一次降到台面的地方
+    t_act = after[-1][1] * SPB_S if after else 0.0
+    above = [(t, x) for (t, x, y) in pts if t >= t_act + 0.05 and y >= top + 8]
+    assert above, ("彈簧床：到不了這個高度", need, after, rise)
+    seg = []
+    for t, x in above:
+        if seg and t - seg[-1][0] > DT * 1.5:
+            break
+        seg.append((t, x))
+    wall_x = seg[len(seg) // 2][1] + 12
     wall_col = int(-(-wall_x // TILE_PX))
+    t_land = next(t for (t, x, y) in pts if t > seg[-1][0] and y <= top)
+    x_land = next(x for (t, x, y) in pts if t >= t_land)
     assert wall_col >= approach + mat + 1, ("彈簧床和高台之間要留坑", wall_col)
-    land_col = int((x_c + vx * t2) // TILE_PX)
-    width = max(wall_col + 6, land_col + 5)
+    ## 空中的音符／環不能在牆裡
+    for (ax, ay), (kind, _) in zip(acts, after):
+        assert ax < wall_col * TILE_PX - 20 or ay > top + 30, ("空中機關撞到高台", kind)
+    width = max(wall_col + 6, int(x_land // TILE_PX) + 5)
     c = Chunk(width)
-    c.fill(0, approach - 1, 16, 19, "#")
-    c.fill(wall_col, width - 1, 16 - rows, 19, "#")
-    c.fill(wall_col, wall_col, 16 - rows, 19, "%")
+    if pre_jump:
+        c.fill(0, 4, 16, 19, "#")
+    else:
+        c.fill(0, approach - 1, 16, 19, "#")
+    c.fill(wall_col, width - 1, 16 - rise, 19, "#")
+    c.fill(wall_col, wall_col, 16 - rise, 19, "%")
     demo = ["."] * 16
+    plan = []
+    if pre_jump:
+        demo[0] = "L"
+        plan.append([0.0, "L", round(START_X + RUN)])
     for b in presses:
         demo[round(b * 2) % 16] = "L"
-    c.fill(5, 5, 15, 15, pat.add({"kind": "flag", "notes": "", "demo": "".join(demo)}))
-    plan = [[b, "L", round(x_c)] for b in presses]
-    out = {"hint": hint, "rows": c.lines(), "plan": plan, "trampolines": [[approach, 16, mat, need]]}
+        plan.append([b, "L", round(x_c)])
+    out = {"hint": hint, "rows": None, "trampolines": [[approach, 16, mat, need]]}
+    for (ax, ay), (kind, off) in zip(acts, after):
+        b = presses[-1] + off
+        center = [round(ax / TILE_PX, 2), round((16 * TILE_PX - 22 - ay) / TILE_PX, 2)]
+        if kind == "R":
+            ## 最後一個 true：安靜模式，站上彈簧床才開始閃
+            out.setdefault("rings", []).append(center + [EVERY_BEAT_NOTES, 19, True])
+        elif kind == "O":
+            out.setdefault("orbs", []).append(center + [EVERY_BEAT_NOTES, 12 + 3 * len(out.get("orbs", [])), 2, True])
+        demo[round(b * 2) % 16] = kind
+        plan.append([b, kind, round(ax)])
+    c.fill(5 if not pre_jump else 2, 5 if not pre_jump else 2, 15, 15, pat.add({"kind": "flag", "notes": "", "demo": "".join(demo)}))
+    out["rows"] = c.lines()
+    out["plan"] = plan
     if mechanic:
         out["mechanic"] = mechanic
-    print(f"[彈簧床] 按 {presses} 拍、彈到 {h:.0f}px 上 {rows} 格高台（牆在第 {wall_col} 格）")
+    tag = "、".join(f"{k}@+{o}" for k, o in after)
+    print(f"[彈簧床] 按 {presses}，彈 {h:.0f}px{('、' + tag) if tag else ''}，上 {rise} 格高台（牆 {wall_col} 格、落在 x≈{x_land:.0f}）")
     return out
 
 
 def sec(pat, name, script, hint, **kw):
-    """course_kit.section 再記下光柱的拍子（穿光柱的衝刺不另外放「>>」提示）"""
+    """course_kit.section 再記下光柱的拍子"""
     ch = section(pat, name, script, hint, **kw)
     ch["_gates"] = [float(g) for g in kw.get("gates", ())]
     return ch
@@ -365,8 +459,8 @@ def level1(pat):
                 "彈出尖刺\n地上的尖刺會在第 1、3、5、7 拍彈出。前半拍尖端會先冒出來閃：看到它冒出來就跳",
                 floor="ground", spikes=[1, 3, 5, 7], flow=True, **F),
         bench(BENCH),
-        sec(pat, "空中衝刺", [J(0), R(0.5)],
-                "空中衝刺\n坑太寬跳不過：起跳後半拍（跳到最高點）會碰到衝刺環，那一拍按 C／Shift 穿過去，往前衝一大段", **FR),
+        sec(pat, "空中衝刺", [J(0), D(0.5)],
+                "空中衝刺\n坑太寬跳不過：起跳後半拍（跳到最高點）按 C／Shift，往前衝一大段", **F),
         bench(BENCH),
         pillar(pat, "光柱\n光柱擋住路、頭上也過不去：跑到柱子前會被擋住。兩側光條收到柱子上、出現往右的箭頭那一拍，按 C／Shift 衝刺穿過去"),
         bench(BENCH),
@@ -404,9 +498,9 @@ def level2(pat):
                 "旋律平台\n綠色平台照旋律一塊接一塊亮起，只亮一下：每兩拍跳到下一塊，停下來就會掉下去",
                 floor="melody", flow=True, final_rise=2, **F),
         bench(BENCH),
-        sec(pat, "平台衝刺", [J(0), R(0.5), J(2), R(2.5), J(4), J(6)],
-                "平台衝刺\n節拍平台離得更遠：跳起來在最高點穿過衝刺環，才搆得到下一色",
-                floor="beat", flow=True, final_rise=2, **FR),
+        sec(pat, "平台衝刺", [J(0), D(0.5), J(2), D(2.5), J(4), J(6)],
+                "平台衝刺\n節拍平台離得更遠：跳起來在最高點衝刺，才搆得到下一色",
+                floor="beat", flow=True, final_rise=2, **F),
         bench(BENCH),
         far_landing(sec(pat, "音符接環", [J(0), O(1), O(2), R(2.5)],
                 "音符接環\n踩兩顆音符，第二顆跳起來後在最高點穿過衝刺環過坑", **dict(FO, require_ring_use=False))),
@@ -426,46 +520,52 @@ def level2(pat):
 
 
 def level3(pat):
-    """第三關：新東西是彈簧床；開始用反拍（半拍起跳），並把前兩關的尖刺、音符、光柱、衝刺環、平台混進來"""
+    """第三關：新東西是彈簧床（和音符、衝刺環、衝刺接在同一段）。跑酷段落變長（8～12 拍一段），
+    正拍、反拍、半拍連踩混在一起，不是固定的節奏"""
     return seamless(pat, [
-        intro("第三關・彈簧床與反拍\n新東西：彈簧床。這關也開始有「反拍」：在兩拍中間（喀、噠的噠）起跳"),
-        trampoline(pat, "彈簧床\n站上去會停在床中間一直彈。落床那一拍按跳就升一段，升兩段就飛上前面的高台；沒按到就再彈一次、下次再按", need=2),
+        intro("第三關・彈簧床與長段跑酷\n新東西：彈簧床。每次落床那一拍按跳就彈得更高，夠高就飛出去。"
+              "這關的跑酷一段比較長，正拍、反拍混在一起"),
+        trampoline(pat, "彈簧床\n站上去會停在床中間一直彈。任何一次落床那一拍按跳都會升一段，升兩段就飛上高台；沒按到就再彈一次", need=2),
         bench(BENCH),
-        sec(pat, "反拍跳", [J(0.5), J(1.5), J(2.5), J(3.5)],
-            "反拍跳\n這次在兩拍中間起跳：跟著「一、噠、二、噠」的噠按", **F),
+        far_landing(sec(pat, "反拍音符串", [J(0.5), O(1.5), O(2.5), O(3.5), O(4.5)],
+            "反拍音符串\n半拍起跳，接著四顆音符都在反拍：噠、噠、噠、噠，一路踩過大坑", **FO)),
         bench(BENCH),
-        sec(pat, "反拍尖刺", [J(0.5), J(2.5), J(4.5), J(6.5)],
-            "反拍尖刺\n尖刺在正拍彈出：提早半拍起跳，彈出時剛好在空中",
-            floor="ground", spikes=[1, 3, 5, 7], flow=True, **F),
+        sec(pat, "音符跑酷", [J(0), O(1), J(2.5), J(3.5), O(4.5), O(5), J(6.5), D(7)],
+            "音符跑酷（8 拍）\n跳、踩音符，落地後反拍連跳兩下，接兩顆音符，最後跳起來衝刺過寬坑", **FX),
         bench(BENCH),
-        trampoline(pat, "彈到最高\n要升三段：一拍、一拍、兩拍。沒按到不會掉，下一次落床再按", need=3),
+        trampoline(pat, "跳上彈簧床接音符\n跳上床、按兩下飛出去，空中連踩兩顆音符，登上高台", need=2, pre_jump=True,
+                   after=[("O", 1), ("O", 2)]),
         bench(BENCH),
-        far_landing(sec(pat, "反拍音符", [J(0.5), O(1.5), O(2.5)],
-            "反拍音符\n半拍起跳，音符也在反拍亮：一、噠（跳）、二、噠（踩）、三、噠（踩）", **FO)),
+        sec(pat, "反拍跑酷", [J(0.5), O(1.5), J(3), O(3.5), O(4.5), J(6), J(7), D(7.5)],
+            "反拍跑酷（8 拍）\n反拍起跳踩音符，正拍再跳、半拍後連踩兩顆，落地連跳兩下再衝刺", **FX),
         bench(BENCH),
-        sec(pat, "環與光柱", [J(0), R(0.5), J(2), D(2.5)],
-            "環與光柱\n先跳起來穿環，落地後再跳一次，最高點衝過光柱", gates=[2.5], **FR),
+        trampoline(pat, "彈到最高接音符\n升三段（一拍、一拍、兩拍）飛出去，空中再踩一顆音符，登上很高的高台", need=3,
+                   after=[("O", 1)]),
         bench(BENCH),
-        sec(pat, "反拍環", [J(0.5), R(1), J(2.5), R(3)],
-            "反拍環\n反拍起跳，正拍在最高點穿環：噠（跳）、一（衝）、噠（跳）、二（衝）", **FR),
-        bench(BENCH),
-        trampoline(pat, "彈簧床・再一次\n三段：一拍、一拍、兩拍", need=3),
-        bench(BENCH),
-        sec(pat, "反拍光柱", [J(0.5), J(1.5), D(2)], "反拍光柱\n反拍連跳兩下，第二下的最高點剛好是正拍，衝過光柱",
-            gates=[2], **F),
-        bench(BENCH),
-        sec(pat, "旋律切分", [J(0), J(1.5), J(3.5), J(5), J(7)],
-            "旋律切分\n旋律平台換成切分節奏：正拍、反拍、反拍、正拍、正拍",
+        sec(pat, "旋律長段", [J(0), J(1.5), J(3), J(4.5), J(5.5), J(7)],
+            "旋律長段（8 拍）\n旋律平台一塊接一塊：正拍、反拍、正拍、反拍、反拍、正拍，停下來就會掉",
             floor="melody", flow=True, final_rise=2, **F),
         bench(BENCH),
-        far_landing(sec(pat, "反拍音符接環", [J(0.5), O(1.5), O(2.5), R(3)],
-            "反拍音符接環\n反拍踩兩顆音符，正拍穿環過坑", **dict(FO, require_ring_use=False))),
+        trampoline(pat, "彈簧床接衝刺環\n飛出去一拍後在最高點穿過衝刺環，才搆得到遠處的高台", need=2, after=[("R", 1)]),
         bench(BENCH),
-        sec(pat, "總複習", [J(0), J(1), R(1.5), J(3), J(3.5), J(4.5), D(5)],
-            "總複習\n正拍連跳穿環，落地後切換成反拍連跳，最後衝過光柱",
-            gates=[5], **FR),
+        sec(pat, "混合跑酷", [J(0), J(1), O(2), O(2.5), J(4), R(4.5), J(6), O(7), J(8.5), D(9)],
+            "混合跑酷（10 拍）\n連跳、正拍半拍各踩一顆音符、穿環、再踩音符，最後反拍起跳衝刺", **FX),
         bench(BENCH),
-        trampoline(pat, "最後一跳\n彈簧床升三段，飛上終點前的高台", need=3),
+        sec(pat, "音符高低", [J(0), O(0.5), O(1), J(2.5), O(3.5), J(5), R(5.5), J(7), O(8)],
+            "音符高低（9 拍）\n先連踩兩顆音符往上爬，落到台上再踩、穿環，最後踩音符登上高台", final_rise=3, **FX),
+        bench(BENCH),
+        sec(pat, "節拍長段", [J(0), D(0.5), J(2), J(4), D(4.5), J(6), J(8), D(8.5)],
+            "節拍長段（10 拍）\n黃藍平台每兩拍交接：跳、衝，跳、跳、衝，跳、跳、衝",
+            floor="beat", flow=True, final_rise=2, **F),
+        bench(BENCH),
+        trampoline(pat, "彈簧床接連續音符\n飛出去之後空中連踩三顆音符，一拍一顆", need=2,
+                   after=[("O", 1), ("O", 2), ("O", 3)]),
+        bench(BENCH),
+        sec(pat, "總複習", [J(0), O(1), J(2.5), D(3), J(4.5), O(5.5), O(6), J(7.5), R(8), J(9.5), J(10.5), D(11)],
+            "總複習（12 拍）\n音符、光柱、半拍連踩、衝刺環、反拍連跳，最後再衝過一根光柱", gates=[3, 11], **FX),
+        bench(BENCH),
+        trampoline(pat, "最後一跳\n跳上彈簧床升三段，飛出去一拍後在最高點衝刺，飛上終點前的高台", need=3, pre_jump=True,
+                   after=[("D", 1)]),
         bench(BENCH),
         goal("終點\n第三關完成！"),
     ])
@@ -474,7 +574,7 @@ def level3(pat):
 LEVELS = {
     1: (level1, "Campaign1Data", "正式版第一關・教學：自動前進、固定跳躍、尖刺預告、空中衝刺、光柱、黃色音符。"),
     2: (level2, "Campaign2Data", "正式版第二關：衝刺環、節拍平台、旋律平台，後半和第一關的東西混合。"),
-    3: (level3, "Campaign3Data", "正式版第三關：彈簧床、反拍，和前兩關的機關混合。"),
+    3: (level3, "Campaign3Data", "正式版第三關：彈簧床（和音符、衝刺環接在一起）、大量黃色音符與反拍、高低地形。"),
 }
 
 
