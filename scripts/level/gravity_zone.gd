@@ -44,6 +44,9 @@ func _draw() -> void:
 		draw_line(Vector2(0, 0), Vector2(0, zone_height), edge, 2.0 + lit)
 	if show_right_boundary:
 		draw_line(Vector2(w, 0), Vector2(w, zone_height), edge, 2.0 + lit)
+	## 第四關已有密集雨絲；保留重力光幕與邊界，但關閉上浮圓點以維持畫面清楚。
+	if GameState.level_index == 3:
+		return
 	var n := maxi(4, int(w / 70.0)) * maxi(1, ceili(zone_height / 800.0))
 	var speed := 0.55 + lit * 0.9
 	for i in n:

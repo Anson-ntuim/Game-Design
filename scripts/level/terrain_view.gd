@@ -38,6 +38,8 @@ func _draw() -> void:
 	var soft_city := GameState.level_index == 0 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
 	var sakura_park := GameState.level_index == 1 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
 	var music_festival := GameState.level_index == 2 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
+	var rainy_street := GameState.level_index == 3 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
+	var broken_memory := GameState.level_index == 4 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
 	var edge_col := edge.lerp(Color.WHITE, pulse * 0.4)
 	if soft_city:
 		edge_col = Color("e9a9c6").lerp(Color("ffe1ed"), pulse * 0.22)
@@ -45,21 +47,33 @@ func _draw() -> void:
 		edge_col = Color("e8a6bd").lerp(Color("ffe8dc"), pulse * 0.25)
 	elif music_festival:
 		edge_col = Color("ff65d5").lerp(Color("76e9ff"), pulse * 0.34)
-	edge_col.a = (0.68 + 0.16 * pulse) if (soft_city or sakura_park or music_festival) else (0.55 + 0.45 * pulse)
+	elif rainy_street:
+		edge_col = Color("78bfff").lerp(Color("d3ddff"), pulse * 0.24)
+	elif broken_memory:
+		edge_col = Color("dec3ef")
+	edge_col.a = (0.68 + 0.16 * pulse) if (soft_city or sakura_park or music_festival or rainy_street) else (0.55 + 0.45 * pulse)
+	if broken_memory:
+		edge_col.a = 0.94
 	var detail := GameState.quality_int("detail", 2)
 	var edge_lights := GameState.quality_flag("edge_lights", true)
 
 	for r in fill_rects:
 		if not r.intersects(view):
 			continue
-		_draw_solid_body(r, ground, detail, soft_city, sakura_park, music_festival)
+		if broken_memory:
+			_draw_memory_stone(r, view, detail)
+		else:
+			_draw_solid_body(r, ground, detail, soft_city, sakura_park, music_festival, rainy_street)
 
 	var stripe := Color(ground.lightened(0.25), 0.5)
 	var stripe_step := 28.0 if detail == 0 else 18.0
 	for r in slick_rects:
 		if not r.intersects(view):
 			continue
-		draw_rect(r, Color("34255a") if music_festival else ground.lightened(0.06))
+		if broken_memory:
+			draw_rect(r, Color("3c304e"))
+		else:
+			draw_rect(r, Color("273454") if rainy_street else (Color("34255a") if music_festival else ground.lightened(0.06)))
 		if detail == 0:
 			continue
 		var x := r.position.x - r.size.y
@@ -86,9 +100,13 @@ func _draw() -> void:
 				underglow = Color("c77f9b")
 			elif music_festival:
 				underglow = Color("6bdff4")
+			elif rainy_street:
+				underglow = Color("78c9ff")
+			elif broken_memory:
+				underglow = Color("de9bd0")
 			draw_rect(Rect2(r.position + Vector2(0, 4.0), Vector2(r.size.x, 6)),
 				Color(underglow, (0.08 + 0.08 * pulse) if soft_city else (0.10 + 0.18 * pulse)))
-		if not edge_lights:
+		if not edge_lights or broken_memory:
 			continue
 		var count := int(r.size.x / tile)
 		for i in count:
@@ -103,11 +121,55 @@ func _draw() -> void:
 				elif music_festival:
 					c = Color(Color("72e8ff").lerp(Color("ff79dc"), float(i % 2)),
 						0.32 + pulse * 0.42)
+				elif rainy_street:
+					c = Color(Color("75c8ff").lerp(Color("e6a1ff"), 1.0 if i % 3 == 0 else 0.0),
+						0.24 + pulse * 0.30)
 				draw_rect(Rect2(r.position.x + i * tile + tile * 0.35, r.position.y + 14, tile * 0.3, 4), c)
 
 
+## 磚縫跟隨世界座標，跨越地形矩形時仍能對齊。斷裂只出現在磚面，走道亮邊最後才繪製。
+func _draw_memory_stone(r: Rect2, view: Rect2, detail: int) -> void:
+	var masonry := Rect2(r.position + Vector2(0.0, minf(r.size.y, 6.0)),
+		Vector2(r.size.x, maxf(r.size.y - 6.0, 0.0)))
+	draw_rect(r, Color("675777"))
+	if not masonry.has_area():
+		return
+	draw_rect(masonry, Color("30273f"))
+	var visible := masonry.intersection(view)
+	var block_size := Vector2(72, 28)
+	for row in range(floori(visible.position.y / block_size.y), ceili(visible.end.y / block_size.y)):
+		var stagger := posmod(row, 2) * block_size.x * 0.5
+		var first := floori((visible.position.x - stagger) / block_size.x)
+		var last := ceili((visible.end.x - stagger) / block_size.x)
+		for col in range(first, last):
+			var origin := Vector2(col * block_size.x + stagger, row * block_size.y)
+			var block := Rect2(origin + Vector2(1, 1), block_size - Vector2(2, 2)).intersection(masonry)
+			if not block.has_area():
+				continue
+			var seed_value := posmod(col * 37 + row * 23, 113)
+			var shade := Color("443751").lerp(Color("5c4d68"), seed_value / 112.0)
+			draw_rect(block, shade)
+			if detail > 0:
+				draw_rect(Rect2(block.position, Vector2(block.size.x, minf(1.5, block.size.y))),
+					shade.lightened(0.15))
+			if seed_value % 9 != 0 or block.size.x < 30 or block.size.y < 14:
+				continue
+			# 髮絲裂紋留在單塊石內，避免誤認成能跳過的平台缺口。
+			var lean := -1.0 if seed_value % 2 == 0 else 1.0
+			var start := block.position + block.size * Vector2(0.56 + lean * 0.18, 0.04)
+			var joint := block.position + block.size * Vector2(0.56, 0.43)
+			var bend := block.position + block.size * Vector2(0.60, 0.54)
+			var end := block.position + block.size * Vector2(0.56 - lean * 0.16, 0.68 + seed_value * 0.002)
+			var fracture := PackedVector2Array([start, joint, bend, end])
+			if detail > 0:
+				draw_polyline(fracture, Color("c267ae", 0.22), 4.0, true)
+				draw_line(joint, block.position + block.size * Vector2(0.38, 0.29),
+					Color("bb83ad", 0.65), 1.0, true)
+			draw_polyline(fracture, Color("e5a5cf", 0.84), 1.35, true)
+
+
 func _draw_solid_body(r: Rect2, ground: Color, detail: int, soft_city: bool,
-		sakura_park: bool, music_festival: bool) -> void:
+		sakura_park: bool, music_festival: bool, rainy_street: bool) -> void:
 	if soft_city:
 		_draw_soft_city_body(r, detail)
 		return
@@ -116,6 +178,9 @@ func _draw_solid_body(r: Rect2, ground: Color, detail: int, soft_city: bool,
 		return
 	if music_festival:
 		_draw_music_festival_body(r, detail)
+		return
+	if rainy_street:
+		_draw_rainy_street_body(r, detail)
 		return
 	draw_rect(r, ground)
 	if r.size.y <= 18.0:
@@ -212,3 +277,33 @@ func _draw_music_festival_body(r: Rect2, detail: int) -> void:
 		draw_line(Vector2(x0 + 5.0, y0), Vector2(x1 - 5.0, y1), Color("a279ce", 0.22), 3.0, true)
 		draw_line(Vector2(x1 - 5.0, y0), Vector2(x0 + 5.0, y1), Color("6d52a5", 0.22), 3.0, true)
 		draw_line(Vector2(x1, y0), Vector2(x1, r.end.y), Color("bc8bd9", 0.10), 2.0)
+
+
+func _draw_rainy_street_body(r: Rect2, detail: int) -> void:
+	var top := Color("405177")
+	var bottom := Color("19243b")
+	draw_rect(r, bottom)
+	for i in 6:
+		var y0 := r.position.y + r.size.y * float(i) / 6.0
+		var y1 := r.position.y + r.size.y * float(i + 1) / 6.0
+		draw_rect(Rect2(r.position.x, y0, r.size.x, y1 - y0 + 1.0),
+			top.lerp(bottom, float(i) / 5.0))
+	## 濕金屬頂面與冷色反光均收在碰撞矩形內。
+	draw_rect(Rect2(r.position, Vector2(r.size.x, minf(6.0, r.size.y))), Color("a9d7ff", 0.72))
+	if r.size.y > 6.0:
+		draw_rect(Rect2(r.position + Vector2(0, 6), Vector2(r.size.x, minf(5.0, r.size.y - 6.0))),
+			Color("527eb9", 0.34))
+	if detail <= 0 or r.size.y < 34.0:
+		return
+	var first := floori(r.position.x / 72.0)
+	var last := ceili(r.end.x / 72.0)
+	for i in range(first, last):
+		var x0 := maxf(r.position.x, i * 72.0)
+		var x1 := minf(r.end.x, i * 72.0 + 72.0)
+		draw_line(Vector2(x1, r.position.y + 15.0), Vector2(x1, r.end.y),
+			Color("91a9d1", 0.14), 2.0)
+		if r.size.y > 58.0 and x1 - x0 > 26.0:
+			draw_rect(Rect2(x0 + 13.0, r.position.y + 29.0, minf(34.0, x1 - x0 - 18.0), 18.0),
+				Color("101a2c", 0.50))
+			draw_rect(Rect2(x0 + 13.0, r.position.y + 29.0, minf(34.0, x1 - x0 - 18.0), 18.0),
+				Color("738dbb", 0.28), false, 1.0)

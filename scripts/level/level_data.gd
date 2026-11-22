@@ -63,7 +63,8 @@ const ARCHIVE: Array[Dictionary] = [
 		"patterns": Demo2Data.PATTERNS, "chunks": Demo2Data.CHUNKS,
 		"background_profile": "music_festival"},
 	{"name": "04", "desc": "", "stars": 1,
-		"patterns": Demo6Data.PATTERNS, "chunks": Demo6Data.CHUNKS},
+		"patterns": Demo6Data.PATTERNS, "chunks": Demo6Data.CHUNKS,
+		"background_profile": "rainy_street"},
 	{"name": "05", "desc": "", "stars": 3,
 		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true},
 	## 試作關（tools/ride_levels.py）：持續好幾拍的搭乘機關
