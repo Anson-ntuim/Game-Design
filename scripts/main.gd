@@ -432,7 +432,7 @@ func _build_level() -> void:
 		add_child(sw)
 	for r: Dictionary in data["rails"]:
 		var rail := MineRail.new()
-		rail.setup(r["points"], r["speed"], r["spikes"], r["gaps"], r["beams"], r["marks"])
+		rail.setup(r["points"], r["speed"], r["spikes"], r["gaps"], r["beams"], r["marks"], r["crates"])
 		add_child(rail)
 	for o: Dictionary in data["orbs"]:
 		var orb := RhythmOrb.new()

@@ -34,6 +34,12 @@ func _run() -> void:
 	conductor.restore_builtin_music()
 	var levels = load("res://scripts/level/level_data.gd")
 	check(levels.LEVELS.size() == FIRST_RIDE_LEVEL + 3, "Three ride levels registered")
+	var swing_level: Dictionary = levels.build(FIRST_RIDE_LEVEL + 1)
+	var periods := []
+	for chunk: Dictionary in levels.LEVELS[FIRST_RIDE_LEVEL + 1]["chunks"]:
+		for sw: Array in chunk.get("swings", []):
+			periods.append(float(sw[3]))
+	check(periods.min() >= 4.0, "Swings take at least 4 beats per round trip %s" % [periods])
 	for index in range(FIRST_RIDE_LEVEL, FIRST_RIDE_LEVEL + 3):
 		await _play_level(index)
 	await _negative_tests()
@@ -110,7 +116,10 @@ func _bot_jump(player: Node, state: Dictionary) -> bool:
 		for k: float in ride.spikes:
 			presses.append(k - 0.5)
 		for g: Array in ride.gaps:
-			presses.append((float(g[0]) + float(g[1])) * 0.5 - 0.5)
+			if float(g[1]) - float(g[0]) > 0.9:
+				presses.append(float(g[0]) - 0.1)
+			else:
+				presses.append((float(g[0]) + float(g[1])) * 0.5 - 0.5)
 		for pb: float in presses:
 			var key := "%s:%f" % [ride.get_instance_id(), pb]
 			if local >= pb and local < pb + 0.2 and not state.has(key):
@@ -123,6 +132,26 @@ func _bot_jump(player: Node, state: Dictionary) -> bool:
 			if player.global_position.x >= edge - 14.0 and player.global_position.x < edge + 20.0:
 				state["hold_until"] = frame_clock + 40
 				return true
+	return false
+
+
+## 礦車的衝刺：木箱前 0.2 拍、長斷軌起跳後半拍
+func _bot_dash(player: Node, state: Dictionary) -> bool:
+	var ride: Node = player.ride
+	if ride == null or not ride.is_in_group("mine_rail") or not ride.is_moving():
+		return false
+	var local: float = conductor.song_beat - ride._start_beat
+	var presses: Array[float] = []
+	for k: float in ride.crates:
+		presses.append(k - 0.2)
+	for g: Array in ride.gaps:
+		if float(g[1]) - float(g[0]) > 0.9:
+			presses.append(float(g[0]) + 0.4)
+	for pb: float in presses:
+		var key := "dash%s:%f" % [ride.get_instance_id(), pb]
+		if local >= pb and local < pb + 0.2 and not state.has(key):
+			state[key] = true
+			return true
 	return false
 
 
@@ -147,6 +176,7 @@ func _play_level(index: int) -> void:
 			var press := _bot_jump(player, state)
 			var hold := frame_clock < int(state.get("hold_until", -1))
 			_set_action("jump", press or hold)
+			_set_action("dash", _bot_dash(player, state))
 			_set_action("move_right", player.ride == null or player.ride.is_in_group("trampoline"))
 			var was_ride = player.ride
 			await physics_frame
@@ -200,6 +230,7 @@ func _negative_tests() -> void:
 		top = minf(top, player.global_position.y)
 	_release_all()
 	check(max_tier == 0, "Trampoline stays at tier 0 without presses")
+	check(top < level._section_spawns[1].y - 20.0, "Trampoline keeps bouncing on its own")
 	check(player.global_position.x < float(h["from"]) + 13 * 40.0, "Trampoline ledge unreachable without presses")
 	level.queue_free()
 	await process_frame
@@ -256,5 +287,26 @@ func _negative_tests() -> void:
 			break
 	_release_all()
 	check(rode and died and player.death_source != null and player.death_source.is_in_group("hazard"), "Minecart: not jumping hits the first spike")
+	level.queue_free()
+	await process_frame
+
+	## 礦車：衝刺段只跳不衝刺 → 撞上木箱
+	level = await _load_level(FIRST_RIDE_LEVEL + 2)
+	player = level.player
+	var dash_section := 3
+	player.respawn_at(level._section_spawns[dash_section])
+	died = false
+	rode = false
+	for f in 60 * 20:
+		_tick()
+		_set_action("move_right", player.ride == null and not rode)
+		await physics_frame
+		rode = rode or (player.ride != null and player.ride.is_in_group("mine_rail"))
+		if player.control_locked:
+			died = true
+			break
+	_release_all()
+	check(rode and died and player.death_source != null and player.death_source.is_in_group("mine_rail"),
+		"Minecart: crates kill without a dash")
 	level.queue_free()
 	await process_frame

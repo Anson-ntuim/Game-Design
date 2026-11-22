@@ -1,7 +1,7 @@
 class_name Trampoline
 extends StaticBody2D
 ## 彈簧床：站上去就會跟著拍子自動彈跳，每一次都在整拍落回床面。
-## 落回床面的那一拍按跳（判定窗同音符），下一下就彈高一段；沒按就降一段。
+## 落回床面的那一拍按跳（判定窗同音符），下一下就彈高一段；不按就維持同樣高度一直自動彈。
 ## 四段高度與滯空：1.5 → 3.5 格各 1 拍，7 → 10 格各 2 拍（越高越慢，節奏是 1、1、2、2）。
 ## 彈跳時仍可左右移動；移出床面就照當下的垂直速度掉出去，落到旁邊的高台就算抵達。
 ## 床面在這一格的頂端；整格是實心的，玩家可以從旁邊走上去。
@@ -110,16 +110,12 @@ func _judged(press_beat: float, boundary: float) -> bool:
 
 
 ## 在 boundary（整拍）落回床面，決定下一下的段數並開始彈
-func _start_bounce(boundary: float, first: bool) -> void:
+func _start_bounce(boundary: float, _first: bool) -> void:
 	_tier_before = _tier
 	var ok := _judged(_last_press, boundary)
 	if ok:
 		_tier = mini(_tier + 1, TIERS.size() - 1)
 		_on_tier_up()
-	elif not first:
-		if _tier > 0:
-			_rider.fail_feedback()
-		_tier = maxi(_tier - 1, 0)
 	_landing_judged = ok
 	_bounce_start = boundary
 	_bounce_len = float(TIERS[_tier]["beats"])

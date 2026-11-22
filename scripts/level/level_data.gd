@@ -192,10 +192,10 @@ static func build(level: int) -> Dictionary:
 		for s: Array in chunk.get("swings", []):
 			swings.append({"anchor": Vector2((x_offset + float(s[0])) * TILE, float(s[1]) * TILE + y_offset),
 				"length": float(s[2]) * TILE,
-				"period": float(s[3]) if s.size() > 3 else 2.0,
+				"period": float(s[3]) if s.size() > 3 else 4.0,
 				"dir": int(s[4]) if s.size() > 4 else 1,
 				"offset": float(s[5]) if s.size() > 5 else 0.0})
-		## 礦車軌道：{"points": [x0, y0, x1, y1, …]（格，軌面高度）, "speed": 每拍幾格, "spikes"／"beams": [拍], "gaps": [[起拍, 終拍]]}
+		## 礦車軌道：{"points": [x0, y0, x1, y1, …]（格，軌面高度）, "speed": 每拍幾格, "spikes"／"beams"／"crates": [拍], "gaps": [[起拍, 終拍]]}
 		for r: Dictionary in chunk.get("rails", []):
 			var pts := PackedVector2Array()
 			var raw: Array = r["points"]
@@ -203,6 +203,7 @@ static func build(level: int) -> Dictionary:
 				pts.append(Vector2((x_offset + float(raw[i])) * TILE, float(raw[i + 1]) * TILE + y_offset))
 			rails.append({"points": pts, "speed": float(r.get("speed", 4.0)),
 				"spikes": r.get("spikes", []), "gaps": r.get("gaps", []), "beams": r.get("beams", []),
+				"crates": r.get("crates", []),
 				"marks": bool(r.get("marks", true))})
 		for o: Array in chunk.get("dual_orbs", []):
 			dual_orbs.append({

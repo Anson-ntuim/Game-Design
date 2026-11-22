@@ -4,7 +4,7 @@ extends Node2D
 ## 在空中碰到座椅就會抓住；按跳放手。
 ##   在「往前擺到最高」的那一拍放手（判定窗同音符）→ 固定的大拋物線，飛得又高又遠。
 ##   其他時間放手 → 只帶著座椅當下的速度掉下去，通常到不了對岸。
-## period = 來回一趟幾拍（2 = 每 2 拍往前盪到頂一次；4 = 慢鞦韆）；
+## period = 來回一趟幾拍（預設 4 = 每小節往前盪到頂一次；8 = 慢鞦韆）；
 ## offset = 往前到頂的拍子位移（相鄰鞦韆錯開半趟就能接力）。
 
 const SEAT_HALF := 22.0
@@ -20,7 +20,7 @@ const SEAT := Color(0.98, 0.62, 0.36)
 const GLOW := Color(1.0, 0.9, 0.45)
 
 var length: float = 160.0
-var period: float = 2.0
+var period: float = 4.0
 var offset: float = 0.0
 var dir: int = 1
 var amplitude: float = deg_to_rad(55.0)
@@ -32,7 +32,7 @@ var _flash: float = 0.0
 var _last_tick: int = -99999
 
 
-func setup(anchor: Vector2, rope_length: float, period_beats: float = 2.0, forward: int = 1,
+func setup(anchor: Vector2, rope_length: float, period_beats: float = 4.0, forward: int = 1,
 		phase_offset: float = 0.0, amplitude_deg: float = 55.0) -> void:
 	position = anchor
 	length = rope_length

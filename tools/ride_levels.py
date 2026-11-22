@@ -56,7 +56,7 @@ def trampoline_level() -> list[dict]:
     c = Canvas(14).fill(0, 13, FLOOR, 19)
     c.put(3, FLOOR - 1, "P")
     chunks.append(chunk(
-        "彈簧床\n站上去就會跟著拍子自動彈跳。落回床面那一拍按跳，下一下彈更高；沒按就降一段",
+        "彈簧床\n站上去就會跟著拍子一直自動彈跳。落回床面那一拍按跳，就升一段彈得更高；不按就維持高度",
         c, "trampoline_intro"))
 
     # 按一次：高台第 13 列
@@ -103,7 +103,7 @@ def trampoline_level() -> list[dict]:
 
 
 # ---------------------------------------------------------------- 盪鞦韆
-# 地面在第 12 列頂端（y = 480），中間是坑。鞦韆完美放手：vx 420、vy 820（px/s）。
+# 地面在第 12 列頂端（y = 480），中間是坑。鞦韆一般 4 拍來回、慢鞦韆 8 拍。完美放手：vx 420、vy 820（px/s）。
 # 位置由 tools 內試算：完美放手約飛 9 格才落回第 12 列。
 GROUND = 12
 
@@ -120,20 +120,21 @@ def swing_level() -> list[dict]:
     c = Canvas(34).fill(0, 8, GROUND, 19).fill(21, 33, GROUND, 19)
     c.put(3, GROUND - 1, "C")
     chunks.append(chunk(
-        "盪到最高再放手\n星星那邊是往前盪到最高的位置。盪到最高的那一拍按跳，才飛得過去",
-        c, "swing_1", swings=[[12.5, 5, 4, 2, 1, 0]]))
+        "盪到最高再放手\n鞦韆一小節（4 拍）來回一次。星星是往前最高的位置，盪到最高那一拍按跳才飛得過去",
+        c, "swing_1", swings=[[12.5, 5, 4, 4, 1, 0]]))
 
-    c = Canvas(45).fill(0, 8, GROUND, 19).fill(33, 44, GROUND, 19)
+    # 第二座比第一座晚 3 拍到頂：第 0 拍放手、飛行中抓住、第 3 拍再放手
+    c = Canvas(46).fill(0, 8, GROUND, 19).fill(34, 45, GROUND, 19)
     c.put(3, GROUND - 1, "C")
     chunks.append(chunk(
-        "鞦韆接力\n第一座放手後在空中抓住第二座，兩拍後再放手：按、（兩拍）、按",
-        c, "swing_2", swings=[[12.5, 5, 4, 2, 1, 0], [24.0, 4, 4, 2, 1, 0]]))
+        "鞦韆接力\n第一座放手後在空中抓住第二座，第二座晚三拍到頂：按、（三拍）、按",
+        c, "swing_2", swings=[[12.5, 5, 4, 4, 1, 0], [25.5, 5.5, 3.5, 4, 1, 3]]))
 
     c = Canvas(33).fill(0, 8, GROUND, 19).fill(21, 32, 10, 19)
     c.put(3, GROUND - 1, "C")
     chunks.append(chunk(
-        "慢鞦韆\n這座來回要四拍，抓住後多等一下，數到最高那一拍再放手，目標比較高",
-        c, "swing_3", swings=[[12.5, 4, 5, 4, 1, 0]]))
+        "慢鞦韆\n這座來回要兩小節（8 拍），抓住後慢慢數，到最高那一拍再放手，目標比較高",
+        c, "swing_3", swings=[[12.5, 4, 5, 8, 1, 0]]))
 
     c = Canvas(14).fill(0, 13, 10, 19)
     c.put(6, 9, "G")
@@ -185,6 +186,21 @@ def minecart_level() -> list[dict]:
         "斷軌\n軌道斷掉的地方要在空中通過；第 5、6 拍連跳兩下",
         c, "minecart_2",
         rails=[{"points": [start, FLOOR, end, FLOOR], "speed": SPEED, "gaps": gaps}]))
+
+    # 衝刺：木箱要撞破、長斷軌要空中衝刺
+    start, beats = 6.0, 13
+    end = rail_x(start, beats)
+    width = int(end) + 12
+    gaps = [[7.0, 8.2]]
+    c = Canvas(width).fill(0, width - 1, FLOOR, 19)
+    for g0, g1 in gaps:
+        c.fill(int(rail_x(start, g0)) - 1, int(rail_x(start, g1)) + 1, FLOOR, 19, " ")
+    c.put(2, FLOOR - 1, "C")
+    chunks.append(chunk(
+        "衝刺撞箱\n木箱比跳得還高，經過前按衝刺撞破（藍色箭頭）。長斷軌：先跳，再在空中衝刺停半拍",
+        c, "minecart_dash",
+        rails=[{"points": [start, FLOOR, end, FLOOR], "speed": SPEED, "crates": [2, 4, 5, 11],
+                "spikes": [10], "gaps": gaps}]))
 
     # 低樑：不能跳；跳、停交替。中段有一座小丘
     start = 6.0
