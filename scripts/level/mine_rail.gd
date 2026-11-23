@@ -204,7 +204,7 @@ func ride_step(p: Player, _delta: float) -> void:
 		GameState.play_sfx("clap")
 
 	## 行進中每拍輕敲，讓人跟得上
-	var tick := floori(b)
+	var tick := floori(Conductor.audio_beat)
 	if _state == State.RIDING and tick != _last_tick:
 		_last_tick = tick
 		GameState.play_cue("cue", 0.0, -16.0)

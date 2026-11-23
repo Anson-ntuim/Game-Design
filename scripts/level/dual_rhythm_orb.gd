@@ -78,7 +78,7 @@ func consume() -> void:
 
 func _physics_process(_delta: float) -> void:
 	var b := Conductor.song_beat
-	var s := floori(b * 2.0)
+	var s := floori(Conductor.audio_beat * 2.0)
 	if s != _last_cue3 and notes3[posmod(s, notes3.length())] == "x":
 		_last_cue3 = s
 		if BeatPattern.near_player(self, 700.0):

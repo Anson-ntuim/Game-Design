@@ -78,7 +78,7 @@ func _physics_process(delta: float) -> void:
 	_rest_vis = move_toward(_rest_vis, 1.0 if resting(b) else 0.0, delta * 14.0)
 	_flash = move_toward(_flash, 0.0, delta * 3.0)
 
-	var s := floori(b * 2.0)
+	var s := floori(Conductor.audio_beat * 2.0)
 	if s != _last_slot:
 		_last_slot = s
 		var near := p.global_position.x > left - 200.0 and p.global_position.x < right

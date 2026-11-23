@@ -92,7 +92,7 @@ func _physics_process(_delta: float) -> void:
 		_blend = 1.0
 		p.begin_ride(self, "apex_0")
 		p.facing = dir
-		_last_tick = floori(Conductor.song_beat)
+		_last_tick = floori(Conductor.audio_beat)
 		GameState.play_sfx("block", 4.0, -9.0)
 
 
@@ -105,7 +105,7 @@ func ride_step(p: Player, delta: float) -> void:
 	var vel := (target - before) / maxf(delta, 0.0001)
 	p.facing = dir
 	## 每拍輕敲一下；往前到頂那一拍是亮音，讓人數得出「再一拍」
-	var tick := floori(b)
+	var tick := floori(Conductor.audio_beat)
 	if tick != _last_tick:
 		_last_tick = tick
 		var at_peak := absf(float(tick) - nearest_peak(float(tick))) < 0.01

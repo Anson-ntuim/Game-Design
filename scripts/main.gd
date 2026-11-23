@@ -188,7 +188,8 @@ func _process(delta: float) -> void:
 	hud.set_gravity(player.gravity if player else _gravity_applied)
 
 	var b := Conductor.song_beat
-	var cue_slot := floori(b * 2.0)
+	## 節拍提示音用聲音時計（和音樂對齊）
+	var cue_slot := floori(Conductor.audio_beat * 2.0)
 	if cue_slot != _score_cue_slot:
 		_score_cue_slot = cue_slot
 		if subdivision_cue and not _completed and not watching and not player.control_locked:

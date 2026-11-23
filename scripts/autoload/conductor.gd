@@ -103,6 +103,13 @@ var song_beat: float:
 	get:
 		return song_position / sec_per_beat
 
+## 「聲音時計」：不扣玩家延遲設定的拍子。遊戲自己發出的節奏音效（節拍器、旗子倒數、音符／環的提示音……）
+## 都要用這個觸發：音效和音樂經過同一段輸出延遲才到耳朵，用它觸發聽起來才會和音樂對齊。
+## 畫面和按鍵判定照樣用 song_beat（已經扣掉延遲，對齊玩家聽到的時間）
+var audio_beat: float:
+	get:
+		return song_beat + user_offset * rate / sec_per_beat
+
 var _player: AudioStreamPlayer
 var _stream_length: float = 0.0
 var _loop_count: int = 0

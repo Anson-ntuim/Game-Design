@@ -81,7 +81,7 @@ func _start() -> void:
 ## 不含玩家目前延遲設定的拍子：鼓聲和量測都用這個，校正結果才不會一次比一次偏
 ## （以前用含延遲的拍子，鼓聲跟著舊設定移動，量到的誤差又加回去，會越校越大）
 func _raw_beat() -> float:
-	return Conductor.song_beat + Conductor.user_offset * Conductor.rate / Conductor.sec_per_beat
+	return Conductor.audio_beat
 
 
 func _on_beat(beat_index: int) -> void:

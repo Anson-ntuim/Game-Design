@@ -45,8 +45,11 @@ func _physics_process(_delta: float) -> void:
 	var b := Conductor.song_beat
 	var since := BeatPattern.since_hit(notes, b) * Conductor.sec_per_beat
 	_harmful = since >= FIRE_DELAY and since < FIRE_DELAY + FIRE_TIME
-	var hit_id := roundi((b - since / Conductor.sec_per_beat) * 2.0)
-	if since < 0.1 and hit_id != _last_hit:
+	## 提示音用聲音時計（和音樂對齊），尖刺本身的畫面照 song_beat
+	var ab := Conductor.audio_beat
+	var since_a := BeatPattern.since_hit(notes, ab) * Conductor.sec_per_beat
+	var hit_id := roundi((ab - since_a / Conductor.sec_per_beat) * 2.0)
+	if since_a < 0.1 and hit_id != _last_hit:
 		_last_hit = hit_id
 		if BeatPattern.near_player(self, 700.0):
 			GameState.play_cue("zap", 0.0, -9.0)

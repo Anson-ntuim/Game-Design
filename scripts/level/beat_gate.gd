@@ -12,6 +12,7 @@ const CLOSED_COLOR := Color(0.45, 0.5, 0.75)
 const BRACKET_FROM := 64.0
 const CAP_TEX := preload("res://assets/ui/gate_cap.png")
 
+var _last_sound_slot: int = -9999
 var size: Vector2 = Vector2(40, 120)
 var notes: String = "x.x.x.x."
 var is_open: bool = true
@@ -78,6 +79,10 @@ func _physics_process(_delta: float) -> void:
 	if s != _last_cue_slot and notes[posmod(s, notes.length())] == "x":
 		_last_cue_slot = s
 		_open_flash = 1.0
+	## 提示音用聲音時計，和音樂對齊（閃光照畫面的拍子）
+	var sa := floori(Conductor.audio_beat * 2.0)
+	if sa != _last_sound_slot and notes[posmod(sa, notes.length())] == "x":
+		_last_sound_slot = sa
 		if BeatPattern.near_player(self, 700.0):
 			GameState.play_cue("cue", 0.0, -10.0)
 

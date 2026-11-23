@@ -136,6 +136,8 @@ func _physics_process(delta: float) -> void:
 	if p == null:
 		return
 	var b := Conductor.song_beat
+	## 倒數、節拍器、示範的聲音用聲音時計（和音樂對齊）；畫面、放行時機照 song_beat
+	var ab := Conductor.audio_beat
 	var near := state == State.FREE and _at_flag(p)
 	_prompt = move_toward(_prompt, 1.0 if near else 0.0, delta * 5.0)
 	_counting = move_toward(_counting, 1.0 if state == State.WATCH or _auto_waiting or _in_start_zone(p) else 0.0, delta * 4.0)
@@ -146,12 +148,12 @@ func _physics_process(delta: float) -> void:
 				state = State.WATCH
 				start_beat = ceilf((b + 1.0) / 8.0) * 8.0
 				_demo_step = 0
-				_last_slot = floori((b - start_beat) * float(demo_sub))
+				_last_slot = floori((ab - start_beat) * float(demo_sub))
 				p.watching = true
 				p.watch_x = _start_x() if p.auto_running else position.x
 			else:
 				_tick_auto_flag(b, p, near)
-				_tick_metronome(b, p)
+				_tick_metronome(ab, p)
 		State.WATCH:
 			# 響鈴前一點點就放開操作，剛好在鈴聲上按的跳才不會被吃掉；
 			# 自動跑時在 GO 前半拍從起跑點出發（和模擬一致），不再多等一輪
@@ -161,10 +163,10 @@ func _physics_process(delta: float) -> void:
 				_cleared = true
 			elif not p.auto_running and b >= go_beat() - 0.25:
 				p.watching = false
-			_tick_sounds(b)
+			_tick_sounds(ab)
 			if b >= go_beat():
 				state = State.FREE
-				_last_slot = floori(b * 2.0)
+				_last_slot = floori(ab * 2.0)
 
 
 func _tick_sounds(b: float) -> void:

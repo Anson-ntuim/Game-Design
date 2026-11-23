@@ -68,8 +68,11 @@ func _physics_process(_delta: float) -> void:
 		_height = lerpf(PEEK_MIN, PEEK_MAX, _warn * _warn)
 		## 冒出來的那一下：半拍前從 0 很快頂到 PEEK_MIN
 		_height *= clampf((WARN_BEATS - until_hit) * 16.0, 0.0, 1.0)
-	var hit_id := roundi((b - since / spb) * 2.0)
-	if since < 0.1 and hit_id != _last_hit:
+	## 提示音用聲音時計（和音樂對齊），尖刺本身的畫面照 song_beat
+	var ab := Conductor.audio_beat
+	var since_a := BeatPattern.since_hit(notes, ab) * Conductor.sec_per_beat
+	var hit_id := roundi((ab - since_a / Conductor.sec_per_beat) * 2.0)
+	if since_a < 0.1 and hit_id != _last_hit:
 		_last_hit = hit_id
 		if BeatPattern.near_player(self, 700.0):
 			GameState.play_cue("block", -7.0 if ceiling else 0.0, -10.0)
