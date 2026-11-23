@@ -57,6 +57,11 @@ var song_position: float:
 			return _phys_raw - first_beat_offset - user_offset * rate
 		return _raw_position() - first_beat_offset - user_offset * rate
 
+## 除錯用（F3 幀率列顯示）：時計和音樂實際位置差多少、最近的最大差距、被拉回來的次數
+var stat_err_ms: float = 0.0
+var stat_err_max: float = 0.0
+var stat_snaps: int = 0
+
 ## 開始播音樂後等它真的出聲（播放位置 > 0）才開始走時計；最多等這麼久
 const AUDIO_START_TIMEOUT_USEC := 600000
 var _await_audio_until: int = 0
@@ -123,8 +128,9 @@ var _start_usec: int = 0
 var _anchor_position: float = 0.0
 var _anchor_usec: int = 0
 var _running: bool = false
-## 網頁版回報的播放位置開頭會卡在 0 約一秒，之後一直比實際聲音晚；但 play() 當下就出聲，所以只靠計時器
-var _clock_only: bool = OS.has_feature("web")
+## 只靠計時器、不對齊音樂播放位置。以前網頁版用瀏覽器直接播（sample 模式）時播放位置不準才這樣做；
+## 現在網頁版改由 Godot 自己混音（stream 模式），播放位置可靠，所以和電腦版一樣對齊音樂
+var _clock_only: bool = false
 
 
 func _ready() -> void:
@@ -297,8 +303,11 @@ func _process(_delta: float) -> void:
 			_loop_count += 1
 			measured += _stream_length
 		var error := measured - predicted
+		stat_err_ms = error * 1000.0
+		stat_err_max = maxf(stat_err_max * 0.995, absf(stat_err_ms))
 		if absf(error) > 0.08:
 			predicted = measured
+			stat_snaps += 1
 		else:
 			predicted += error * 0.1
 	_anchor_position = predicted

@@ -112,9 +112,10 @@ func _process(delta: float) -> void:
 		_fps_time += delta
 		_fps_worst = maxf(_fps_worst, delta)
 		if _fps_time >= 0.5:
-			_fps_text = "FPS %d　最慢一幀 %.1f ms　畫質 %s　物理 %d/秒　（F3 關閉）" % [
+			_fps_text = "FPS %d　最慢 %.1f ms　畫質 %s　時計差 %+.0f／最大 %.0f ms　拉回 %d 次　延遲 %+.0f ms　輸出延遲 %.0f ms" % [
 				roundi(_fps_frames / _fps_time), _fps_worst * 1000.0,
-				String(GameState.QUALITIES[GameState.quality]["name"]), Engine.physics_ticks_per_second]
+				String(GameState.QUALITIES[GameState.quality]["name"]), Conductor.stat_err_ms, Conductor.stat_err_max,
+				Conductor.stat_snaps, GameState.audio_offset_ms, AudioServer.get_output_latency() * 1000.0]
 			_fps_frames = 0
 			_fps_time = 0.0
 			_fps_worst = 0.0
