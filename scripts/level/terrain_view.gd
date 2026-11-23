@@ -1,6 +1,9 @@
 class_name TerrainView
 extends Node2D
-## 畫出地形：前景固定程式霓虹色塊＋節拍邊光（平台素材圖集暫不套用）。
+## 依關卡主題繪製平台外觀與節拍邊光。
+
+const CITY_BRICKS := preload("res://assets/themes/first_beat/bricks.png")
+const CITY_BRICK_SCALE := 0.78
 
 var fill_rects: Array[Rect2] = []
 ## 光滑牆（不能滑牆/蹬牆），畫上斜紋提示玩家
@@ -11,6 +14,7 @@ var tile: float = 40.0
 
 
 func _ready() -> void:
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	if not GameState.visual_theme_changed.is_connected(_on_theme_changed):
 		GameState.visual_theme_changed.connect(_on_theme_changed)
 
@@ -42,7 +46,7 @@ func _draw() -> void:
 	var broken_memory := GameState.level_index == 4 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
 	var edge_col := edge.lerp(Color.WHITE, pulse * 0.4)
 	if soft_city:
-		edge_col = Color("e9a9c6").lerp(Color("ffe1ed"), pulse * 0.22)
+		edge_col = Color("91849f")
 	elif sakura_park:
 		edge_col = Color("e8a6bd").lerp(Color("ffe8dc"), pulse * 0.25)
 	elif music_festival:
@@ -70,7 +74,9 @@ func _draw() -> void:
 	for r in slick_rects:
 		if not r.intersects(view):
 			continue
-		if broken_memory:
+		if soft_city:
+			draw_rect(r, Color("424159"))
+		elif broken_memory:
 			draw_rect(r, Color("3c304e"))
 		else:
 			draw_rect(r, Color("273454") if rainy_street else (Color("34255a") if music_festival else ground.lightened(0.06)))
@@ -91,12 +97,13 @@ func _draw() -> void:
 	for r in top_edges:
 		if not r.intersects(view):
 			continue
+		if soft_city:
+			_draw_city_coping(r, view, pulse if edge_lights else 0.0, detail)
+			continue
 		draw_rect(Rect2(r.position, Vector2(r.size.x, 4.0)), edge_col)
 		if detail > 0:
 			var underglow := edge
-			if soft_city:
-				underglow = Color("d78eae")
-			elif sakura_park:
+			if sakura_park:
 				underglow = Color("c77f9b")
 			elif music_festival:
 				underglow = Color("6bdff4")
@@ -105,7 +112,7 @@ func _draw() -> void:
 			elif broken_memory:
 				underglow = Color("de9bd0")
 			draw_rect(Rect2(r.position + Vector2(0, 4.0), Vector2(r.size.x, 6)),
-				Color(underglow, (0.08 + 0.08 * pulse) if soft_city else (0.10 + 0.18 * pulse)))
+				Color(underglow, 0.10 + 0.18 * pulse))
 		if not edge_lights or broken_memory:
 			continue
 		var count := int(r.size.x / tile)
@@ -114,9 +121,7 @@ func _draw() -> void:
 			if posmod(tx - beat_i, 4) == 0:
 				var c := Color(edge.lerp(Color.WHITE, 0.5),
 					(0.35 + 0.65 * pulse) * (0.5 + 0.5 * groove))
-				if soft_city:
-					c = Color(Color("d9a0ba"), 0.28)
-				elif sakura_park:
+				if sakura_park:
 					c = Color(Color("ffe1b8"), 0.26 + pulse * 0.24)
 				elif music_festival:
 					c = Color(Color("72e8ff").lerp(Color("ff79dc"), float(i % 2)),
@@ -171,7 +176,7 @@ func _draw_memory_stone(r: Rect2, view: Rect2, detail: int) -> void:
 func _draw_solid_body(r: Rect2, ground: Color, detail: int, soft_city: bool,
 		sakura_park: bool, music_festival: bool, rainy_street: bool) -> void:
 	if soft_city:
-		_draw_soft_city_body(r, detail)
+		_draw_soft_city_body(r)
 		return
 	if sakura_park:
 		_draw_sakura_park_body(r, detail)
@@ -190,26 +195,38 @@ func _draw_solid_body(r: Rect2, ground: Color, detail: int, soft_city: bool,
 		draw_rect(Rect2(r.position + Vector2(0, 34), r.size - Vector2(0, 34)), ground.darkened(0.22))
 
 
-func _draw_soft_city_body(r: Rect2, detail: int) -> void:
-	var top := Color("553653")
-	var bottom := Color("302238")
-	draw_rect(r, bottom)
-	var bands := 7
-	for i in bands:
-		var y0 := r.position.y + r.size.y * float(i) / bands
-		var y1 := r.position.y + r.size.y * float(i + 1) / bands
-		var col := top.lerp(bottom, float(i) / maxf(1.0, bands - 1.0))
-		draw_rect(Rect2(r.position.x, y0, r.size.x, y1 - y0 + 1.0), col)
-	if detail <= 0 or r.size.y < 36.0:
-		return
-	var first := floori(r.position.x / 96.0)
-	var last := ceili(r.end.x / 96.0)
-	for i in range(first, last):
-		var x := i * 96.0 + 18.0 + fposmod(i * 37.0, 31.0)
-		var y := r.position.y + 22.0 + fposmod(absf(i * 53.0), maxf(20.0, r.size.y - 32.0))
-		var w := 24.0 + fposmod(absf(i * 29.0), 38.0)
-		draw_line(Vector2(x, y), Vector2(minf(x + w, r.end.x - 8.0), y),
-			Color("c58bab", 0.075), 2.0, true)
+func _draw_soft_city_body(r: Rect2) -> void:
+	# 同一座城市的磚牆沿世界座標拼接，高低平台的交界不會重新起磚。
+	var source := Rect2(r.position / CITY_BRICK_SCALE, r.size / CITY_BRICK_SCALE)
+	draw_rect(r, Color("252238"))
+	draw_texture_rect_region(CITY_BRICKS, r, source, Color("818aaf"), false, false)
+
+
+func _draw_city_coping(r: Rect2, view: Rect2, pulse: float, detail: int) -> void:
+	# 共用頂蓋只佔最上方 14 px，亦適用於 16 px 厚的單向平台。
+	var width := r.size.x
+	draw_rect(Rect2(r.position, Vector2(width, 14)), Color("343045"))
+	draw_rect(Rect2(r.position, Vector2(width, 6)), Color("726b84"))
+	draw_rect(Rect2(r.position, Vector2(width, 2)), Color("e9d7d6"))
+	draw_rect(Rect2(r.position + Vector2(0, 12), Vector2(width, 1)), Color("9b6783"))
+
+	var bay_width := tile * 1.8
+	var visible := r.intersection(view)
+	var first := floori(visible.position.x / bay_width)
+	var last := ceili(visible.end.x / bay_width)
+	var lamp := Color("ed87b0").lerp(Color("ffd2db"), 0.12 * pulse)
+	for bay in range(first, last):
+		var joint := bay * bay_width
+		var left := maxf(joint + 3.0, r.position.x + 3.0)
+		var right := minf(joint + bay_width - 3.0, r.end.x - 3.0)
+		if right <= left:
+			continue
+		draw_rect(Rect2(left, r.position.y + 6, right - left, 6), Color("db5e94", 0.30))
+		draw_rect(Rect2(left, r.position.y + 8, right - left, 2), lamp)
+		if detail > 0 and joint >= r.position.x + 2 and joint < r.end.x - 2:
+			draw_rect(Rect2(joint, r.position.y + 2, 1, 4), Color("464155"))
+			if posmod(bay, 2) == 0:
+				draw_rect(Rect2(joint - 1, r.position.y + 8, 2, 2), Color("aba2a9"))
 
 
 func _draw_sakura_park_body(r: Rect2, detail: int) -> void:

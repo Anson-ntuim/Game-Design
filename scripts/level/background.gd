@@ -104,7 +104,7 @@ func _draw() -> void:
 		"layered":
 			_draw_art_layers(theme, tl, size, center, quiet)
 			## 雨夜本身已有前後景雨絲與漣漪，通用圓形光點會使畫面過於雜亂。
-			if (detail > 0 or quiet) and profile not in ["rainy_street", "broken_memory"]:
+			if (detail > 0 or quiet) and profile not in ["rainy_street", "broken_memory", "first_beat_sunset"]:
 				_draw_motes(tl, size, center, b, pulse, groove)
 		"panorama":
 			_draw_panorama(theme, tl, size, center, quiet)
@@ -142,6 +142,9 @@ func _draw_classic(tl: Vector2, size: Vector2, center: Vector2, b: float, pulse:
 func _draw_art_layers(theme: Dictionary, tl: Vector2, size: Vector2, center: Vector2, dim: bool) -> void:
 	if profile == "broken_memory" and not dim:
 		_draw_broken_memory(tl, size, center)
+		return
+	if profile == "first_beat_sunset" and not dim:
+		_draw_first_beat_sunset(tl, size, center)
 		return
 	if profile == "calm_city" and not dim:
 		_draw_calm_city(tl, size, center)
@@ -233,6 +236,31 @@ func _draw_memory_bird(at: Vector2, bird_scale: float, tilt: float, wing_phase: 
 	draw_colored_polygon(PackedVector2Array([Vector2(-9,wing_y - 2), Vector2(-4,wing_y * 0.8),
 		Vector2(2,-1), Vector2(2,1), Vector2(-4,wing_y * 0.8 + 3)]), silhouette)
 	draw_set_transform(Vector2.ZERO)
+
+
+## 正式第一關的夕照街區。教學旗、光柱和落腳線都位於街景前方。
+func _draw_first_beat_sunset(tl: Vector2, size: Vector2, center: Vector2) -> void:
+	var base := "res://assets/themes/first_beat/bg/"
+	var sky := GameState.theme_texture(base + "sunset.png")
+	var blocks := GameState.theme_texture(base + "viaduct.png")
+	var signs := GameState.theme_texture(base + "sign_lights.png")
+	var far_cloud := GameState.theme_texture("res://assets/themes/heartbeat_city/bg/animated/clouds_far.png")
+	var near_cloud := GameState.theme_texture("res://assets/themes/heartbeat_city/bg/animated/clouds_near.png")
+	if sky != null:
+		_blit_cover(sky, tl, size, center, 0.02, Color.WHITE)
+	if far_cloud != null:
+		_blit_cover_looping(far_cloud, tl, size, _far_cloud_scroll, Color(1, 0.87, 0.91, 0.15))
+	if near_cloud != null:
+		_blit_cover_looping(near_cloud, tl, size, _near_cloud_scroll, Color(1, 0.85, 0.9, 0.16))
+	# 只移動街景的水平視差；高度依原圖比例，拱橋與實際可走的平台分開。
+	var street_origin := tl - Vector2(0, size.y * 0.07)
+	if blocks != null:
+		_blit_parallax(blocks, street_origin, size, center, 0.46, "bottom",
+			Color(0.94, 0.91, 0.97, 0.94), true, 0.76)
+	if signs != null:
+		var alpha := 0.5 * Conductor.pulse(4.5) * GameState.anim_amount()
+		_blit_parallax(signs, street_origin, size, center, 0.46, "bottom",
+			Color(1, 1, 1, alpha), true, 0.76)
 
 
 ## 第一關試作：拆開天空元素，讓環境緩慢呼吸，但不干擾平台判讀。
