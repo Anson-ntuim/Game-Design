@@ -79,6 +79,7 @@ func _ready() -> void:
 	hud.player = player
 	hud.tempo_mode = _tempo_pad_mode
 	add_child(hud)
+	add_child(TouchControls.new())
 
 	GameState.reset_stats()
 	Conductor.measure.connect(_on_measure)

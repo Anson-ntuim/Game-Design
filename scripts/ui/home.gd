@@ -38,6 +38,8 @@ var _guide: MechanicGuide
 var _calibrator: LatencyCalibrator
 var _music_setup: MusicSetup
 var _settings: PauseMenu
+var _quality_picker: QualityPicker
+var _skin_bump: float = 0.0
 
 
 func _ready() -> void:
@@ -69,15 +71,18 @@ func _ready() -> void:
 	var tw := create_tween()
 	tw.tween_property(self, "_fade", 0.0, 0.6).set_ease(Tween.EASE_OUT)
 	## 第一次開遊戲：先做聲音延遲校正
+	## 第一次開遊戲：先做聲音延遲校正，接著選畫面品質
 	if not GameState.calibration_done:
 		_open_calibrator()
 		_calibrator.first_run = true
+		_calibrator.closed.connect(_open_quality_picker)
 
 
 func _process(delta: float) -> void:
 	_camera.position.x += 28.0 * delta
 	_input_lock = maxf(0.0, _input_lock - delta)
 	_bump = move_toward(_bump, 0.0, delta * 4.0)
+	_skin_bump = move_toward(_skin_bump, 0.0, delta * 4.0)
 	_view.queue_redraw()
 	if _fade_out > 0.0:
 		_fade_out = minf(1.0, _fade_out + delta * 2.4)
@@ -100,7 +105,7 @@ func _process(delta: float) -> void:
 
 func _overlay_open() -> bool:
 	return is_instance_valid(_guide) or is_instance_valid(_calibrator) or is_instance_valid(_music_setup) \
-		or is_instance_valid(_settings)
+		or is_instance_valid(_settings) or is_instance_valid(_quality_picker)
 
 
 ## 「開始遊戲」接續的關卡：還沒通關的第一關，全破就是上次玩的那關
@@ -111,7 +116,35 @@ func _continue_level() -> int:
 	return clampi(GameState.level_index, 0, LevelData.visible_count() - 1)
 
 
+func _open_quality_picker() -> void:
+	_quality_picker = QualityPicker.new()
+	add_child.call_deferred(_quality_picker)
+
+
+## 主畫面換角色（← → 或點角色兩邊的箭頭）
+func _change_skin(step: int) -> void:
+	GameState.set_skin(GameState.skin + step)
+	_skin_bump = 1.0
+	GameState.play_sfx("pluck", 7.0 + step * 2.0, -6.0)
+
+
+func _skin_center() -> Vector2:
+	var size := _view.size
+	return Vector2(size.x - 330, size.y - 70)
+
+
+func _skin_arrow_rect(dir: int) -> Rect2:
+	var c := _skin_center() + Vector2(dir * 215.0, -200.0)
+	return Rect2(c - Vector2(30, 30), Vector2(60, 60))
+
+
 func _handle_main() -> void:
+	if Input.is_action_just_pressed("move_left"):
+		_change_skin(-1)
+		return
+	if Input.is_action_just_pressed("move_right"):
+		_change_skin(1)
+		return
 	if Input.is_action_just_pressed("up"):
 		_menu_row = posmod(_menu_row - 1, MENU_ITEMS.size())
 		GameState.play_sfx("pluck", 3.0, -10.0)
@@ -215,7 +248,7 @@ func _open_settings() -> void:
 	if not OS.has_feature("web"):
 		acts.append("離開遊戲")
 	_settings.actions = acts
-	_settings.settings = ["music", "sfx", "quality", "skin", "shake", "auto", "judge"]
+	_settings.settings = ["music", "sfx", "quality", "skin", "shake", "judge"]
 	add_child(_settings)
 	_settings.chosen.connect(_on_settings_chosen)
 	GameState.play_sfx("pluck", 7.0, -6.0)
@@ -248,6 +281,14 @@ func _on_gui_input(event: InputEvent) -> void:
 	if mb == null or not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT or _overlay_open() or _starting:
 		return
 	if _screen == Screen.MAIN:
+		for dir: int in [-1, 1]:
+			if _skin_arrow_rect(dir).has_point(mb.position):
+				_change_skin(dir)
+				return
+		var sc := _skin_center()
+		if Rect2(sc.x - 140, sc.y - 420, 280, 430).has_point(mb.position):
+			_change_skin(1)
+			return
 		for i in MENU_ITEMS.size():
 			if _menu_rect(i).has_point(mb.position):
 				_menu_row = i
@@ -324,11 +365,24 @@ func _draw_main(size: Vector2) -> void:
 	_view.draw_string(f, Vector2(94, 218), GameState.GAME_TITLE, HORIZONTAL_ALIGNMENT_LEFT, -1, 112, UiKit.PINK)
 	_view.draw_string(f, Vector2(88, 212), GameState.GAME_TITLE, HORIZONTAL_ALIGNMENT_LEFT, -1, 112, UiKit.TEXT)
 
-	## 角色（右下）
+	## 角色（右下）：兩邊箭頭可以換，下面是名字
 	var bob := sin(Conductor.song_beat * PI) * 4.0
-	Player.draw_skin(_view, GameState.skin, Vector2(size.x - 330, size.y - 70 + bob), Vector2(7.0, 7.0), 0.0,
+	var sc := _skin_center()
+	var pop := 1.0 + 0.12 * ease(_skin_bump, 0.5)
+	_view.draw_circle(sc + Vector2(0, -150), 190.0, Color(UiKit.PINK, 0.10 + 0.06 * Conductor.pulse(6.0)))
+	Player.draw_skin(_view, GameState.skin, Vector2(sc.x, sc.y + bob), Vector2(7.0, 7.0) * pop, 0.0,
 		Color.WHITE, Player.idle_pose(Conductor.song_beat))
 	_view.draw_set_transform(Vector2.ZERO)
+	for dir: int in [-1, 1]:
+		var ar := _skin_arrow_rect(dir)
+		_view.draw_circle(ar.get_center(), 30.0, Color(UiKit.PINK, 0.95))
+		_view.draw_arc(ar.get_center(), 30.0, 0.0, TAU, 32, UiKit.TEXT, 3.0, true)
+		UiKit.text(_view, Vector2(ar.position.x, ar.get_center().y + 13), ar.size.x, "‹" if dir < 0 else "›", 40, UiKit.INK, HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.9))
+	var skin_name := String(GameState.SKINS[GameState.skin]["name"])
+	var nw := UiKit.width_of(skin_name, 22) + 56.0
+	var nr := Rect2(sc.x - nw * 0.5, sc.y + 8.0, nw, 44.0)
+	_round(nr, Color(UiKit.NIGHT, 0.9), 22, UiKit.PINK, 3)
+	UiKit.text(_view, Vector2(nr.position.x, nr.position.y + 30), nr.size.x, skin_name, 22, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.8))
 
 	## 四個按鈕
 	var cont := _continue_level()
@@ -355,7 +409,7 @@ func _draw_main(size: Vector2) -> void:
 
 	## 左下操作說明
 	var x := 88.0
-	for pair: Array in [["↑ ↓", "選擇"], ["Enter", "確定"], ["H", "機關說明"], ["O", "延遲校正"]]:
+	for pair: Array in [["↑ ↓", "選擇"], ["← →", "換角色"], ["Enter", "確定"], ["H", "機關說明"], ["O", "延遲校正"]]:
 		UiKit.text(_view, Vector2(x, size.y - 40), -1, pair[0], 15, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
 		x += UiKit.width_of(pair[0], 15) + 10
 		UiKit.text(_view, Vector2(x, size.y - 40), -1, pair[1], 15, UiKit.MUTED)

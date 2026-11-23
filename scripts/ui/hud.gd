@@ -13,8 +13,10 @@ void fragment() {
 	COLOR = vec4(0.0, 0.0, 0.02, amount * 0.97 * smoothstep(radius, radius * 2.2, d));
 }
 "
-const CONTROLS_A := [[["空白鍵"], "跳"], [["C", "Shift"], "衝刺"], [["F"], "自動／手動"], [["←", "→"], "手動移動"]]
+const CONTROLS_A := [[["空白鍵"], "跳"], [["C", "Shift"], "衝刺"]]
 const CONTROLS_B := [[["↑"], "看示範"], [["[", "]"], "畫質"], [["R"], "重來"], [["Esc"], "暫停"]]
+## 手機：按畫面右半邊跳、左半邊衝刺
+const CONTROLS_TOUCH := [[["右半邊"], "跳"], [["左半邊"], "衝刺"], [["上方圓鈕"], "暫停"]]
 const TIP_TIME := 6.0
 const TIP_COLOR := Color(1.0, 0.45, 0.5)
 const SAKURA_ROSE := Color("e6a0b7")
@@ -136,7 +138,15 @@ func set_gravity(strength: float) -> void:
 	_gravity = strength
 
 
+## 手機上教學文字的按鍵改成觸控說法
+static func touch_text(text: String) -> String:
+	if not TouchControls.wanted():
+		return text
+	return text.replace("空白鍵", "畫面右邊").replace("C／Shift", "畫面左邊").replace("Shift", "畫面左邊")
+
+
 func set_hint(text: String) -> void:
+	text = touch_text(text)
 	if text != _hint:
 		_hint = text
 		_hint_alpha = 0.0
@@ -304,13 +314,11 @@ func _draw_combo(safe: Rect2, lift: float) -> void:
 		UiKit.text(_view, Vector2(right - tw, y + (0.9 - _break_t) * 20.0), -1, text, 18, Color(UiKit.PINK, a), HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
 
 
-## 左下：狀態膠囊（旗子前等候、手動模式、變速）＋第一關才顯示的按鍵說明
+## 左下：狀態膠囊（變速）＋第一關才顯示的按鍵說明
 func _draw_controls(safe: Rect2, _edge: Color, lift: float) -> void:
 	var y0 := safe.end.y + lift
 	var status := ""
-	if player and not player.auto_running and not player.control_locked and not GameState.auto_run:
-		status = "手動移動中　F 切回自動前進"
-	elif tempo_mode or Conductor.custom_music:
+	if tempo_mode or Conductor.custom_music:
 		status = "%d BPM" % roundi(Conductor.current_bpm)
 	if status != "":
 		var sw := UiKit.width_of(status, 13) + 28.0
@@ -319,8 +327,11 @@ func _draw_controls(safe: Rect2, _edge: Color, lift: float) -> void:
 		UiKit.text(_view, Vector2(r.position.x, r.position.y + 20), sw, status, 13, UiKit.YELLOW, HORIZONTAL_ALIGNMENT_CENTER)
 	if GameState.level_index == 0:
 		## 節拍軌在下方中央，按鍵說明放在它上面一點的左側
-		UiKit.key_hints(_view, safe.position.x, y0 - 136, CONTROLS_A, UiKit.LINE, 0.75, HORIZONTAL_ALIGNMENT_LEFT, 12)
-		UiKit.key_hints(_view, safe.position.x, y0 - 106, CONTROLS_B, UiKit.LINE, 0.75, HORIZONTAL_ALIGNMENT_LEFT, 12)
+		if TouchControls.wanted():
+			UiKit.key_hints(_view, safe.position.x + 170.0, y0 - 136, CONTROLS_TOUCH, UiKit.LINE, 0.75, HORIZONTAL_ALIGNMENT_LEFT, 12)
+		else:
+			UiKit.key_hints(_view, safe.position.x, y0 - 136, CONTROLS_A, UiKit.LINE, 0.75, HORIZONTAL_ALIGNMENT_LEFT, 12)
+			UiKit.key_hints(_view, safe.position.x, y0 - 106, CONTROLS_B, UiKit.LINE, 0.75, HORIZONTAL_ALIGNMENT_LEFT, 12)
 
 
 ## 膠囊外框每幀畫好幾次：共用一個 StyleBoxFlat（draw_style_box 當下就把形狀畫進去，改參數不影響畫過的），不要每次 new
@@ -460,6 +471,20 @@ func _draw_beat_bar(safe: Rect2, _edge: Color) -> void:
 			## 當拍的點外面擴一圈
 			_view.draw_arc(Vector2(x, c.y), 8.0 + 14.0 * (1.0 - p), 0.0, TAU, 24, Color(col, 0.7 * p), 2.5, true)
 		_view.draw_circle(Vector2(x, c.y), (7.0 + 4.0 * p) if on else 4.5, Color(col, 0.95 if on else 0.3))
+
+
+## 結算畫面下方三個按鈕（選關／再玩一次／下一關）的位置；pos 落在哪一顆就回傳 0～2，都沒有回傳 -1（給觸控用）
+func result_button_at(pos: Vector2) -> int:
+	if _results.is_empty():
+		return -1
+	var size := _view.size
+	var box := Rect2(size.x - 96 - 520, 90, 520, 520)
+	var bw := (box.size.x - 64.0 - 20.0) / 3.0
+	for i in 3:
+		var r := Rect2(box.position.x + 32.0 + i * (bw + 10.0), box.end.y - 88, bw, 56)
+		if r.grow(8.0).has_point(pos):
+			return i
+	return -1
 
 
 ## 結算：左邊大字 CLEAR!，右邊成績卡（評等、時間、倒下、最佳紀錄），下方三個按鍵

@@ -113,6 +113,7 @@ var visual_theme: int = 0
 var music_volume: float = 0.8
 var sfx_volume: float = 0.8
 ## 預設自動往右跑（玩家只管跳和衝刺）；關掉就改成方向鍵手動移動
+## 一律自動前進（手動移動模式已拿掉）；保留這個變數給還在讀它的地方
 var auto_run: bool = true
 ## 鏡頭晃動、節拍縮放等畫面震動（問卷反映會頭暈、看不清判定，預設關）
 var screen_shake: bool = false
@@ -217,9 +218,8 @@ func set_sfx_volume(v: float, persist: bool = true) -> void:
 		_save()
 
 
-func set_auto_run(on: bool) -> void:
-	auto_run = on
-	_save()
+func set_auto_run(_on: bool) -> void:
+	auto_run = true
 
 
 func set_screen_shake(on: bool) -> void:
@@ -621,7 +621,9 @@ func _save() -> void:
 
 func _load_records() -> void:
 	var cfg := ConfigFile.new()
-	var default_quality := 1 if OS.has_feature("web") else 2
+	## 手機（網頁版在手機上、或原生手機版）預設低畫質，電腦網頁中、桌機高
+	var mobile := OS.has_feature("web_android") or OS.has_feature("web_ios") or OS.has_feature("mobile")
+	var default_quality := 0 if mobile else (1 if OS.has_feature("web") else 2)
 	if cfg.load(SAVE_PATH) != OK:
 		quality = default_quality
 		return
@@ -633,7 +635,7 @@ func _load_records() -> void:
 	calibration_done = bool(cfg.get_value("settings", "calibration_done", false))
 	music_volume = clampf(float(cfg.get_value("settings", "music_volume", 0.8)), 0.0, 1.0)
 	sfx_volume = clampf(float(cfg.get_value("settings", "sfx_volume", 0.8)), 0.0, 1.0)
-	auto_run = bool(cfg.get_value("settings", "auto_run", true))
+	auto_run = true
 	screen_shake = bool(cfg.get_value("settings", "screen_shake", false))
 	Conductor.prefer_reference_tempo = bool(cfg.get_value("settings", "prefer_reference_tempo", false))
 	var order_version := int(cfg.get_value("settings", "level_order_version", 1))
@@ -690,7 +692,6 @@ func _on_section_changed(section: int) -> void:
 func _setup_input() -> void:
 	_add_action("move_left", [KEY_LEFT, KEY_A], [JOY_BUTTON_DPAD_LEFT], [[JOY_AXIS_LEFT_X, -1.0]])
 	_add_action("move_right", [KEY_RIGHT, KEY_D], [JOY_BUTTON_DPAD_RIGHT], [[JOY_AXIS_LEFT_X, 1.0]])
-	_add_action("auto_run", [KEY_F], [JOY_BUTTON_LEFT_STICK])
 	_add_action("up", [KEY_UP, KEY_W], [JOY_BUTTON_DPAD_UP], [[JOY_AXIS_LEFT_Y, -1.0]])
 	_add_action("down", [KEY_DOWN, KEY_S], [JOY_BUTTON_DPAD_DOWN], [[JOY_AXIS_LEFT_Y, 1.0]])
 	_add_action("jump", [KEY_SPACE], [JOY_BUTTON_A])

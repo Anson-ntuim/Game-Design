@@ -328,7 +328,7 @@ func _draw() -> void:
 		draw_arc(Vector2(0, -47), 20.0 + (1.0 - flash) * 24.0, 0.0, TAU, 32, Color(COLOR, flash), 3.0, true)
 	if _prompt > 0.0:
 		## 「↑ 示範」只在第一關提示，之後就不寫字了
-		if GameState.level_index == 0:
+		if GameState.level_index == 0 and not TouchControls.wanted():
 			_draw_prompt()
 	## 示範角色是關卡提示，不隨低畫質關掉（quality ghost 只影響其他裝飾）
 	if state == State.WATCH and ghost.size() > 1:

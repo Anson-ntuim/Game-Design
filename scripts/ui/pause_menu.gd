@@ -9,7 +9,7 @@ extends CanvasLayer
 signal chosen(action: String)
 
 var actions: Array = ["繼續", "回到長椅", "從頭再來", "回選關"]
-var settings: Array = ["music", "sfx", "shake", "auto", "judge"]
+var settings: Array = ["music", "sfx", "shake", "judge"]
 var title: String = "暫停"
 const SETTING_LABEL := {"music": "音樂音量", "sfx": "音效音量", "shake": "畫面晃動", "auto": "自動前進",
 	"judge": "判定難度", "quality": "畫質", "skin": "角色造型"}
@@ -110,17 +110,41 @@ func _on_gui_input(event: InputEvent) -> void:
 		var r := _setting_rect(i)
 		if r.has_point(mb.position):
 			_row = actions.size() + i
-			if settings[i] == "skin":
-				## 直接點哪一隻就換哪一隻
-				var right := Rect2(r.position.x + 190, r.position.y, r.size.x - 210, r.size.y)
-				var n := GameState.SKINS.size()
-				var k := clampi(int((mb.position.x - right.position.x) / (right.size.x / n)), 0, n - 1)
-				GameState.set_skin(k)
-				GameState.play_sfx("pluck", 6.0, -8.0)
-				return
-			_adjust(-1 if mb.position.x < r.get_center().x and settings[i] in ["music", "sfx", "judge", "quality"] else 1)
+			_click_setting(String(settings[i]), r, mb.position)
 			return
 
+
+## 點設定列：點到哪個選項就直接變成那個（不是一直往下一個循環）
+func _click_setting(id: String, r: Rect2, pos: Vector2) -> void:
+	var right := Rect2(r.position.x + 190, r.position.y, r.size.x - 210, r.size.y)
+	match id:
+		"music", "sfx":
+			## 點在音量條上哪裡就設成那個音量
+			var bar := Rect2(right.position.x, right.position.y, right.size.x - 70, right.size.y)
+			if pos.x < bar.position.x - 12.0:
+				return
+			var v := clampf((pos.x - bar.position.x) / bar.size.x, 0.0, 1.0)
+			v = snappedf(v, 0.05)
+			if id == "music":
+				GameState.set_music_volume(v)
+			else:
+				GameState.set_sfx_volume(v)
+		"skin", "quality", "judge":
+			if pos.x < right.position.x:
+				return
+			var n := GameState.SKINS.size() if id == "skin" else (GameState.QUALITIES.size() if id == "quality" else GameState.DIFFICULTIES.size())
+			var k := clampi(int((pos.x - right.position.x) / (right.size.x / n)), 0, n - 1)
+			if id == "skin":
+				GameState.set_skin(k)
+			elif id == "quality":
+				GameState.set_quality(k)
+			else:
+				GameState.set_difficulty(k)
+		"shake":
+			GameState.set_screen_shake(not GameState.screen_shake)
+		_:
+			_adjust(1)
+	GameState.play_sfx("pluck", 6.0, -8.0)
 
 func _on_draw() -> void:
 	var size := _view.size

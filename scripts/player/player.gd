@@ -70,7 +70,7 @@ const WORLD_SPB := 0.5
 @export var beat_pad_time: float = 0.2
 
 var facing: int = 1
-## 自動往右跑（預設開，GameState.auto_run）。按住方向鍵只會暫時改方向，放開就繼續自動跑；F 切換自動／手動。
+## 自動往右跑（一律開）。方向鍵不影響移動，只管跳和衝刺。
 var auto_running: bool = false
 ## 自動跑時在旗子前等候 3、2、1、GO（由 CueFlag 開關）
 var auto_flag_wait: bool = false
@@ -384,16 +384,7 @@ func _input_dir() -> int:
 	if auto_flag_wait:
 		var dx := watch_x - global_position.x
 		return 0 if absf(dx) < 4.0 else (1 if dx > 0.0 else -1)
-	var x := Input.get_axis("move_left", "move_right")
-	if Input.is_action_just_pressed("auto_run"):
-		auto_running = not auto_running
-		GameState.set_auto_run(auto_running)
-		if not auto_running:
-			auto_flag_wait = false
-	if x > 0.3:
-		return 1
-	if x < -0.3:
-		return -1
+	## 一律自動往右跑，方向鍵不影響（手機、鍵盤操作一致：只管跳和衝刺）
 	return 1 if auto_running else 0
 
 
