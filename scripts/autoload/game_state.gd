@@ -118,6 +118,8 @@ var auto_run: bool = true
 var screen_shake: bool = false
 ## 音訊延遲校正（毫秒）。正＝聲音比畫面晚，負＝聲音比畫面早。範圍約 ±300ms
 var audio_offset_ms: float = 0.0
+## 做過（或跳過）聲音延遲校正：第一次開遊戲才自動跳出校正
+var calibration_done: bool = false
 const AUDIO_OFFSET_MIN := -300.0
 const AUDIO_OFFSET_MAX := 300.0
 var _skin_textures: Dictionary = {}
@@ -222,6 +224,10 @@ func set_auto_run(on: bool) -> void:
 
 func set_screen_shake(on: bool) -> void:
 	screen_shake = on
+	_save()
+
+
+func save_settings() -> void:
 	_save()
 
 
@@ -584,7 +590,13 @@ func skin_frame(pose: String, index: int = -1) -> Texture2D:
 	return _skin_textures[path]
 
 
+## 測試工具（機器人、截圖）把這個關掉：不寫存檔，避免同時跑好幾個測試時互相覆蓋、把假紀錄留在玩家存檔裡
+var persist_enabled: bool = true
+
+
 func _save() -> void:
+	if not persist_enabled:
+		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("settings", "level_order_version", 4)
 	cfg.set_value("settings", "skin", skin)
@@ -592,6 +604,7 @@ func _save() -> void:
 	cfg.set_value("settings", "quality", quality)
 	cfg.set_value("settings", "visual_theme", visual_theme)
 	cfg.set_value("settings", "audio_offset_ms", audio_offset_ms)
+	cfg.set_value("settings", "calibration_done", calibration_done)
 	cfg.set_value("settings", "music_volume", music_volume)
 	cfg.set_value("settings", "sfx_volume", sfx_volume)
 	cfg.set_value("settings", "auto_run", auto_run)
@@ -617,6 +630,7 @@ func _load_records() -> void:
 	quality = clampi(int(cfg.get_value("settings", "quality", default_quality)), 0, QUALITIES.size() - 1)
 	visual_theme = 0
 	audio_offset_ms = clampf(float(cfg.get_value("settings", "audio_offset_ms", 0.0)), AUDIO_OFFSET_MIN, AUDIO_OFFSET_MAX)
+	calibration_done = bool(cfg.get_value("settings", "calibration_done", false))
 	music_volume = clampf(float(cfg.get_value("settings", "music_volume", 0.8)), 0.0, 1.0)
 	sfx_volume = clampf(float(cfg.get_value("settings", "sfx_volume", 0.8)), 0.0, 1.0)
 	auto_run = bool(cfg.get_value("settings", "auto_run", true))

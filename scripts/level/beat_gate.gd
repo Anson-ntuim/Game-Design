@@ -10,6 +10,7 @@ const OPEN_COLOR := Color(0.35, 0.85, 1.0)
 const CLOSED_COLOR := Color(0.45, 0.5, 0.75)
 ## 倒數光條從柱子中心幾 px 外開始收攏
 const BRACKET_FROM := 64.0
+const CAP_TEX := preload("res://assets/ui/gate_cap.png")
 
 var size: Vector2 = Vector2(40, 120)
 var notes: String = "x.x.x.x."
@@ -110,8 +111,15 @@ func _draw() -> void:
 			draw_line(Vector2(x, 0), Vector2(x, _visual_height), col, 3.0)
 			draw_line(Vector2(x, 1.5), Vector2(x - side * 9.0, 1.5), col, 3.0)
 			draw_line(Vector2(x, _visual_height - 1.5), Vector2(x - side * 9.0, _visual_height - 1.5), col, 3.0)
-	var cap := Color(0.85, 0.95, 1.0) if is_open else Color(0.55, 0.6, 0.8)
-	draw_rect(Rect2(cx - 14, 0, 28, 4), cap)
+	## 光柱上端的燈座（手繪圖），關著的時候暗一點。
+	## 柱子頂在天花板下面就畫在柱頂；柱子從關卡最上面一路下來（坑上方那種，柱頂在畫面外）就掛在畫面上緣
+	var cw := 40.0
+	var ch := cw * float(CAP_TEX.get_height()) / float(CAP_TEX.get_width())
+	var cap_y := -ch * 0.55
+	if camera:
+		var screen_top := camera.get_screen_center_position().y - get_viewport_rect().size.y / camera.zoom.y * 0.5 - global_position.y
+		cap_y = maxf(cap_y, screen_top - ch * 0.2)
+	draw_texture_rect(CAP_TEX, Rect2(cx - cw * 0.5, cap_y, cw, ch), false, Color(1, 1, 1) if is_open else Color(0.7, 0.7, 0.8))
 
 
 func _draw_closed(cx: float, b: float) -> void:

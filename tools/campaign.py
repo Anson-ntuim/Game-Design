@@ -88,8 +88,9 @@ HOP_TAIL = 8
 HOP_EVERY = 2
 
 
-def _bench_chunk(hint, width, t_in=None):
-    """t_in：照節奏跑時角色中心經過這塊平地左端的整首拍數（None = 不知道，不挖坑）"""
+def _bench_chunk(hint, width, t_in=None, seat=True):
+    """t_in：照節奏跑時角色中心經過這塊平地左端的整首拍數（None = 不知道，不挖坑）
+    seat=False：只留平地不放長椅（終點前面那塊）"""
     c = Chunk(width)
     c.fill(0, width - 1, 16, 19, "#")
     hops = []
@@ -110,7 +111,8 @@ def _bench_chunk(hint, width, t_in=None):
             T += HOP_EVERY
     ## 重生點離下一面旗子遠一點（跑一段才到旗子，來得及反應）：有小坑放在最後那段平地的開頭，沒有就放在最左邊
     cp = width - HOP_TAIL + 1 if hops else 1
-    c.fill(cp, cp, 15, 15, "C")
+    if seat:
+        c.fill(cp, cp, 15, 15, "C")
     out = {"hint": hint, "rows": c.lines()}
     if hops:
         out["hint"] = tut("hops", "間奏", "平地上有小坑：每兩拍按一下空白鍵跳過去，跟著節奏跑到下一段")
@@ -218,7 +220,9 @@ def seamless(pat, chunks, hops=True):
             start_abs[id(nxt)] = arrive + early - target_beat
             nxt["_phase"] = start_abs[id(nxt)] % CYCLE
             print(f"  長椅寬 {width} 格：整首第 {arrive:.2f} 拍到下一段（{cyc:g} 拍一輪），提早 {early:.2f} 拍")
-        out.append(_bench_chunk(ch["_bench"], width, t_in if hops else None))
+        ## 終點前面不放長椅：直接跑進終點
+        before_goal = nxt is not None and nxt.get("_goal")
+        out.append(_bench_chunk(BENCH if before_goal else ch["_bench"], width, t_in if hops else None, seat=not before_goal))
     return out
 
 
@@ -604,7 +608,7 @@ def goal(hint):
     c = Chunk(14)
     c.fill(0, 13, 16, 19, "#")
     c.fill(9, 9, 15, 15, "G")
-    return {"hint": hint, "rows": c.lines()}
+    return {"hint": hint, "rows": c.lines(), "_goal": True}
 
 
 def level1(pat):

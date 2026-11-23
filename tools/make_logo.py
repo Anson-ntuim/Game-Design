@@ -1,11 +1,15 @@
 """把手繪 Logo（白底 JPG）去背、加貼紙白邊，輸出 assets/ui/logo.png。
 用法：python3 tools/make_logo.py assets/source/logo_drawing.jpg assets/ui/logo.png 預覽.png
+      加 --plain 不加白邊、--size N 把長邊縮到 N px（例：黃色音符裡的音符
+      python3 tools/make_logo.py assets/source/orb_note_drawing.png assets/ui/orb_note.png 預覽.png --plain --size 128）
 """
 import sys
 import numpy as np
 from PIL import Image
 from scipy import ndimage as nd
 src, out, preview = sys.argv[1:4]
+PLAIN = "--plain" in sys.argv
+SIZE = int(sys.argv[sys.argv.index("--size") + 1]) if "--size" in sys.argv else 0
 im = np.asarray(Image.open(src).convert("RGB")).astype(np.float32)
 lum = im.mean(axis=2)
 sat = im.max(axis=2) - im.min(axis=2)
@@ -44,7 +48,7 @@ a = np.clip(alpha, 1e-3, 1.0)[..., None]
 rgb = np.where(near[..., None], np.clip((im - 255.0 * (1 - a)) / a, 0, 255), rgb)
 ## 貼紙白邊：在圖案外圍墊一圈白色，深色背景上鉛筆線和字才看得清楚
 solid = alpha > 0.35
-rim = nd.binary_dilation(solid, iterations=7)
+rim = nd.binary_dilation(solid, iterations=0 if PLAIN else 7) if not PLAIN else solid
 rim = nd.binary_fill_holes(rim) & rim
 rim_soft = nd.gaussian_filter(rim.astype(np.float32), 1.2)
 base = np.dstack([np.full_like(lum, 255.0)] * 3)
@@ -54,6 +58,9 @@ rgba = np.dstack([out_rgb, out_a * 255.0]).astype(np.uint8)
 img = Image.fromarray(rgba, "RGBA")
 bbox = img.getbbox()
 img = img.crop((max(0, bbox[0] - 8), max(0, bbox[1] - 8), min(img.width, bbox[2] + 8), min(img.height, bbox[3] + 8)))
+if SIZE:
+    k = SIZE / max(img.size)
+    img = img.resize((max(1, round(img.width * k)), max(1, round(img.height * k))), Image.LANCZOS)
 img.save(out)
 bgc = Image.new("RGBA", img.size, (26, 16, 54, 255))
 bgc.alpha_composite(img)

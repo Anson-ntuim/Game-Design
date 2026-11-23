@@ -79,9 +79,17 @@ func _on_draw() -> void:
 		## 進場時輕輕放大到原尺寸
 		var s := lerpf(0.92, 1.0, ease(clampf(_t / 0.6, 0.0, 1.0), 0.4))
 		if _logo:
-			var h := size.y * 0.62 * s
+			## Logo 在上、Heart Beat 標題在下，整組置中
+			var h := size.y * 0.56 * s
 			var w := h * float(_logo.get_width()) / float(_logo.get_height())
-			_view.draw_texture_rect(_logo, Rect2(c.x - w * 0.5, c.y - h * 0.5, w, h), false, Color(1, 1, 1, a))
+			var top := c.y - (h + 110.0) * 0.5
+			_view.draw_texture_rect(_logo, Rect2(c.x - w * 0.5, top, w, h), false, Color(1, 1, 1, a))
+			var f := UiKit.title_font()
+			var title := GameState.GAME_TITLE
+			var tw := f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 80).x
+			var ty := top + h + 92.0
+			_view.draw_string(f, Vector2(c.x - tw * 0.5 + 5, ty + 5), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 80, Color(UiKit.PINK, a))
+			_view.draw_string(f, Vector2(c.x - tw * 0.5, ty), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 80, Color(UiKit.TEXT, a))
 		else:
 			## draw_skin 自己會設 transform，所以直接給腳的位置和縮放
 			Player.draw_skin(_view, 0, c + Vector2(0, 40), Vector2(4.0, 4.0) * s, 0.0, Color(1, 1, 1, a))

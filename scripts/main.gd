@@ -819,6 +819,13 @@ func _build_terrain(solid: Array[PackedByteArray], width: int, height: int) -> v
 		view.slick_rects.append(world)
 	_add_box(body, Rect2(-TILE, -TILE * 10, TILE, level_size.y + TILE * 10))
 	_add_box(body, Rect2(level_size.x, -TILE * 10, TILE, level_size.y + TILE * 10))
+	## 直的螢幕（手機直拿）看得到關卡底下：碰到底的地面往下畫長一點，不要露出下面是空的（只畫，不加碰撞）
+	var bottom := float(height) * TILE
+	for i in view.fill_rects.size():
+		var r: Rect2 = view.fill_rects[i]
+		if r.end.y >= bottom - 1.0:
+			r.size.y += TILE * 60.0
+			view.fill_rects[i] = r
 
 	for y in height:
 		var x := 0

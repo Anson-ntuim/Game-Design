@@ -52,7 +52,8 @@ const WORLD_SPB := 0.5
 @export var jump_buffer_time: float = 0.1
 
 @export_group("Wall")
-@export var can_wall_jump: bool = true
+## 不能貼牆滑、蹬牆跳（碰到牆就照常往下掉）
+@export var can_wall_jump: bool = false
 @export var wall_slide_speed: float = 160.0
 ## 蹬牆後強制往外推、暫時無法控制水平方向的時間
 @export var wall_jump_push_time: float = 0.12
@@ -149,6 +150,8 @@ var _launch_gravity: float = 0.0
 var _orb_float: float = 1.0
 ## 打中時角色閃白一下（秒）
 var _flash_t: float = 0.0
+## 上一次踩拍的拍號
+var _step_beat: int = -99999
 ## 低畫質時略過不變的重畫（節點位移仍由引擎帶動）
 var _draw_key: String = ""
 
@@ -310,6 +313,12 @@ func _tick_timers(delta: float) -> void:
 	_invincible_timer = maxf(0.0, _invincible_timer - delta)
 	_wing_timer = maxf(0.0, _wing_timer - delta)
 	_fail_puff = maxf(0.0, _fail_puff - delta)
+	## 在地上跑的時候每一拍踩一下（壓扁再彈回），腳步跟著拍子
+	var beat_i := floori(Conductor.song_beat)
+	if beat_i != _step_beat:
+		_step_beat = beat_i
+		if is_on_floor() and absf(velocity.x) > 10.0 and _dash_timer <= 0.0 and ride == null:
+			_set_squash(Vector2(1.14, 0.88))
 	_flash_t = maxf(0.0, _flash_t - delta)
 	var glow := clampf(_flash_t / 0.12, 0.0, 1.0)
 	modulate = Color(1, 1, 1).lerp(Color(1.9, 1.85, 1.6), glow)

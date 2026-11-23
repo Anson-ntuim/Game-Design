@@ -68,6 +68,10 @@ func _ready() -> void:
 	Conductor.start(false, not (Conductor.custom_music and Conductor.is_music_playing()))
 	var tw := create_tween()
 	tw.tween_property(self, "_fade", 0.0, 0.6).set_ease(Tween.EASE_OUT)
+	## 第一次開遊戲：先做聲音延遲校正
+	if not GameState.calibration_done:
+		_open_calibrator()
+		_calibrator.first_run = true
 
 
 func _process(delta: float) -> void:

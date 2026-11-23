@@ -10,6 +10,8 @@ extends Area2D
 
 const RADIUS := 26.0
 const COLOR := Color(0.45, 0.95, 1.0)
+## 衝刺環本體（手繪蠟筆圖：青色圈＋兩個箭頭，中間透明）
+const RING_TEX := preload("res://assets/ui/dash_ring.png")
 
 var notes: String = "x......."
 var tone: float = 19.0
@@ -98,25 +100,25 @@ func _beats_to_next() -> float:
 
 
 func _draw() -> void:
+	## 每一拍整個環彈一下（醒著的時候），看得出拍子在哪
+	if _awake or not quiet:
+		var bounce := 1.0 + 0.14 * Conductor.pulse(9.0) * maxf(GameState.anim_amount(), 0.5)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(bounce, bounce))
 	var slot := _slot_at(Conductor.song_beat)
 	var lit := slot != -1 and slot != _used_slot and (_awake or not quiet)
 	var used := slot != -1 and slot == _used_slot
-	var hoop := COLOR if lit else Color(COLOR.darkened(0.5), 0.6)
-	if used:
-		hoop = Color(0.5, 0.5, 0.55, 0.4)
 	var until := _beats_to_next()
 	if until < 1.0 and (_awake or not quiet):
 		var t := 1.0 - until
 		draw_arc(Vector2.ZERO, lerpf(RADIUS * 3.0, RADIUS, t * t), 0.0, TAU, 48, Color(COLOR, 0.25 + 0.6 * t), 2.5, true)
 	if lit:
 		draw_circle(Vector2.ZERO, RADIUS + 8.0, Color(COLOR, 0.2))
-	draw_circle(Vector2.ZERO, RADIUS - 3.0, Color(0.06, 0.08, 0.14, 0.55))
-	draw_arc(Vector2.ZERO, RADIUS, 0.0, TAU, 40, hoop, 5.0, true)
-	draw_arc(Vector2.ZERO, RADIUS - 5.0, 0.0, TAU, 40, Color(1, 1, 1, 0.5 if lit else 0.15), 1.5, true)
-	var chevron := Color(1, 1, 1, 0.9) if lit else Color(hoop, 0.7)
-	for i in 2:
-		var tip := Vector2(-2.0 + i * 9.0, 0.0)
-		draw_polyline(PackedVector2Array([tip + Vector2(-7, -8), tip, tip + Vector2(-7, 8)]), chevron, 3.0, true)
+	## 亮著原色、沒亮變暗、用過變灰半透明
+	var tint := Color(1, 1, 1, 1) if lit else Color(0.5, 0.55, 0.65, 0.7)
+	if used:
+		tint = Color(0.6, 0.6, 0.65, 0.4)
+	var rs := (RADIUS + 4.0) * 2.0
+	draw_texture_rect(RING_TEX, Rect2(Vector2(-rs * 0.5, -rs * 0.5), Vector2(rs, rs)), false, tint)
 	if _burst > 0.0:
 		var r := RADIUS + (1.0 - _burst) * 40.0
 		draw_arc(Vector2.ZERO, r, 0.0, TAU, 48, Color(1, 1, 1, _burst), 3.0, true)

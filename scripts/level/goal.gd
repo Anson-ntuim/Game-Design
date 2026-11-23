@@ -36,14 +36,19 @@ func reach(_player: Player) -> void:
 	reached.emit()
 
 
+## 終點拱門（手繪蠟筆圖，中間是空的）：門洞裡的光和往上飄的光點由程式畫，跟著拍子亮
+const DOOR_TEX := preload("res://assets/ui/goal_door.png")
+const DOOR_H := 140.0
+
+
 func _draw() -> void:
 	var glow := GameState.color("edge")
 	var p := Conductor.pulse(4.0)
-	draw_rect(Rect2(-30, -120, 60, 120), Color(glow, 0.12 + 0.18 * p))
-	draw_rect(Rect2(-22, -110, 44, 110), Color(1, 1, 1, 0.15 + 0.25 * p))
-	draw_rect(Rect2(-34, -126, 8, 126), Color(0.9, 0.92, 1.0))
-	draw_rect(Rect2(26, -126, 8, 126), Color(0.9, 0.92, 1.0))
-	draw_rect(Rect2(-38, -132, 76, 10), Color(0.9, 0.92, 1.0))
+	var w := DOOR_H * float(DOOR_TEX.get_width()) / float(DOOR_TEX.get_height())
+	## 門洞裡的光（畫在拱門後面）
+	draw_rect(Rect2(-w * 0.28, -DOOR_H * 0.78, w * 0.56, DOOR_H * 0.78), Color(glow, 0.14 + 0.2 * p))
+	draw_rect(Rect2(-w * 0.2, -DOOR_H * 0.7, w * 0.4, DOOR_H * 0.7), Color(1, 1, 1, 0.15 + 0.25 * p))
+	draw_texture_rect(DOOR_TEX, Rect2(-w * 0.5, -DOOR_H, w, DOOR_H), false)
 	for i in 5:
 		var y := -20.0 - fposmod(Conductor.song_beat * 30.0 + i * 22.0, 110.0)
 		draw_circle(Vector2(sin(i * 2.3) * 12.0, y), 2.5, Color(1, 1, 1, 0.8))

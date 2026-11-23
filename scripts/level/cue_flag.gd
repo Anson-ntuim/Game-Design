@@ -11,6 +11,9 @@ extends Node2D
 enum State { FREE, WATCH }
 
 const COLOR := Color(1.0, 0.78, 0.35)
+## 起跳旗圖；FLAG_POLE_X = 旗桿在圖裡的橫向位置（比例），旗桿對準旗子的原點
+const FLAG_TEX := preload("res://assets/ui/cue_flag.png")
+const FLAG_POLE_X := 0.18
 const GHOST_COLOR := Color(0.75, 0.9, 1.0)
 ## ghost 相鄰兩點間隔幾拍（由關卡產生器的物理模擬取樣）
 const GHOST_STEP := 0.125
@@ -309,15 +312,17 @@ func _draw() -> void:
 		else:
 			until = ceilf((b + GO_LEAD) / cycle_beats) * cycle_beats - GO_LEAD - b
 			since = b + GO_LEAD - floorf((b + GO_LEAD) / cycle_beats) * cycle_beats
-	draw_line(Vector2(0, 0), Vector2(0, -56), Color(0.85, 0.85, 0.9), 3.0)
 	var fill := 0.25
 	if until <= 2.0:
 		fill = lerpf(0.5, 1.0, 1.0 - until / 2.0)
 	elif state == State.WATCH:
 		fill = 0.5
 	var flash := clampf(1.0 - since * 3.0, 0.0, 1.0)
-	var col := COLOR.lerp(Color.WHITE, flash)
-	draw_colored_polygon(PackedVector2Array([Vector2(1, -56), Vector2(30, -47), Vector2(1, -38)]), Color(col, fill))
+	## 旗子圖（手繪）：平常暗一點，倒數越接近越亮，GO 那下閃白
+	var fh := 68.0
+	var fw := fh * float(FLAG_TEX.get_width()) / float(FLAG_TEX.get_height())
+	var tint := Color(1, 1, 1).darkened(0.4 * (1.0 - fill)).lerp(Color(1.6, 1.6, 1.6), flash)
+	draw_texture_rect(FLAG_TEX, Rect2(-fw * FLAG_POLE_X, -fh, fw, fh), false, tint)
 	_draw_countdown(until, since)
 	if flash > 0.0:
 		draw_arc(Vector2(0, -47), 20.0 + (1.0 - flash) * 24.0, 0.0, TAU, 32, Color(COLOR, flash), 3.0, true)

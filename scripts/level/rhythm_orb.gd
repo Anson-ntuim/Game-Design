@@ -7,6 +7,10 @@ extends Area2D
 
 const RADIUS := 22.0
 const COLOR := Color(1.0, 0.78, 0.35)
+## 音符中間的音符圖（所有音符共用同一張小貼圖）
+const NOTE_TEX := preload("res://assets/ui/orb_note.png")
+## 黃色球本體（手繪蠟筆圖）
+const BODY_TEX := preload("res://assets/ui/orb_body.png")
 
 var notes: String = "x......."
 var tone: float = 12.0
@@ -115,9 +119,10 @@ func _draw() -> void:
 	## 大音符（跳得高）畫大、小音符（跳得矮）畫小；顏色一樣是黃色
 	var base := COLOR
 	var k := size_scale()
-	var core := base if lit else Color(base.darkened(0.55), 0.55)
+	## 圖片的顏色：亮著原色、沒亮變暗、用過變灰半透明
+	var tint := Color(1, 1, 1, 1) if lit else Color(0.5, 0.45, 0.55, 0.7)
 	if slot != -1 and slot == _used_slot:
-		core = Color(0.5, 0.5, 0.55, 0.4)
+		tint = Color(0.6, 0.6, 0.65, 0.4)
 	## 三連音用偏暖的外圈提示
 	var ring_col := Color(1.0, 0.55, 0.4) if subdiv == 3 else base
 	var until := _beats_to_next()
@@ -126,10 +131,10 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, lerpf(RADIUS * 3.0, RADIUS, t) * k, 0.0, TAU, 40, Color(ring_col, 0.25 + 0.6 * t), 2.5, true)
 	if lit:
 		draw_circle(Vector2.ZERO, (RADIUS + 6.0) * k, Color(ring_col, 0.25))
-	draw_circle(Vector2.ZERO, RADIUS * 0.62 * k, core)
-	draw_arc(Vector2.ZERO, RADIUS * 0.62 * k, 0.0, TAU, 32, Color(1, 1, 1, 0.8 if lit else 0.3), 2.0, true)
-	draw_line(Vector2(3, -9) * k, Vector2(3, 5) * k, Color(0.1, 0.08, 0.05, 0.8), 2.0 * k)
-	draw_circle(Vector2(-1, 6) * k, 4.0 * k, Color(0.1, 0.08, 0.05, 0.8))
+	var bs := 32.0 * k
+	draw_texture_rect(BODY_TEX, Rect2(Vector2(-bs * 0.5, -bs * 0.5), Vector2(bs, bs)), false, tint)
+	var ns := 19.0 * k
+	draw_texture_rect(NOTE_TEX, Rect2(Vector2(-ns * 0.5, -ns * 0.52), Vector2(ns, ns)), false, Color(1, 1, 1, tint.a))
 	if subdiv == 3:
 		draw_string(ThemeDB.fallback_font, Vector2(-5, -RADIUS - 4), "3", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(ring_col, 0.85))
 	if _burst > 0.0:

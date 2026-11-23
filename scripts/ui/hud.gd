@@ -448,15 +448,18 @@ func _draw_tip(safe: Rect2) -> void:
 
 ## 下方中央：只留一個跟著拍子跳的小節拍點（不顯示接下來要按什麼，畫面下方保持乾淨）
 func _draw_beat_bar(safe: Rect2, _edge: Color) -> void:
-	var c := Vector2(safe.get_center().x, safe.end.y - 14.0)
+	var c := Vector2(safe.get_center().x, safe.end.y - 16.0)
 	var b := Conductor.song_beat
 	var p := Conductor.pulse(8.0)
 	var bar := posmod(floori(b), 4)
 	for i in 4:
-		var x := c.x + (i - 1.5) * 18.0
+		var x := c.x + (i - 1.5) * 26.0
 		var on := i == bar
 		var col: Color = [UiKit.PINK, UiKit.CYAN, UiKit.YELLOW, UiKit.TEXT][i]
-		_view.draw_circle(Vector2(x, c.y), (5.0 + 2.5 * p) if on else 3.5, Color(col, 0.95 if on else 0.3))
+		if on:
+			## 當拍的點外面擴一圈
+			_view.draw_arc(Vector2(x, c.y), 8.0 + 14.0 * (1.0 - p), 0.0, TAU, 24, Color(col, 0.7 * p), 2.5, true)
+		_view.draw_circle(Vector2(x, c.y), (7.0 + 4.0 * p) if on else 4.5, Color(col, 0.95 if on else 0.3))
 
 
 ## 結算：左邊大字 CLEAR!，右邊成績卡（評等、時間、倒下、最佳紀錄），下方三個按鍵

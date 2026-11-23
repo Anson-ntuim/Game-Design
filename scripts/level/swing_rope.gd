@@ -8,6 +8,7 @@ extends Node2D
 ## offset = 往前到頂的拍子位移（相鄰鞦韆錯開半趟就能接力）。
 
 const SEAT_HALF := 22.0
+const SEAT_TEX := preload("res://assets/ui/swing_seat.png")
 const GRAB_RADIUS := 44.0
 ## 碰到繩子任何一段都算抓住，之後在 GRAB_BLEND 秒內滑到座椅上
 const ROPE_GRAB := 30.0
@@ -155,10 +156,12 @@ func _draw() -> void:
 	var side := Vector2(cos(angle_at(b)), -sin(angle_at(b))) * SEAT_HALF
 	draw_line(Vector2.ZERO, seat_local - side, ROPE, 2.5, true)
 	draw_line(Vector2.ZERO, seat_local + side, ROPE, 2.5, true)
-	## 座椅
-	var plank := PackedVector2Array([seat_local - side, seat_local + side])
-	draw_polyline(plank, SEAT.darkened(0.35), 9.0, true)
-	draw_polyline(plank, SEAT, 6.0, true)
+	## 座椅（手繪圖，跟著繩子的角度轉）
+	var sw := SEAT_HALF * 2.0 + 10.0
+	var sh := sw * float(SEAT_TEX.get_height()) / float(SEAT_TEX.get_width())
+	draw_set_transform(seat_local, -angle_at(b), Vector2.ONE)
+	draw_texture_rect(SEAT_TEX, Rect2(-sw * 0.5, -sh * 0.55, sw, sh), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if _rider == null:
 		draw_circle(seat_local, GRAB_RADIUS * 0.55, Color(GLOW, 0.08 + 0.12 * near))
 	else:

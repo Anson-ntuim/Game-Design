@@ -36,6 +36,8 @@ func _run() -> void:
 	conductor = root.get_node("Conductor")
 	conductor.restore_builtin_music()
 	var state := root.get_node("GameState")
+	## 測試不寫存檔（同時跑好幾個也不會把假紀錄留給玩家）
+	state.persist_enabled = false
 	state.auto_run = true
 	var only := -1
 	var at := _args().find("--level")

@@ -34,14 +34,15 @@ func _draw() -> void:
 	draw_spikes(self, tile, 1.0, HAZARD_COLOR)
 
 
+## 尖刺圖（手繪：三根一排＋底座），高度跟著 height 伸縮；
+## color 越接近白色（預告、還沒傷人）圖就越亮
+const SPIKE_TEX := preload("res://assets/ui/spike.png")
+
+
 static func draw_spikes(canvas: CanvasItem, tile_size: float, height: float, color: Color) -> void:
 	if height <= 0.01:
 		return
-	var w := tile_size / 3.0
-	var tip_h := tile_size * 0.8 * height
-	for i in 3:
-		var x := i * w
-		canvas.draw_colored_polygon(PackedVector2Array([
-			Vector2(x + 1, tile_size), Vector2(x + w * 0.5, tile_size - tip_h), Vector2(x + w - 1, tile_size)]), color)
-		canvas.draw_line(Vector2(x + w * 0.5, tile_size - tip_h), Vector2(x + w * 0.5, tile_size - tip_h * 0.6),
-			Color(1, 1, 1, 0.6), 1.5)
+	var h := (tile_size * 0.8 + 4.0) * height
+	var white := clampf((color.g - HAZARD_COLOR.g) / (1.0 - HAZARD_COLOR.g), 0.0, 1.0)
+	var tint := Color(1, 1, 1).lerp(Color(1.7, 1.7, 1.7), white)
+	canvas.draw_texture_rect(SPIKE_TEX, Rect2(0, tile_size - h, tile_size, h), false, tint)

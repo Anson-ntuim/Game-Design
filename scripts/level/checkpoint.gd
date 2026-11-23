@@ -36,15 +36,15 @@ func activate(player: Player) -> void:
 		activated.emit(self)
 
 
+## 長椅（手繪蠟筆圖）；存過檔後外面的光由程式畫
+const BENCH_TEX := preload("res://assets/ui/bench.png")
+
+
 func _draw() -> void:
-	var wood := Color(0.55, 0.45, 0.35)
 	var glow := GameState.color("edge")
 	if active:
 		var p := Conductor.pulse(5.0)
 		draw_circle(Vector2(0, -24), 34.0 + p * 6.0, Color(glow, 0.12 + p * 0.12))
-	draw_rect(Rect2(-26, -18, 52, 6), wood)
-	draw_rect(Rect2(-26, -34, 52, 5), wood)
-	draw_rect(Rect2(-22, -18, 4, 18), wood.darkened(0.3))
-	draw_rect(Rect2(18, -18, 4, 18), wood.darkened(0.3))
-	draw_rect(Rect2(-22, -34, 3, 16), wood.darkened(0.2))
-	draw_rect(Rect2(19, -34, 3, 16), wood.darkened(0.2))
+	var w := 62.0
+	var h := w * float(BENCH_TEX.get_height()) / float(BENCH_TEX.get_width())
+	draw_texture_rect(BENCH_TEX, Rect2(-w * 0.5, -h, w, h), false)

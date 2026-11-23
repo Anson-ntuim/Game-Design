@@ -49,6 +49,10 @@ var _sag: float = 0.0
 var _flash: float = 0.0
 
 
+## 彈簧床圖；BED_CAP = 左右兩端（腳）佔圖寬的比例，中間那段拉長填滿寬度
+const BED_TEX := preload("res://assets/ui/trampoline_strip.png")
+const BED_CAP := 0.06
+
 func setup(top_left: Vector2, w: float, tile_size: float = 40.0, need_presses: int = 0, _press_phase: float = -1.0) -> void:
 	position = top_left
 	width = w
@@ -255,40 +259,30 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var lit := _rider != null
-	## 腳架與外框
-	for lx: float in [10.0, width * 0.5, width - 10.0]:
-		draw_line(Vector2(lx - 6, 8), Vector2(lx - 10, tile), FRAME, 5.0)
-		draw_line(Vector2(lx + 6, 8), Vector2(lx + 10, tile), FRAME, 5.0)
-	draw_rect(Rect2(0, 6, width, 8), FRAME)
-	draw_rect(Rect2(0, 6, width, 3), FRAME.lightened(0.25))
-	## 床面：有人落下時往下凹
+	## 彈簧床（手繪圖切三段：左腳、中間拉長、右腳）；有人落下時整張往下壓一點
 	var sag_x := width * 0.5
 	if lit:
 		sag_x = clampf(_rider.global_position.x - global_position.x, 12.0, width - 12.0)
-	var sag := 9.0 * _sag
-	var pts := PackedVector2Array()
-	var n := 12
-	for i in n + 1:
-		var x := width * float(i) / float(n)
-		var d := absf(x - sag_x) / maxf(width * 0.5, 1.0)
-		pts.append(Vector2(x, 2.0 + sag * maxf(0.0, 1.0 - d * d * 3.0)))
-	draw_polyline(pts, Color(COLOR, 0.95), 5.0, true)
-	draw_polyline(pts, Color(1, 1, 1, 0.45), 1.5, true)
-	## 彈簧
-	for i in range(1, 6):
-		var sx := width * float(i) / 6.0
-		var top := pts[int(round(float(i) / 6.0 * n))].y + 2.0
-		var zig := PackedVector2Array()
-		for k in 5:
-			zig.append(Vector2(sx + (3.0 if k % 2 == 0 else -3.0), lerpf(top, 6.0, float(k) / 4.0)))
-		draw_polyline(zig, Color(0.8, 0.85, 0.95, 0.7), 1.5)
+	var sag := 6.0 * _sag
+	var th := 26.0
+	var ks := th / float(BED_TEX.get_height())
+	var cap_src := float(BED_TEX.get_width()) * BED_CAP
+	var cap_w := cap_src * ks
+	var src_h := float(BED_TEX.get_height())
+	var y0 := sag
+	var hh := th - sag * 0.5
+	draw_texture_rect_region(BED_TEX, Rect2(0, y0, cap_w, hh), Rect2(0, 0, cap_src, src_h))
+	draw_texture_rect_region(BED_TEX, Rect2(cap_w, y0, maxf(0.0, width - cap_w * 2.0), hh),
+		Rect2(cap_src, 0, float(BED_TEX.get_width()) - cap_src * 2.0, src_h))
+	draw_texture_rect_region(BED_TEX, Rect2(width - cap_w, y0, cap_w, hh),
+		Rect2(float(BED_TEX.get_width()) - cap_src, 0, cap_src, src_h))
 	## 段數燈：四顆
 	var cx := width * 0.5
 	## 連段模式只畫要按的次數（need 顆），一般模式畫四段
 	var lights := need if need > 0 else TIERS.size()
 	for i in lights:
 		var on := lit and (i < _tier if need > 0 else i <= _tier) and not _waiting
-		var pc := Vector2(cx + (i - (lights - 1) * 0.5) * 14.0, tile * 0.62)
+		var pc := Vector2(cx + (i - (lights - 1) * 0.5) * 14.0, tile * 0.82)
 		var off_col := Color(0.1, 0.08, 0.16, 0.85)
 		if not lit and i == 0:
 			off_col = off_col.lerp(COLOR, 0.25 + 0.5 * _sag)

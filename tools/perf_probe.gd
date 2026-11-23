@@ -17,6 +17,7 @@ func _run() -> void:
 		levels = [0]
 	for idx in levels:
 		var gs := root.get_node("GameState")
+		gs.persist_enabled = false
 		gs.level_index = idx
 		gs.reset_stats()
 		change_scene_to_file("res://scenes/main.tscn")
