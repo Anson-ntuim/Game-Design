@@ -30,7 +30,7 @@ const PATTERNS: Dictionary = {
 
 const CHUNKS: Array[Dictionary] = [
 	{
-		"hint": "第五關・破碎回憶\n新東西：大音符和小音符。上面的展示牌：小音符半拍就落回來、一般一拍、大音符要兩拍",
+		"hint": "第五關・破碎回憶",
 		"showcases": [[6, 11]],
 		"rows": [
 			"",

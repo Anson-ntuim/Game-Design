@@ -11,7 +11,6 @@ signal chosen(action: String)
 var actions: Array = ["繼續", "回到長椅", "從頭再來", "回選關"]
 var settings: Array = ["music", "sfx", "shake", "auto", "judge"]
 var title: String = "暫停"
-var subtitle: String = "PAUSED"
 const SETTING_LABEL := {"music": "音樂音量", "sfx": "音效音量", "shake": "畫面晃動", "auto": "自動前進",
 	"judge": "判定難度", "quality": "畫質", "skin": "角色造型"}
 
@@ -127,7 +126,6 @@ func _on_draw() -> void:
 	var size := _view.size
 	var k := ease(_open_t, -2.0)
 	_view.draw_rect(Rect2(Vector2.ZERO, size), Color(UiKit.NIGHT, 0.78 * k))
-	UiKit.text(_view, Vector2(96, 120), -1, subtitle, 16, Color(UiKit.MUTED, k), HORIZONTAL_ALIGNMENT_LEFT, UiKit.display_font(600))
 	UiKit.text(_view, Vector2(96, 176), -1, title, 44, Color(UiKit.TEXT, k), HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.8))
 	for i in actions.size():
 		var r := _action_rect(i)
@@ -144,7 +142,6 @@ func _on_draw() -> void:
 	var panel := _panel_rect()
 	UiKit.panel(_view, panel, UiKit.LINE, 0.0, k, 18.0, Color(UiKit.CARD, 0.98))
 	UiKit.text(_view, panel.position + Vector2(28, 52), -1, "設定", 22, Color(UiKit.TEXT, k), HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
-	UiKit.text(_view, panel.position + Vector2(96, 52), -1, "←→ 調整，改了馬上生效", 14, Color(UiKit.MUTED, k))
 	for i in settings.size():
 		var id: String = settings[i]
 		var r := _setting_rect(i)

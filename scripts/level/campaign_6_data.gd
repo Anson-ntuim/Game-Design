@@ -24,7 +24,7 @@ const PATTERNS: Dictionary = {
 
 const CHUNKS: Array[Dictionary] = [
 	{
-		"hint": "第六關・終極節奏\n新東西：三連音（快的一拍三下、慢的兩拍三下）。每一段都很長，小、中、大音符上上下下",
+		"hint": "第六關・終極節奏",
 		"rows": [
 			"",
 			"",

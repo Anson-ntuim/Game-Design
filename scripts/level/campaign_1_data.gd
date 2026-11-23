@@ -26,7 +26,7 @@ const PATTERNS: Dictionary = {
 
 const CHUNKS: Array[Dictionary] = [
 	{
-		"hint": "第一關・跟著拍子跑\n角色會自己往前跑，你只要按空白鍵跳、Shift 衝刺。跑到旗子旁會停下倒數，數到 0（GO）就出發；先走一拍，再跳",
+		"hint": "第一關・跟著拍子跑",
 		"rows": [
 			"",
 			"",

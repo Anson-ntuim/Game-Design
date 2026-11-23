@@ -136,7 +136,7 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	var b := Conductor.song_beat
+	var b := Conductor.visual_beat()
 	## 擺盪軌跡與「往前到頂」的星星
 	var arc_pts := PackedVector2Array()
 	for i in 25:

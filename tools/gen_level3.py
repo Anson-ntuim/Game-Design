@@ -1,4 +1,4 @@
-"""共用的模擬與機關（tools/course_kit.py、tools/gen_demo.py 用）。
+"""共用的模擬與機關（tools/course_kit.py、tools/campaign.py 用）。
 
 主軸是玩家的按鍵：每一拍都要按對「點（輕點跳）／長（按住跳）／衝（衝刺）」。
 機關負責檢查按得對不對：

@@ -35,9 +35,6 @@ var _look_x: float = 0.0
 var _player_prev := Vector2.ZERO
 var _player_curr := Vector2.ZERO
 var _zoom_punch: float = 0.0
-## 打擊回饋：鏡頭往某方向推一下再彈回（px）；_cam_hold 秒內鏡頭停住不追（打中的「頓一下」）
-var _kick: Vector2 = Vector2.ZERO
-var _cam_hold: float = 0.0
 var _camera_ground_y: float = 0.0
 var _score_cue_slot: int = -99999
 var _tempo_pad_mode: bool = false
@@ -55,6 +52,7 @@ func _ready() -> void:
 	var bg := Background.new()
 	add_child(bg)
 	_build_level()
+	_collect_cullable()
 	_camera_ground_y = spawn_point.y
 	bg.level_height = level_size.y
 	bg.stage = _stage
@@ -91,18 +89,10 @@ func _ready() -> void:
 	GameState.start_section = 0
 	if start_sec > 0:
 		_warp_to_section(start_sec, true)
-	else:
-		hud.show_message(_level_name, 2.0)
 
 
 ## 記下最近兩個物理步的角色位置，畫面更新時依插值比例取中間點（2D 沒有現成的插值變換可讀）
 func _physics_process(_delta: float) -> void:
-	if _respawn_at_beat != INF:
-		if not player.control_locked:
-			## 已經用別的方式回來了（重來、跳段）：取消排好的重生
-			_respawn_at_beat = INF
-		elif Conductor.song_beat >= _respawn_at_beat:
-			_do_respawn(_respawn_pos)
 	_player_prev = _player_curr
 	_player_curr = player.global_position
 
@@ -143,10 +133,8 @@ func _update_camera(delta: float) -> void:
 	var y_rate := rate
 	if not flag and level_size.y > LevelData.HEIGHT * TILE:
 		y_rate = 5.0 if target.y < camera.position.y else 10.0
-	_cam_hold = maxf(0.0, _cam_hold - delta)
-	if _cam_hold <= 0.0:
-		camera.position.x = lerpf(camera.position.x, target.x, 1.0 - exp(-rate * delta))
-		camera.position.y = lerpf(camera.position.y, target.y, 1.0 - exp(-y_rate * delta))
+	camera.position.x = lerpf(camera.position.x, target.x, 1.0 - exp(-rate * delta))
+	camera.position.y = lerpf(camera.position.y, target.y, 1.0 - exp(-y_rate * delta))
 	if not flag and level_size.y > LevelData.HEIGHT * TILE:
 		# 平滑追蹤仍有硬性安全範圍，連續接跳也不會把角色推到提示卡後面。
 		camera.position.y = clampf(camera.position.y,
@@ -156,11 +144,10 @@ func _update_camera(delta: float) -> void:
 	_shake = move_toward(_shake, 0.0, 40.0 * delta)
 	## 畫面晃動預設關（設定裡可開）；開的時候也只用 35% 的平滑擺動，不用每幀亂跳的雜訊
 	var amt := _shake * GameState.shake_amount()
-	_kick = _kick.lerp(Vector2.ZERO, 1.0 - exp(-12.0 * delta))
 	if amt > 0.05:
-		camera.offset = Vector2(sin(_level_time * 37.0), cos(_level_time * 29.0)) * amt + _kick
+		camera.offset = Vector2(sin(_level_time * 37.0), cos(_level_time * 29.0)) * amt
 	else:
-		camera.offset = _kick
+		camera.offset = Vector2.ZERO
 	_zoom_punch = move_toward(_zoom_punch, 0.0, 3.0 * delta)
 	## 素材主題不用鏡頭 zoom punch：zoom 會整層縮放，遠城／近城看起來像被水平抽動
 	if GameState.theme_is_procedural() and GameState.screen_shake:
@@ -173,6 +160,8 @@ func _update_camera(delta: float) -> void:
 
 func _process(delta: float) -> void:
 	_update_camera(delta)
+	_cull_offscreen()
+	_watch_frame_rate(delta)
 	if not _completed:
 		_level_time += delta
 	var hint := ""
@@ -246,6 +235,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
+	if key.physical_keycode == KEY_F3:
+		GameState.show_fps = not GameState.show_fps
+		return
 	var idx := key.physical_keycode - KEY_1
 	if idx >= 0 and idx < LevelData.visible_count():
 		GameState.level_index = idx
@@ -317,16 +309,10 @@ func shake(amount: float) -> void:
 	_shake = maxf(_shake, amount)
 
 
-## 鏡頭推一下（dir 是畫面要往哪邊動，px）。很小的位移，畫面晃動關掉時減半
-func kick(dir: Vector2) -> void:
-	var k := GameState.anim_amount() * (1.0 if GameState.screen_shake else 0.5)
-	_kick += dir * k
-	_kick = _kick.limit_length(18.0)
-
-
 ## 打中音符／環／鞦韆放手：碎片＋評價字＋角色閃白；perfect 再加亮音（鏡頭不動，不會有停住的感覺）
 func hit_feedback(at: Vector2, grade: String, dir: Vector2, tint: Color = Color(1.0, 0.78, 0.35)) -> void:
 	HitFx.spawn(self, at, "burst", grade, tint)
+	GameState.add_combo()
 	if grade == "perfect":
 		GameState.perfects += 1
 		GameState.play_sfx("pluck", GameState.next_note() + 24.0, -12.0)
@@ -397,6 +383,7 @@ func _on_player_damaged() -> void:
 
 
 func _on_player_died() -> void:
+	GameState.break_combo()
 	GameState.deaths += 1
 	if _wave:
 		_wave.reset()
@@ -408,9 +395,8 @@ func _on_player_died() -> void:
 	var tip := {}
 	if GameState.level_index == 0:
 		tip = DeathCoach.advise(player, _plans[section] if section < _plans.size() else [])
-	if tip.is_empty():
-		hud.show_message("回到長椅……", 1.2)
-	else:
+	## 只有第一關（教學）倒下會說明原因；其他關不跳文字
+	if not tip.is_empty():
 		hud.show_message(String(tip["title"]), 1.4)
 		hud.show_tip(String(tip["detail"]))
 	var tw := create_tween()
@@ -439,50 +425,7 @@ func hud_section_info() -> Dictionary:
 	return {"index": cur, "total": timed.size(), "title": title}
 
 
-## 重生對拍：算好什麼時候、在長椅附近哪裡出現，讓自動跑剛好在下一面旗子的 GO 拍跑到起跑點直接通過，
-## 不用在旗子前等。來得及就馬上在算好的位置出現；來不及就在「回到長椅……」畫面多等一下再出現。
-var _respawn_at_beat: float = INF
-var _respawn_pos := Vector2.ZERO
-
-
-func _plan_synced_respawn() -> void:
-	var cp := player.checkpoint_position
-	var flag := _next_flag_after(cp.x)
-	if flag == null or not GameState.auto_run or absf(flag.position.y - (cp.y + Player.BODY_SIZE.y * 0.5 + 1.0)) > 30.0:
-		_do_respawn(cp)
-		return
-	var b := Conductor.song_beat
-	var sx := flag._start_x()
-	var x_max := sx - 40.0
-	var x_min := cp.x - 80.0
-	if x_max <= x_min:
-		_do_respawn(cp)
-		return
-	var lead := CueFlag.GO_LEAD
-	var cyc := flag.cycle_beats
-	## 有設計小節位置就對齊 8 拍（例如第 4 拍開始的段落），否則對齊旗子自己的週期
-	var offset := 0.0
-	if flag.phase8 >= 0.0:
-		offset = fposmod(flag.phase8, cyc)
-	var go := ceilf((b + (sx - x_max) / CueFlag.RUN_PER_BEAT + lead - offset) / cyc) * cyc + offset - lead
-	var x := sx - (go - b) * CueFlag.RUN_PER_BEAT
-	if x >= x_min:
-		_do_respawn(Vector2(x, cp.y))
-		return
-	_respawn_pos = Vector2(x_min, cp.y)
-	_respawn_at_beat = go - (sx - x_min) / CueFlag.RUN_PER_BEAT
-
-
-func _next_flag_after(x: float) -> CueFlag:
-	var best: CueFlag = null
-	for f in _flags:
-		if f.position.x > x and (best == null or f.position.x < best.position.x):
-			best = f
-	return best
-
-
 func _do_respawn(pos: Vector2) -> void:
-	_respawn_at_beat = INF
 	player.respawn_at(pos)
 	camera.position = player.global_position
 	_camera_ground_y = player.global_position.y
@@ -494,7 +437,6 @@ func _on_checkpoint_activated(cp: Checkpoint) -> void:
 	for other in _checkpoints:
 		if other != cp:
 			other.active = false
-	hud.show_message("存檔點", 1.5)
 
 
 func _on_goal_reached() -> void:
@@ -503,11 +445,12 @@ func _on_goal_reached() -> void:
 	if _wave:
 		_wave.stop()
 	var new_record := GameState.record_clear(GameState.level_index, _level_time, GameState.deaths,
-		GameState.perfects, GameState.goods)
+		GameState.perfects, GameState.goods, GameState.max_combo)
 	var best: Dictionary = GameState.records[GameState.level_index]
 	hud.show_results({
 		"time": _level_time, "deaths": GameState.deaths, "judge": GameState.DIFFICULTIES[GameState.difficulty]["name"],
 		"perfects": GameState.perfects, "goods": GameState.goods,
+		"max_combo": GameState.max_combo, "best_combo": int(best.get("combo", 0)),
 		"score": GameState.rank_score(GameState.perfects, GameState.goods, GameState.deaths),
 		"best_score": float(best.get("score", 0.0)),
 		"new_record": new_record, "best_time": float(best["time"]), "best_deaths": int(best["deaths"]),
@@ -958,3 +901,58 @@ func _add_one_way(top_left: Vector2, width: float) -> void:
 	view.fill_rects.append(Rect2(top_left, box.size))
 	view.top_edges.append(Rect2(top_left, Vector2(width, TILE)))
 	add_child(view)
+
+
+# ---------------------------------------------------------------- 效能
+## 離鏡頭很遠的機關先隱藏：隱藏的節點不重畫（_draw 不跑），碰撞和節奏邏輯照常運作。
+## 只收「畫的東西都在自己位置附近」的機關；起跳旗（示範角色會跑很遠）、雷射、軌道等大範圍的不收。
+const CULL_MARGIN := 900.0
+var _cullable: Array[Node2D] = []
+
+
+func _collect_cullable() -> void:
+	_cullable.clear()
+	for c in get_children():
+		if c is RhythmOrb or c is DashRing or c is SwingRope or c is Trampoline or c is Checkpoint \
+				or c is BeatPlatform or c is PatternPlatform or c is BeatSpike or c is PatternSpike \
+				or c is BeatGate or c is BeatHopper or c is BeatMover or c is PatternLift or c is PatternPiston \
+				or c is SlowPickup:
+			_cullable.append(c as Node2D)
+
+
+func _cull_offscreen() -> void:
+	if camera == null:
+		return
+	var half := get_viewport_rect().size.x * 0.5 / camera.zoom.x + CULL_MARGIN
+	var cx := camera.get_screen_center_position().x
+	for n in _cullable:
+		if is_instance_valid(n):
+			n.visible = absf(n.global_position.x - cx) < half
+
+
+## 自動降畫質：關卡中連續幾秒平均幀率太低（低階手機、網頁），自動降一級畫質並提示一次
+const LOW_FPS := 40.0
+var _fps_avg: float = 60.0
+var _fps_low_time: float = 0.0
+var _fps_grace: float = 3.0
+
+
+func _watch_frame_rate(delta: float) -> void:
+	## 視窗不在前景時系統會降頻，不算
+	if delta <= 0.0 or get_tree().paused or not DisplayServer.window_is_focused():
+		return
+	## 剛進關卡、讀檔的頭幾秒不算
+	if _fps_grace > 0.0:
+		_fps_grace -= delta
+		return
+	_fps_avg = lerpf(_fps_avg, 1.0 / delta, 0.05)
+	if _fps_avg < LOW_FPS and GameState.quality > 0:
+		_fps_low_time += delta
+		if _fps_low_time > 4.0:
+			_fps_low_time = 0.0
+			_fps_avg = 60.0
+			_fps_grace = 3.0
+			GameState.set_quality(GameState.quality - 1)
+			show_message("畫面有點卡，自動把畫質降成「%s」" % String(GameState.QUALITIES[GameState.quality]["name"]), 2.4)
+	else:
+		_fps_low_time = maxf(0.0, _fps_low_time - delta)

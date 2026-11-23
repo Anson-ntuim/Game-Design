@@ -18,9 +18,7 @@ const THUMBS := {
 	"broken_memory": ["res://assets/themes/broken_memory/bg/sky.png", "res://assets/themes/broken_memory/bg/city.png",
 		"res://assets/themes/broken_memory/bg/bridge.png"],
 }
-const THEME_NAMES := {"calm_city": "月夜城市", "sakura_park": "櫻花公園", "music_festival": "音樂祭", "rainy_street": "雨夜街道", "broken_memory": "破碎回憶"}
 const MENU_ITEMS := ["開始遊戲", "選擇關卡", "自訂音樂", "設定"]
-const NEXT_UP := "天花板尖刺、雷射：即將推出"
 
 enum Screen { MAIN, LEVELS }
 
@@ -209,7 +207,6 @@ func _open_music_setup() -> void:
 func _open_settings() -> void:
 	_settings = PauseMenu.new()
 	_settings.title = "設定"
-	_settings.subtitle = "SETTINGS"
 	var acts: Array = ["返回", "延遲校正", "機關說明", "關卡設計台"]
 	if not OS.has_feature("web"):
 		acts.append("離開遊戲")
@@ -313,17 +310,15 @@ func _chip(pos: Vector2, label: String, dot: Color = Color(0, 0, 0, 0)) -> float
 
 func _draw_main(size: Vector2) -> void:
 	_view.draw_rect(Rect2(Vector2.ZERO, size), Color(0.078, 0.039, 0.173, 0.55))
-	## RHYTHM RUNNER ＋ 四顆節拍點
+	## 四顆節拍點（跟著拍子亮）
 	var beat := posmod(floori(Conductor.song_beat), 4)
 	var dots := [UiKit.PINK, UiKit.CYAN, UiKit.YELLOW, Color(UiKit.TEXT, 0.4)]
 	for i in 4:
 		_view.draw_circle(Vector2(93 + i * 16, 104), 5.0 + (1.5 if i == beat else 0.0), dots[i])
-	UiKit.text(_view, Vector2(166, 110), -1, "RHYTHM RUNNER", 16, UiKit.MUTED, HORIZONTAL_ALIGNMENT_LEFT, UiKit.display_font(600))
 	## 大標題：粉色錯位陰影
 	var f := UiKit.title_font()
 	_view.draw_string(f, Vector2(94, 218), GameState.GAME_TITLE, HORIZONTAL_ALIGNMENT_LEFT, -1, 112, UiKit.PINK)
 	_view.draw_string(f, Vector2(88, 212), GameState.GAME_TITLE, HORIZONTAL_ALIGNMENT_LEFT, -1, 112, UiKit.TEXT)
-	UiKit.text(_view, Vector2(88, 262), -1, "跟著拍子跑，一拍一跳", 22, UiKit.YELLOW, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
 
 	## 角色（右下）
 	var bob := sin(Conductor.song_beat * PI) * 4.0
@@ -392,14 +387,6 @@ func _start_rect(panel: Rect2) -> Rect2:
 	return Rect2(panel.position.x + 28, panel.end.y - 100, panel.size.x - 56, 72)
 
 
-func _plan_sections(i: int) -> int:
-	var n := 0
-	for chunk: Dictionary in LevelData.level_info(i)["chunks"]:
-		if not (chunk.get("plan", []) as Array).is_empty():
-			n += 1
-	return n
-
-
 func _draw_levels(size: Vector2) -> void:
 	_view.draw_rect(Rect2(Vector2.ZERO, size), Color(UiKit.NIGHT, 0.88))
 	## 標題列
@@ -407,7 +394,6 @@ func _draw_levels(size: Vector2) -> void:
 	_round(back, Color(UiKit.NIGHT, 0.0), 14, UiKit.LINE, 2)
 	UiKit.text(_view, Vector2(back.position.x, back.position.y + 33), back.size.x, "‹", 24, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.8))
 	UiKit.text(_view, Vector2(128, 84), -1, "選擇關卡", 36, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.9))
-	UiKit.text(_view, Vector2(128 + UiKit.width_of("選擇關卡", 36) + 16, 82), -1, "每一關加入一樣新東西，再和學過的混在一起", 16, UiKit.MUTED)
 
 	## 路線虛線
 	var y_line := 390.0
@@ -417,13 +403,6 @@ func _draw_levels(size: Vector2) -> void:
 		xx += 14.0
 	for c: Dictionary in _card_layout():
 		_draw_card(int(c["index"]), c["rect"], bool(c["selected"]))
-	## 下一關預告
-	var next := Rect2(204, 560, 520, 90)
-	var dash := StyleBoxFlat.new()
-	dash.bg_color = Color(0, 0, 0, 0)
-	_round(next, Color(UiKit.NIGHT, 0.4), 22, UiKit.LINE, 3)
-	UiKit.text(_view, Vector2(next.position.x, next.get_center().y + 8), next.size.x,
-		"%02d　%s" % [LevelData.visible_count() + 1, NEXT_UP], 16, Color("A598D1"), HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.6))
 
 	_draw_detail(_detail_rect())
 	## 底部操作說明
@@ -454,37 +433,20 @@ func _draw_card(i: int, r: Rect2, selected: bool) -> void:
 	st.set_border_width_all(3)
 	st.border_color = UiKit.PINK if selected else UiKit.LINE
 	_view.draw_style_box(st, lr)
-	var thumb := Rect2(lr.position + Vector2(12, 12), Vector2(lr.size.x - 24, 128 if selected else 116))
+	## 卡片只放封面、編號、關名：封面撐滿上面，下面留編號和關名的位置
+	var thumb := Rect2(lr.position + Vector2(12, 12), Vector2(lr.size.x - 24, lr.size.y - 24 - 96))
 	_draw_thumb(String(info.get("background_profile", "calm_city")), thumb)
 	var x := lr.position.x + 16
 	var y := thumb.end.y
 	_view.draw_string(UiKit.title_font(), Vector2(x, y + 46), LevelData.level_code(i), HORIZONTAL_ALIGNMENT_LEFT, -1, 40 if selected else 34, UiKit.TEXT)
 	var rec: Dictionary = GameState.records.get(i, {})
+	## 過關後右上角放評等（沒有評等紀錄的舊存檔放一個勾）
 	if not rec.is_empty():
-		UiKit.text(_view, Vector2(lr.end.x - 96, y + 38), 80, "已通關", 14, UiKit.YELLOW, HORIZONTAL_ALIGNMENT_RIGHT, UiKit.font(0.6))
+		var mark := GameState.rank_of(float(rec["score"])) if rec.has("score") else "✓"
+		var badge := Rect2(lr.end.x - 16 - 44, y + 10, 44, 44)
+		_round(badge, UiKit.YELLOW, 14)
+		_view.draw_string(UiKit.title_font(), Vector2(badge.position.x, badge.position.y + 34), mark, HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, 30, UiKit.INK)
 	UiKit.text(_view, Vector2(x, y + 78), -1, String(info.get("desc", "")), 20 if selected else 18, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.8))
-	var tx := x
-	var ty := y + 92
-	var tags: Array = info.get("tags", [])
-	if selected:
-		var nw := UiKit.width_of("新", 12) + 20.0
-		_round(Rect2(tx, ty, nw, 24), UiKit.PINK, 10)
-		UiKit.text(_view, Vector2(tx, ty + 17), nw, "新", 12, UiKit.INK, HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.8))
-		tx += nw + 6
-	for t: String in tags:
-		var tw := UiKit.width_of(t, 12) + 20.0
-		if tx + tw > lr.end.x - 12:
-			tx = x
-			ty += 30
-		## 標籤太多就不畫到最下面那行紀錄上
-		if ty + 24 > lr.end.y - 34:
-			break
-		_round(Rect2(tx, ty, tw, 24), Color("3B2A6B"), 10)
-		UiKit.text(_view, Vector2(tx, ty + 17), tw, t, 12, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.6))
-		tx += tw + 6
-	var line := "尚未通關" if rec.is_empty() else "%s最佳 %s · 倒下 %d" % [
-		("評等 %s · " % GameState.rank_of(float(rec["score"]))) if rec.has("score") else "", _fmt_time(float(rec["time"])), int(rec["deaths"])]
-	UiKit.text(_view, Vector2(x, lr.end.y - 16), -1, line, 13, UiKit.CYAN if not rec.is_empty() else UiKit.MUTED)
 	_view.draw_set_transform(Vector2.ZERO)
 
 
@@ -493,10 +455,7 @@ func _draw_detail(panel: Rect2) -> void:
 	var i := _selected
 	var info := LevelData.level_info(i)
 	var p := panel.position
-	UiKit.text(_view, p + Vector2(28, 44), -1, "STAGE %s" % LevelData.level_code(i), 14, UiKit.PINK, HORIZONTAL_ALIGNMENT_LEFT, UiKit.display_font(600))
-	UiKit.text(_view, p + Vector2(28, 84), panel.size.x - 56, String(info.get("desc", "")), 30, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.9))
-	var theme := String(THEME_NAMES.get(String(info.get("background_profile", "")), ""))
-	UiKit.text(_view, p + Vector2(28, 114), -1, "%s · %d 段" % [theme, _plan_sections(i)], 15, UiKit.MUTED)
+	UiKit.text(_view, p + Vector2(28, 74), panel.size.x - 56, String(info.get("desc", "")), 32, UiKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.9))
 	var rec: Dictionary = GameState.records.get(i, {})
 	var tiles := [
 		["最佳時間", _fmt_time(float(rec["time"])) if not rec.is_empty() else "—"],
@@ -517,10 +476,6 @@ func _draw_detail(panel: Rect2) -> void:
 		_round(r, UiKit.PINK if on else Color(0, 0, 0, 0), 12, UiKit.PINK if on else UiKit.LINE, 2)
 		UiKit.text(_view, Vector2(r.position.x, r.position.y + 29), r.size.x, String(GameState.DIFFICULTIES[d]["name"]), 15,
 			UiKit.INK if on else UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.6))
-	var dd: Dictionary = GameState.DIFFICULTIES[GameState.difficulty]
-	var sub := "音符、衝刺環、光柱隨時可用，不用對拍" if GameState.free_rhythm() else \
-		"早 %d 幀／晚 %d 幀內按下都算準" % [int(dd["early"]), int(dd["late"])]
-	UiKit.text(_view, p + Vector2(28, 362), panel.size.x - 56, sub, 13, UiKit.MUTED)
 	UiKit.solid_button(_view, _start_rect(panel), "開始", UiKit.PINK, UiKit.PINK_DARK, 26)
 
 

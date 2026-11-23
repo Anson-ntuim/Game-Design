@@ -42,7 +42,7 @@ const PATTERNS: Dictionary = {
 
 const CHUNKS: Array[Dictionary] = [
 	{
-		"hint": "第三關・彈簧床與長段跑酷\n新東西：彈簧床。這關的跑酷一段比較長，正拍、反拍混在一起",
+		"hint": "第三關・彈簧床與長段跑酷",
 		"rows": [
 			"",
 			"",

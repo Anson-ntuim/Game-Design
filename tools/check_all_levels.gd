@@ -1,5 +1,5 @@
 extends SceneTree
-## 正式版關卡自動遊玩（加 -- --archive 改測封存的舊第 1～5 關）：開著自動前進，每段跑到旗子前等 GO，再照關卡產生器的標準節奏（chunk["plan"]）按跳／衝刺。
+## 正式版關卡自動遊玩：開著自動前進，每段跑到旗子前等 GO，再照關卡產生器的標準節奏（chunk["plan"]）按跳／衝刺。
 ## 跳躍是固定高度，所以只在拍子上「點一下」；確認每段都能跑到下一段、而且旗子起跑和模擬對得上。
 ## Godot --headless --path . --fixed-fps 120 --script res://tools/check_all_levels.gd [-- --level 2] [-- --trace]
 
@@ -43,8 +43,6 @@ func _run() -> void:
 		only = int(_args()[at + 1]) - 1
 	var levels = load("res://scripts/level/level_data.gd")
 	var indices := range(levels.LEVELS.size())
-	if _args().has("--archive"):
-		indices = range(levels.LEVELS.size(), levels.LEVELS.size() + 5)
 	for index: int in indices:
 		if only >= 0 and index != only:
 			continue
@@ -52,8 +50,7 @@ func _run() -> void:
 			await _flow_level(index)
 		else:
 			await _play_level(index)
-			if not _args().has("--archive"):
-				await _cheat_level(index)
+			await _cheat_level(index)
 	if had_save:
 		var f := FileAccess.open(save_path, FileAccess.WRITE)
 		f.store_buffer(saved_bytes)

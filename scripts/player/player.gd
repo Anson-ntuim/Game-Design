@@ -149,10 +149,6 @@ var _launch_gravity: float = 0.0
 var _orb_float: float = 1.0
 ## 打中時角色閃白一下（秒）
 var _flash_t: float = 0.0
-## 打擊停頓：角色停住幾個物理幀，之後每幀多走一步補回來（位置和拍子最後一樣，不會脫拍）
-var _hitstop_frames: int = 0
-var _owed_frames: int = 0
-var _pending_dash: bool = false
 ## 低畫質時略過不變的重畫（節點位移仍由引擎帶動）
 var _draw_key: String = ""
 
@@ -194,24 +190,6 @@ func _physics_process(delta: float) -> void:
 		_update_visuals(delta)
 		return
 
-	if _hitstop_frames > 0:
-		_hitstop_frames -= 1
-		_owed_frames += 1
-		## 停住的那幾幀按的鍵不要丟掉
-		if Input.is_action_just_pressed("jump"):
-			_jump_buffer = jump_buffer_time
-		if Input.is_action_just_pressed("dash"):
-			_pending_dash = true
-		_update_visuals(delta)
-		return
-	if _owed_frames > 0:
-		if ride == null and _dash_timer <= 0.0 and not is_on_floor():
-			_owed_frames -= 1
-			velocity.y = minf(velocity.y + eff_gravity() * _orb_float * delta, max_fall_speed())
-			move_and_slide()
-		else:
-			_owed_frames = 0
-
 	if ride != null:
 		if is_instance_valid(ride):
 			ride.call("ride_step", self, delta)
@@ -241,8 +219,7 @@ func _physics_process(delta: float) -> void:
 
 	if Input.is_action_just_pressed("jump") and not watching:
 		_jump_buffer = jump_buffer_time
-	if (Input.is_action_just_pressed("dash") or _pending_dash) and not watching:
-		_pending_dash = false
+	if Input.is_action_just_pressed("dash") and not watching:
 		_try_dash(input_x, on_floor)
 	if Input.is_action_just_pressed("use_item") and not watching:
 		_try_slow_item()
@@ -256,6 +233,7 @@ func _physics_process(delta: float) -> void:
 			var gate := get_slide_collision(i).get_collider() as Node
 			if gate and gate.has_method("reject"):
 				gate.call("reject")
+				GameState.break_combo()
 				if gate is BeatGate:
 					last_miss = {"what": "gate", "beat": _dash_beat, "off": BeatPattern.offset((gate as BeatGate).notes, _dash_beat)}
 		_after_move(delta)
@@ -494,6 +472,7 @@ func ride_input_x() -> int:
 
 
 func fail_feedback() -> void:
+	GameState.break_combo()
 	_fail_puff = 0.35
 
 
@@ -558,6 +537,7 @@ func _orb_jump(orb: Node) -> void:
 func _orb_miss_feedback() -> void:
 	for area in _hurtbox.get_overlapping_areas():
 		if area is RhythmOrb:
+			GameState.break_combo()
 			GameState.play_sfx("miss", 0.0, -6.0)
 			_fail_puff = 0.35
 			var b := Conductor.song_beat
@@ -583,6 +563,7 @@ func _check_rings() -> void:
 			_wing_timer = 0.3
 		elif not _ring_missed:
 			_ring_missed = true
+			GameState.break_combo()
 			GameState.play_sfx("miss", 0.0, -6.0)
 			_fail_puff = 0.35
 			last_miss = {"what": "ring", "beat": _dash_beat, "off": BeatPattern.offset(ring.notes, _dash_beat)}
@@ -949,11 +930,3 @@ func _hit_feedback(at: Vector2, grade: String, dir: Vector2, tint: Color = Color
 ## 角色閃白 sec 秒
 func flash(sec: float) -> void:
 	_flash_t = maxf(_flash_t, sec)
-
-
-## 打擊停頓 frames 個物理幀（120 幀／秒，2 幀約 0.02 秒）
-## 衝刺中（穿環）不停：衝刺計時照走，停了會少衝一段
-func hitstop(frames: int) -> void:
-	if _dash_timer > 0.0:
-		return
-	_hitstop_frames = maxi(_hitstop_frames, frames)

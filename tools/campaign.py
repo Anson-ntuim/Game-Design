@@ -7,15 +7,17 @@
   - 每段開頭都有起跳旗：角色停在旗子旁倒數，GO 後先走一拍，連招第 0 拍才是第一個動作。
   - 跳躍固定一拍落地、半拍在最高點：空中衝刺／穿環／在最高點碰音符都放在半拍。
   - 地形由 tools/course_kit.py 照標準節奏模擬算出，並驗證按錯會失敗。
-舊關卡在 scripts/level/archive/（tools/gen_demo.py、tools/ride_levels.py）。
 """
 
 import sys
 from pathlib import Path
 
 from design import FULL
-from gen_level3 import Chunk, Patterns
-from course_kit import section, intro
+from gen_level3 import Chunk, Patterns, Gate, solid_rect, simulate
+from sim_player import SPB, TILE
+from course_kit import section, intro as _intro
+## 關卡開頭不跳說明卡：只留標題（提示卡只給機關第一次出現的教學）
+intro = lambda hint, bpm=None: _intro(hint.split("\n")[0], bpm)
 from level_kit import render_level
 
 J = lambda b: (b, "jump", FULL)
@@ -270,11 +272,58 @@ def fold_cycle(pat, chunks):
     return chunks
 
 
+## 光柱每拍都開（走廊檢查用）
+EVERY_BEAT_GATE = "x.x.x.x.x.x.x.x."
+
+
+def check_gate_hall(width, gate_cols, ceil_row):
+    """光柱走廊：一路往右走，被光柱擋住後在下一拍衝刺。
+    回傳標準節奏的衝刺拍；並確認每一下不衝、早半拍、晚半拍都會卡在光柱前"""
+    solids = [solid_rect(0, width + 40, 16, 19), solid_rect(4, width - 1, 0, ceil_row)]
+    gates = [Gate(c, ceil_row + 1, 15, EVERY_BEAT_GATE) for c in gate_cols]
+    goal_x = width * TILE
+
+    def run(dashes, end=40.0):
+        return simulate(solids, [], [D(b) for b in dashes], end, gates=gates)
+
+    dashes = []
+    for _ in gate_cols:
+        sim = run(dashes)
+        stall = None
+        for i in range(10, len(sim.log)):
+            b, x, _ = sim.log[i]
+            if abs(x - sim.log[i - 10][1]) < 0.01 and x < goal_x and (not dashes or b > dashes[-1] + 0.5):
+                stall = b
+                break
+        assert stall is not None, ("光柱走廊：沒有被擋住", dashes)
+        cooled = dashes[-1] + 0.55 / SPB if dashes else stall
+        dashes.append(float(int(max(stall, cooled)) + 1))
+    sim = run(dashes)
+    assert sim.x >= goal_x, ("光柱走廊：標準節奏沒過", dashes, sim.x)
+    print(f"[光柱走廊] 光柱 {gate_cols}  衝刺拍 {dashes}")
+    print("  標準節奏：通過")
+    for i, b in enumerate(dashes):
+        good = []
+        for d in (-0.5, -0.3, -0.24, -0.12, 0.12, 0.24, 0.3, 0.5):
+            sc = list(dashes)
+            sc[i] = b + d
+            if run(sc).x >= goal_x:
+                good.append(d)
+        out = ""
+        for sc, what in ((dashes[:i] + dashes[i + 1:], "不衝"),
+                         (dashes[:i] + [b - 0.5] + dashes[i + 1:], "早半拍"),
+                         (dashes[:i] + [b + 0.5] + dashes[i + 1:], "晚半拍")):
+            s = run(sc)
+            out += f"  {what} → {'竟然過了！' if s.x >= goal_x else ('卡在光柱前', round(s.x))}"
+            assert s.x < goal_x, (what, b)
+        print(f"  #{i} 第{b}拍 衝：偏移幾拍還過 {good}{out}")
+    return dashes
+
+
 def pillar(pat, hint, col=12, width=20, open_beat=0.0):
     """單獨的光柱：天花板壓低不能跳過，跑到柱子前被擋住，柱子每 CYCLE 拍在 open_beat 打開一次（出現箭頭），
     那一拍按衝刺穿過。前面的平地會算成剛好在打開前一點點跑到柱子前（seamless 用 sync_plan）。
-    幾何沿用舊第一關的光柱走廊檢查（tools/gen_demo.py：不衝、早半拍、晚半拍都過不去）。"""
-    from gen_demo import check_gate_hall
+    幾何經 check_gate_hall 檢查：不衝、早半拍、晚半拍都過不去。"""
     ceil_row = 12
     check_gate_hall(width, [col], ceil_row)
     notes = ["."] * 16
@@ -464,7 +513,7 @@ def trampoline(pat, hint, need=2, approach=7, mat=3, mechanic="", pre_jump=False
 # ---------------------------------------------------------------- 盪鞦韆
 # scripts/level/swing_rope.gd：座椅角度只看整首拍數，4 拍來回一趟、offset 拍往前擺到最高。
 # 段落第 0 拍一定是整首的 4 的倍數（起跳旗每 4 拍放行），所以 offset 直接寫段落拍數。
-# 幾何沿用封存試作關（tools/ride_levels.py swing_1／swing_2，地面第 12 列 → 這裡第 16 列）：
+# 幾何來自早期的鞦韆試作關（地面第 12 列 → 這裡第 16 列）：
 # 第 1 拍在高台邊起跳、空中抓住座椅，往前到頂那一拍放手 → 初速 (574, -1120)，一拍後回到放手的高度。
 SWING_AMP = 55.0
 SWING_V = (574.0, 1120.0)
@@ -825,7 +874,7 @@ def level5(pat):
     show = Chunk(26)
     show.fill(0, 25, 16, 19, "#")
     show.fill(3, 3, 15, 15, "P")
-    opening = {"hint": "第五關・破碎回憶\n新東西：大音符和小音符。上面的展示牌：小音符半拍就落回來、一般一拍、大音符要兩拍",
+    opening = {"hint": "第五關・破碎回憶",
                "rows": show.lines(), "showcases": [[6, 11]]}
     try:
         return seamless(pat, [

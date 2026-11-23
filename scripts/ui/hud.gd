@@ -47,6 +47,16 @@ var _dark: float = 0.0
 var _dark_target: float = 0.0
 var _deaths_shown: int = 0
 var _death_bump: float = 0.0
+## 連擊顯示：數字變大時彈一下；中斷（至少 5 連擊）時顯示「連擊中斷」一小段時間
+var _combo_seen: int = 0
+## F3 幀率顯示：每 0.5 秒更新一次平均幀率和這段時間最慢的一幀
+var _fps_frames: int = 0
+var _fps_time: float = 0.0
+var _fps_worst: float = 0.0
+var _fps_text: String = ""
+var _combo_pop: float = 0.0
+var _break_t: float = 0.0
+var _break_n: int = 0
 ## 倒下後的提示卡：一句指令（太短、太長、太早、太晚才有）
 var _tip: String = ""
 var _tip_timer: float = 0.0
@@ -87,6 +97,26 @@ func _process(delta: float) -> void:
 		_deaths_shown = GameState.deaths
 		_death_bump = 1.0
 	_death_bump = move_toward(_death_bump, 0.0, delta * 2.5)
+	if GameState.combo != _combo_seen:
+		if GameState.combo > _combo_seen:
+			_combo_pop = 1.0
+		elif _combo_seen >= 5:
+			_break_t = 0.9
+			_break_n = _combo_seen
+		_combo_seen = GameState.combo
+	_combo_pop = move_toward(_combo_pop, 0.0, delta * 5.0)
+	if GameState.show_fps:
+		_fps_frames += 1
+		_fps_time += delta
+		_fps_worst = maxf(_fps_worst, delta)
+		if _fps_time >= 0.5:
+			_fps_text = "FPS %d　最慢一幀 %.1f ms　畫質 %s　物理 %d/秒　（F3 關閉）" % [
+				roundi(_fps_frames / _fps_time), _fps_worst * 1000.0,
+				String(GameState.QUALITIES[GameState.quality]["name"]), Engine.physics_ticks_per_second]
+			_fps_frames = 0
+			_fps_time = 0.0
+			_fps_worst = 0.0
+	_break_t = maxf(0.0, _break_t - delta)
 	_dark_rect.visible = _dark > 0.0
 	if _dark_rect.visible:
 		var mat := _dark_rect.material as ShaderMaterial
@@ -155,6 +185,7 @@ func _on_view_draw() -> void:
 	if not done and lift < 109.0:
 		_draw_progress(safe, edge, lift)
 		_draw_stats(safe, edge, lift)
+		_draw_combo(safe, lift)
 		_draw_controls(safe, edge, lift)
 	if _bars > 0.0:
 		_draw_bars(size, edge)
@@ -172,6 +203,11 @@ func _on_view_draw() -> void:
 
 	if _fade > 0.0:
 		_view.draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, _fade))
+	if GameState.show_fps and _fps_text != "":
+		var fw := UiKit.width_of(_fps_text, 14) + 24.0
+		var fr := Rect2(size.x * 0.5 - fw * 0.5, 6, fw, 26)
+		_capsule(fr, Color(0, 0, 0, 0.6))
+		UiKit.text(_view, Vector2(fr.position.x, fr.position.y + 18), fw, _fps_text, 14, UiKit.YELLOW, HORIZONTAL_ALIGNMENT_CENTER)
 
 
 func _soft_city_style() -> bool:
@@ -195,18 +231,16 @@ func _music_festival_style() -> bool:
 func _draw_progress(safe: Rect2, _edge: Color, lift: float) -> void:
 	var main := get_tree().get_first_node_in_group("main")
 	var info: Dictionary = main.call("hud_section_info") if main else {"index": -1, "total": 0, "title": ""}
-	var title := UiKit.safe_text(String(info["title"]))
+	## 只放關卡編號和一排進度格，不寫段落名
 	var total := int(info["total"])
 	var seg_w := 18.0
 	var segs_w := total * (seg_w + 4.0)
-	var title_w := UiKit.width_of(title, 15)
-	var box := Rect2(safe.position.x, safe.position.y - lift, 64.0 + maxf(title_w, segs_w) + 18.0, 54.0)
+	var box := Rect2(safe.position.x, safe.position.y - lift, 64.0 + segs_w + 14.0, 54.0)
 	_capsule(box, Color(UiKit.NIGHT, 0.8))
 	var chip := Rect2(box.position + Vector2(8, 8), Vector2(42, 38))
 	_capsule(chip, UiKit.PINK)
 	_view.draw_string(UiKit.display_font(700), Vector2(chip.position.x, chip.get_center().y + 7), LevelData.level_code(GameState.level_index),
 		HORIZONTAL_ALIGNMENT_CENTER, chip.size.x, 18, UiKit.INK)
-	UiKit.text(_view, box.position + Vector2(62, 24), -1, title, 15, UiKit.TEXT)
 	var cur := int(info["index"])
 	for i in total:
 		var col := Color(1, 1, 1, 0.25)
@@ -214,7 +248,7 @@ func _draw_progress(safe: Rect2, _edge: Color, lift: float) -> void:
 			col = UiKit.PINK
 		elif i == cur:
 			col = UiKit.YELLOW
-		var r := Rect2(box.position.x + 62 + i * (seg_w + 4.0), box.position.y + 34, seg_w, 5)
+		var r := Rect2(box.position.x + 62 + i * (seg_w + 4.0), box.position.y + 24, seg_w, 6)
 		_capsule(r, col)
 
 
@@ -245,13 +279,36 @@ func _draw_stats(safe: Rect2, _edge: Color, lift: float) -> void:
 		UiKit.text(_view, Vector2(g.position.x, g.position.y + 19), gw, glabel, 13, UiKit.INK, HORIZONTAL_ALIGNMENT_CENTER)
 
 
+## 右邊：連擊數（2 連擊以上才出現）。10 連擊變黃、25 連擊變粉紅
+func _draw_combo(safe: Rect2, lift: float) -> void:
+	var c := GameState.combo
+	var right := safe.end.x - 8.0
+	var y := safe.position.y + 150.0 - lift
+	if c >= 2:
+		var col := UiKit.PINK if c >= 25 else UiKit.YELLOW if c >= 10 else UiKit.TEXT
+		var s := 1.0 + 0.3 * ease(_combo_pop, 0.5)
+		var font := UiKit.display_font(800)
+		var num := str(c)
+		var w := font.get_string_size(num, HORIZONTAL_ALIGNMENT_LEFT, -1, 54).x
+		_view.draw_set_transform(Vector2(right - w * 0.5 * s, y), 0.0, Vector2(s, s))
+		_view.draw_string_outline(font, Vector2(-w * 0.5, 0), num, HORIZONTAL_ALIGNMENT_LEFT, -1, 54, 8, Color(UiKit.NIGHT, 0.85))
+		_view.draw_string(font, Vector2(-w * 0.5, 0), num, HORIZONTAL_ALIGNMENT_LEFT, -1, 54, col)
+		_view.draw_set_transform(Vector2.ZERO)
+		var lw := font.get_string_size("COMBO", HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+		_view.draw_string_outline(font, Vector2(right - lw, y + 24), "COMBO", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 5, Color(UiKit.NIGHT, 0.85))
+		_view.draw_string(font, Vector2(right - lw, y + 24), "COMBO", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(col, 0.85))
+	elif _break_t > 0.0:
+		var a := clampf(_break_t / 0.4, 0.0, 1.0)
+		var text := "連擊中斷　%d" % _break_n
+		var tw := UiKit.width_of(text, 18)
+		UiKit.text(_view, Vector2(right - tw, y + (0.9 - _break_t) * 20.0), -1, text, 18, Color(UiKit.PINK, a), HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
+
+
 ## 左下：狀態膠囊（旗子前等候、手動模式、變速）＋第一關才顯示的按鍵說明
 func _draw_controls(safe: Rect2, _edge: Color, lift: float) -> void:
 	var y0 := safe.end.y + lift
 	var status := ""
-	if player and player.auto_running and player.auto_flag_wait:
-		status = "旗子前等候，數到 0 自動出發"
-	elif player and not player.auto_running and not player.control_locked and not GameState.auto_run:
+	if player and not player.auto_running and not player.control_locked and not GameState.auto_run:
 		status = "手動移動中　F 切回自動前進"
 	elif tempo_mode or Conductor.custom_music:
 		status = "%d BPM" % roundi(Conductor.current_bpm)
@@ -266,8 +323,12 @@ func _draw_controls(safe: Rect2, _edge: Color, lift: float) -> void:
 		UiKit.key_hints(_view, safe.position.x, y0 - 106, CONTROLS_B, UiKit.LINE, 0.75, HORIZONTAL_ALIGNMENT_LEFT, 12)
 
 
+## 膠囊外框每幀畫好幾次：共用一個 StyleBoxFlat（draw_style_box 當下就把形狀畫進去，改參數不影響畫過的），不要每次 new
+var _capsule_style := StyleBoxFlat.new()
+
+
 func _capsule(r: Rect2, fill: Color) -> void:
-	var st := StyleBoxFlat.new()
+	var st := _capsule_style
 	st.anti_aliasing = true
 	st.set_corner_radius_all(int(r.size.y * 0.5))
 	st.bg_color = fill
@@ -405,7 +466,6 @@ func _draw_results(size: Vector2, edge: Color) -> void:
 	_draw_confetti(size, edge, k)
 	var pulse := Conductor.pulse(6.0)
 	var left := Vector2(96, 150 + (1.0 - k) * 30.0)
-	UiKit.text(_view, left, -1, "STAGE %s" % LevelData.level_code(GameState.level_index), 18, Color(UiKit.MUTED, k), HORIZONTAL_ALIGNMENT_LEFT, UiKit.display_font(600))
 	var head := "CLEAR!"
 	var hs := 1.0 + 0.03 * pulse
 	_view.draw_set_transform(left + Vector2(0, 100), 0.0, Vector2(hs, hs))
@@ -426,7 +486,7 @@ func _draw_results(size: Vector2, edge: Color) -> void:
 	st.bg_color = Color(UiKit.PINK, k)
 	_view.draw_style_box(st, g)
 	_view.draw_string(UiKit.title_font(), Vector2(g.position.x, g.position.y + 88), grade, HORIZONTAL_ALIGNMENT_CENTER, g.size.x, 80, Color(UiKit.INK, k))
-	UiKit.text(_view, p + Vector2(180, 64), -1, "分數 %d（準度扣倒下）" % roundi(score), 15, Color(UiKit.MUTED, k))
+	UiKit.text(_view, p + Vector2(180, 64), -1, "%d 分" % roundi(score), 18, Color(UiKit.MUTED, k), HORIZONTAL_ALIGNMENT_LEFT, UiKit.display_font(700))
 	UiKit.text(_view, p + Vector2(180, 112), -1, "判定　" + String(_results["judge"]), 24, Color(UiKit.TEXT, k), HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
 	if _results["new_record"]:
 		var tag := Rect2(p + Vector2(180, 126), Vector2(UiKit.width_of("新紀錄", 13) + 22.0, 26))
@@ -449,10 +509,12 @@ func _draw_results(size: Vector2, edge: Color) -> void:
 		_view.draw_style_box(st, r)
 		UiKit.text(_view, r.position + Vector2(14, 30), -1, tiles[i][0], 14, Color(tiles[i][2], k))
 		UiKit.text(_view, r.position + Vector2(12, 72), -1, tiles[i][1], 22, Color(UiKit.TEXT, k), HORIZONTAL_ALIGNMENT_LEFT, UiKit.display_font(700))
-	UiKit.text(_view, p + Vector2(32, 324), box.size.x - 64, "最佳評等　%s（%d 分）　最佳時間　%.1f 秒　最少倒下　%d 次" % [
+	UiKit.text(_view, p + Vector2(32, 316), box.size.x - 64, "最大連擊　%d　（最佳 %d）" % [
+		int(_results.get("max_combo", 0)), maxi(int(_results.get("best_combo", 0)), int(_results.get("max_combo", 0)))],
+		19, Color(UiKit.YELLOW, k), HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
+	UiKit.text(_view, p + Vector2(32, 346), box.size.x - 64, "最佳評等　%s（%d 分）　最佳時間　%.1f 秒　最少倒下　%d 次" % [
 		GameState.rank_of(float(_results.get("best_score", score))), roundi(float(_results.get("best_score", score))),
 		float(_results["best_time"]), int(_results["best_deaths"])], 15, Color(UiKit.MUTED, k))
-	UiKit.text(_view, p + Vector2(32, 354), box.size.x - 64, "S ≥ 90　A ≥ 75　B ≥ 55　準度 = (PERFECT + 半個 GOOD) ÷ 總數，倒下一次 −5", 13, Color(UiKit.MUTED, 0.8 * k))
 
 	var bw := (box.size.x - 64.0 - 20.0) / 3.0
 	var labels := ["Esc　選關", "R　再玩一次", ("Enter　下一關" if _results["has_next"] else "Enter　選關")]

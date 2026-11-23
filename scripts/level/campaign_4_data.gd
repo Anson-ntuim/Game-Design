@@ -34,7 +34,7 @@ const PATTERNS: Dictionary = {
 
 const CHUNKS: Array[Dictionary] = [
 	{
-		"hint": "第四關・雨夜鞦韆\n新東西：盪鞦韆。這關沒有平地小坑：音符中間夾著會消失的旋律平台",
+		"hint": "第四關・雨夜鞦韆",
 		"rows": [
 			"",
 			"",

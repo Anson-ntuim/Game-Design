@@ -34,7 +34,7 @@ const MOVER_TRAVEL_TILES := 6
 ##   lift 每個 x 升一階、v 開始降回的升降舞台（字元填滿的矩形 = 行程範圍）
 ##   rest 休止區（字元所在欄往右 cols 格）：x 的半拍要站著不動，strict = false 只發出錯音
 ##   blind 盲拍區（字元所在欄往右 cols 格）：x 的半拍畫面變暗；strobe = true 整段暗、每拍閃一下
-## 各關的節奏型與區塊在 campaign_*_data.gd（tools/campaign.py 產生）；舊關卡在 archive/。
+## 各關的節奏型與區塊在 campaign_*_data.gd（tools/campaign.py 產生）。
 
 ## 關卡只顯示編號；name／desc 留給舊 UI 相容，畫面以 index+1 為準
 ## 正式版關卡（tools/campaign.py）：每一關加入新東西，再和學過的混在一起
@@ -71,48 +71,13 @@ static func visible_count() -> int:
 	return n
 
 
-## 封存的舊關卡（scripts/level/archive/，tools/gen_demo.py、tools/ride_levels.py）：選單不顯示，
-## 用 level_index = LEVELS.size() + 封存序號 仍可載入（測試、參考用）
-const ARCHIVE: Array[Dictionary] = [
-	{"name": "01", "desc": "", "stars": 1,
-		"patterns": Demo1Data.PATTERNS, "chunks": Demo1Data.CHUNKS,
-		"background_profile": "calm_city"},
-	{"name": "02", "desc": "", "stars": 2,
-		"patterns": Demo3Data.PATTERNS, "chunks": Demo3Data.CHUNKS, "stage": true,
-		"background_profile": "sakura_park"},
-	{"name": "03", "desc": "", "stars": 3,
-		"patterns": Demo2Data.PATTERNS, "chunks": Demo2Data.CHUNKS,
-		"background_profile": "music_festival"},
-	{"name": "04", "desc": "", "stars": 1,
-		"patterns": Demo6Data.PATTERNS, "chunks": Demo6Data.CHUNKS,
-		"background_profile": "rainy_street"},
-	{"name": "05", "desc": "", "stars": 3,
-		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true},
-	## 試作關（tools/ride_levels.py）：持續好幾拍的搭乘機關
-	{"name": "06", "desc": "", "stars": 2,
-		"patterns": RideTrampolineData.PATTERNS, "chunks": RideTrampolineData.CHUNKS,
-		"background_profile": "calm_city"},
-	{"name": "07", "desc": "", "stars": 2,
-		"patterns": RideSwingData.PATTERNS, "chunks": RideSwingData.CHUNKS,
-		"background_profile": "sakura_park"},
-	{"name": "08", "desc": "", "stars": 2,
-		"patterns": RideMinecartData.PATTERNS, "chunks": RideMinecartData.CHUNKS,
-		"background_profile": "music_festival"},
-	{"name": "09", "desc": "", "stars": 3,
-		"patterns": RideMixedData.PATTERNS, "chunks": RideMixedData.CHUNKS,
-		"background_profile": "calm_city"},
-]
-
-
-## 關卡資料：先查正式版，超出範圍就是封存關卡
+## 關卡資料（超出範圍就回傳第一關，避免舊存檔的關卡編號讓遊戲當掉）
 static func level_info(index: int) -> Dictionary:
-	if index < LEVELS.size():
-		return LEVELS[index]
-	return ARCHIVE[index - LEVELS.size()]
+	return LEVELS[clampi(index, 0, LEVELS.size() - 1)]
 
 
 static func total_count() -> int:
-	return LEVELS.size() + ARCHIVE.size()
+	return LEVELS.size()
 
 
 ## 同一種機關（含不同按法）在整條關卡線上，前幾次才保留提示文字
@@ -143,9 +108,7 @@ static func mechanic_key(chunk: Dictionary) -> String:
 ## 統計到 level 之前，各機關已出現幾次（含更早關卡）
 static func _mechanic_counts_before(level: int) -> Dictionary:
 	var seen: Dictionary = {}
-	## 封存關卡只算封存區裡更早的關，不受正式版影響
-	var first := 0 if level < LEVELS.size() else LEVELS.size()
-	for i in range(first, mini(maxi(level, 0), total_count())):
+	for i in range(0, mini(maxi(level, 0), total_count())):
 		for chunk: Dictionary in level_info(i)["chunks"]:
 			var key := mechanic_key(chunk)
 			if key == "":

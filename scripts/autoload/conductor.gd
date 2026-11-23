@@ -51,8 +51,48 @@ var song_position: float:
 			return 0.0
 		if paused:
 			return _anchor_position - first_beat_offset - user_offset * rate
-		return _anchor_position + float(Time.get_ticks_usec() - _anchor_usec) / 1000000.0 * rate \
-			- first_beat_offset - user_offset * rate
+		## 物理步裡用「物理時計」：一幀裡連跑兩步物理時（60Hz 螢幕、120 物理），兩步讀到的拍子才會差 1/120 秒，
+		## 不會兩步同一拍、下一幀一口氣跳兩步（鞦韆、移動平台因此一頓一頓）
+		if _phys_valid and Engine.is_in_physics_frame():
+			return _phys_raw - first_beat_offset - user_offset * rate
+		return _raw_position() - first_beat_offset - user_offset * rate
+
+## 物理時計：每個物理步固定前進 delta × rate 秒，再慢慢對齊真實時鐘（差太多直接跳過去）
+var _phys_raw: float = 0.0
+var _phys_prev: float = 0.0
+var _phys_valid: bool = false
+
+
+func _raw_position() -> float:
+	return _anchor_position + float(Time.get_ticks_usec() - _anchor_usec) / 1000000.0 * rate
+
+
+func _physics_process(delta: float) -> void:
+	if not _running or paused:
+		_phys_valid = false
+		return
+	var real := _raw_position()
+	if not _phys_valid:
+		_phys_raw = real
+		_phys_prev = real
+		_phys_valid = true
+		return
+	_phys_prev = _phys_raw
+	_phys_raw += delta * rate
+	var err := real - _phys_raw
+	if absf(err) > 0.1:
+		_phys_raw = real
+		_phys_prev = real
+	else:
+		_phys_raw += err * 0.05
+
+
+## 畫面用的拍子：和角色一樣在前後兩個物理步之間插值（鞦韆座椅、繩子才會和抓著的角色完全對齊）
+func visual_beat() -> float:
+	if not _phys_valid or paused:
+		return song_beat
+	var raw := lerpf(_phys_prev, _phys_raw, Engine.get_physics_interpolation_fraction())
+	return (raw - first_beat_offset - user_offset * rate) / sec_per_beat
 
 ## 目前聽到的速度
 var current_bpm: float:
@@ -184,6 +224,7 @@ func _apply_rate() -> void:
 
 func stop() -> void:
 	_running = false
+	_phys_valid = false
 	paused = false
 	_player.stop()
 

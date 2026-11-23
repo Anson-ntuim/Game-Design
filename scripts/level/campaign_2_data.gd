@@ -34,7 +34,7 @@ const PATTERNS: Dictionary = {
 
 const CHUNKS: Array[Dictionary] = [
 	{
-		"hint": "第二關・環與平台\n新東西：衝刺環、節拍平台、旋律平台",
+		"hint": "第二關・環與平台",
 		"rows": [
 			"",
 			"",
