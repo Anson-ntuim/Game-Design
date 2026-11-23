@@ -48,6 +48,12 @@ const LEVELS: Array[Dictionary] = [
 	{"name": "03", "desc": "彈簧床與反拍", "stars": 2, "tags": ["彈簧床", "反拍", "音符串"],
 		"patterns": Campaign3Data.PATTERNS, "chunks": Campaign3Data.CHUNKS,
 		"background_profile": "music_festival"},
+	{"name": "04", "desc": "雨夜鞦韆", "stars": 3, "tags": ["盪鞦韆", "音符上下", "旋律平台"],
+		"patterns": Campaign4Data.PATTERNS, "chunks": Campaign4Data.CHUNKS,
+		"background_profile": "rainy_street"},
+	{"name": "05", "desc": "破碎回憶", "stars": 3, "tags": ["大小音符", "音符接鞦韆", "連續衝刺", "長段"],
+		"patterns": Campaign5Data.PATTERNS, "chunks": Campaign5Data.CHUNKS,
+		"background_profile": "broken_memory"},
 ]
 
 ## 封存的舊關卡（scripts/level/archive/，tools/gen_demo.py、tools/ride_levels.py）：選單不顯示，
@@ -166,6 +172,7 @@ static func build(level: int) -> Dictionary:
 	var tempo_pads: Array[Dictionary] = []
 	var trampolines: Array[Dictionary] = []
 	var swings: Array[Dictionary] = []
+	var showcases: Array[Vector2] = []
 	var rails: Array[Dictionary] = []
 	## 和 hints 一一對應
 	var plans: Array = []
@@ -206,6 +213,7 @@ static func build(level: int) -> Dictionary:
 				"tone": float(o[3]) if o.size() > 3 else 12.0,
 				"subdiv": int(o[4]) if o.size() > 4 else 2,
 				"quiet": bool(o[5]) if o.size() > 5 else false,
+				"kind": String(o[6]) if o.size() > 6 else "",
 			})
 		for o: Array in chunk.get("rings", []):
 			rings.append({
@@ -223,6 +231,9 @@ static func build(level: int) -> Dictionary:
 				"width": float(t[2]) * TILE, "need": int(t[3]) if t.size() > 3 else 0,
 				"phase": float(t[4]) if t.size() > 4 else -1.0})
 		## 盪鞦韆：[錨點 x, 錨點 y, 繩長, 來回幾拍, 往前方向, 到頂拍位移]（格）
+		## 音符大小展示牌：[左邊第一顆音符的 x, y]（格）
+		for s: Array in chunk.get("showcases", []):
+			showcases.append(Vector2((x_offset + float(s[0])) * TILE, float(s[1]) * TILE + y_offset))
 		for s: Array in chunk.get("swings", []):
 			swings.append({"anchor": Vector2((x_offset + float(s[0])) * TILE, float(s[1]) * TILE + y_offset),
 				"length": float(s[2]) * TILE,
@@ -287,5 +298,5 @@ static func build(level: int) -> Dictionary:
 		"gravity_zones": gravity_zones, "path_blocks": path_blocks,
 		"patterns": info["patterns"], "name": level_code(level), "stage": info.get("stage", false),
 		"tempo_pads": tempo_pads, "tempo_stage": bool(info.get("tempo_stage", false)),
-		"trampolines": trampolines, "swings": swings, "rails": rails,
+		"trampolines": trampolines, "swings": swings, "rails": rails, "showcases": showcases,
 	}

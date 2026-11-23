@@ -48,6 +48,8 @@ var last_sync_beat: float = -INF
 ## 這面旗子多久可以放行一次（拍）：段落裡的機關若是 4 拍一輪（tools/campaign.py 會折成 4 拍），GO 就每 4 拍一次
 var cycle_beats: float = CYCLE_BEATS
 ## 設計時連招第 0 拍落在 8 拍小節的第幾拍（關卡產生器算的；-1 = 沒有）。重生時對齊它，後面 8 拍一輪的段落才不會差半小節
+## 剛重生時在旗子前至少停幾拍再 GO（有完整的 3、2、1 倒數）
+const REST_BEATS := 2.0
 var phase8: float = -1.0
 
 
@@ -212,7 +214,8 @@ func _tick_auto_flag(b: float, p: Player, _near: bool) -> void:
 	## 跑到起跑點：剛好在 GO 拍就直接通過，否則停下倒數
 	var arrive := p.is_on_floor() and not p.control_locked and x >= sx - 6.0 and x < position.x + TRIGGER_AHEAD
 	var phase := fposmod(b + LEAD_BEATS, cycle_beats)
-	if not _auto_waiting and arrive and _auto_can_stop and (phase < PASS_TOLERANCE or phase > cycle_beats - PASS_TOLERANCE):
+	if not _auto_waiting and arrive and _auto_can_stop and not p.rest_after_respawn \
+			and (phase < PASS_TOLERANCE or phase > cycle_beats - PASS_TOLERANCE):
 		_auto_can_stop = false
 		last_sync_beat = roundf((b + LEAD_BEATS) / cycle_beats) * cycle_beats
 		GameState.play_cue("cue", 0.0, -6.0)
@@ -223,7 +226,8 @@ func _tick_auto_flag(b: float, p: Player, _near: bool) -> void:
 		_auto_can_stop = false
 		## 至少留出完整倒數：離下一個小節頭太近就等再下一輪
 		## 不再為了湊滿 3、2、1 多等一整輪：最近一個來得及的小節頭就出發，倒數從現在一路數到 0
-		_auto_go_at = ceilf((b + 0.02 + LEAD_BEATS) / cycle_beats) * cycle_beats
+		var rest := REST_BEATS if p.rest_after_respawn else 0.02
+		_auto_go_at = ceilf((b + rest + LEAD_BEATS) / cycle_beats) * cycle_beats
 		p.auto_flag_wait = true
 		p.watch_x = _start_x()
 	if not _auto_waiting:
@@ -236,6 +240,7 @@ func _tick_auto_flag(b: float, p: Player, _near: bool) -> void:
 		_clear_auto_wait(p)
 		_auto_can_stop = false
 		p.auto_running = true
+		p.rest_after_respawn = false
 
 
 func _start_x() -> float:

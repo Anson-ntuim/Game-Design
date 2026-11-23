@@ -225,6 +225,11 @@ func _process(_delta: float) -> void:
 				_player.play(target)
 	if not _clock_only and now >= _seek_guard_until:
 		var measured := _measured_position(now)
+		## 漏偵測到一次循環（卡頓時播放位置一下跳回開頭）：節拍時計不能往回跳，
+		## 否則等某一拍的東西（旗子 GO、重生）永遠等不到
+		if not custom_music and _stream_length > 0.0 and measured < predicted - _stream_length * 0.5:
+			_loop_count += 1
+			measured += _stream_length
 		var error := measured - predicted
 		if absf(error) > 0.08:
 			predicted = measured

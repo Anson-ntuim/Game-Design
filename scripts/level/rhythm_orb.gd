@@ -11,6 +11,8 @@ const COLOR := Color(1.0, 0.78, 0.35)
 var notes: String = "x......."
 var tone: float = 12.0
 var subdiv: int = 2
+## ""（一般）、"high"（大音符：跳更高，兩拍才落回原高度）、"low"（小音符：跳很矮，半拍就落回來）
+var jump_kind: String = ""
 var _used_slot: int = -9999
 var _burst: float = 0.0
 var _last_cue_slot: int = -9999
@@ -34,6 +36,11 @@ func _ready() -> void:
 	c.radius = RADIUS
 	shape.shape = c
 	add_child(shape)
+
+
+## 畫面大小倍率：大音符 1.6 倍、小音符 0.6 倍（碰撞範圍不變）
+func size_scale() -> float:
+	return 1.6 if jump_kind == "high" else 0.6 if jump_kind == "low" else 1.0
 
 
 func _slot_beats(slot: int) -> float:
@@ -100,25 +107,28 @@ func _beats_to_next() -> float:
 func _draw() -> void:
 	var lit := is_ready()
 	var slot := _active_slot()
-	var core := COLOR if lit else Color(COLOR.darkened(0.55), 0.55)
+	## 大音符（跳得高）畫大、小音符（跳得矮）畫小；顏色一樣是黃色
+	var base := COLOR
+	var k := size_scale()
+	var core := base if lit else Color(base.darkened(0.55), 0.55)
 	if slot != -1 and slot == _used_slot:
 		core = Color(0.5, 0.5, 0.55, 0.4)
 	## 三連音用偏暖的外圈提示
-	var ring_col := Color(1.0, 0.55, 0.4) if subdiv == 3 else COLOR
+	var ring_col := Color(1.0, 0.55, 0.4) if subdiv == 3 else base
 	var until := _beats_to_next()
 	if until < 1.0 and (_awake or not quiet):
 		var t := 1.0 - until
-		draw_arc(Vector2.ZERO, lerpf(RADIUS * 3.0, RADIUS, t), 0.0, TAU, 40, Color(ring_col, 0.25 + 0.6 * t), 2.5, true)
+		draw_arc(Vector2.ZERO, lerpf(RADIUS * 3.0, RADIUS, t) * k, 0.0, TAU, 40, Color(ring_col, 0.25 + 0.6 * t), 2.5, true)
 	if lit:
-		draw_circle(Vector2.ZERO, RADIUS + 6.0, Color(ring_col, 0.25))
-	draw_circle(Vector2.ZERO, RADIUS * 0.62, core)
-	draw_arc(Vector2.ZERO, RADIUS * 0.62, 0.0, TAU, 32, Color(1, 1, 1, 0.8 if lit else 0.3), 2.0, true)
-	draw_line(Vector2(3, -9), Vector2(3, 5), Color(0.1, 0.08, 0.05, 0.8), 2.0)
-	draw_circle(Vector2(-1, 6), 4.0, Color(0.1, 0.08, 0.05, 0.8))
+		draw_circle(Vector2.ZERO, (RADIUS + 6.0) * k, Color(ring_col, 0.25))
+	draw_circle(Vector2.ZERO, RADIUS * 0.62 * k, core)
+	draw_arc(Vector2.ZERO, RADIUS * 0.62 * k, 0.0, TAU, 32, Color(1, 1, 1, 0.8 if lit else 0.3), 2.0, true)
+	draw_line(Vector2(3, -9) * k, Vector2(3, 5) * k, Color(0.1, 0.08, 0.05, 0.8), 2.0 * k)
+	draw_circle(Vector2(-1, 6) * k, 4.0 * k, Color(0.1, 0.08, 0.05, 0.8))
 	if subdiv == 3:
 		draw_string(ThemeDB.fallback_font, Vector2(-5, -RADIUS - 4), "3", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(ring_col, 0.85))
 	if _burst > 0.0:
-		draw_arc(Vector2.ZERO, RADIUS + (1.0 - _burst) * 30.0, 0.0, TAU, 40, Color(1, 1, 1, _burst), 3.0, true)
+		draw_arc(Vector2.ZERO, RADIUS * k + (1.0 - _burst) * 30.0, 0.0, TAU, 40, Color(1, 1, 1, _burst), 3.0, true)
 
 
 ## 安靜模式（彈簧床飛出去之後要踩的音符／環用）：平常只是暗暗的不閃不響，
@@ -141,3 +151,4 @@ func _update_awake() -> void:
 		_awake = false
 	elif near:
 		_awake = true
+

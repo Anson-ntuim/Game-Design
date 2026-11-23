@@ -300,7 +300,8 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
             gravity_flip=None, island_spikes=True, flag=None, audit_air=False, require_ring_use=True,
             compact_islands=False, score_beats=None, orb_footholds=False):
     kinds = _floor_kinds(floor)
-    if kinds & {"melody", "beat"}:
+    ## orb_footholds：音符浮在坑上、不在平台上，可以和消失平台串在一起（第四關起）
+    if kinds & {"melody", "beat"} and not orb_footholds:
         assert not any(k == "orb" for (_, k, _) in script), (
             name, "消失平台（旋律／節拍）上不要再放音符，意義重疊")
     if "ground" in kinds:
@@ -598,7 +599,8 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
         print(f"  重力切換：x={flip_x}格  {g_a:g} → {float(g_other):g}")
     if course.orbs:
         out["orbs"] = [[x, y, notes_for(s), orb_tones[i % len(orb_tones)]]
-                       for i, (x, y, s) in enumerate(show(course.orbs, 0))]
+                       + ([2, False, o.kind] if getattr(o, "kind", "") else [])
+                       for i, ((x, y, s), o) in enumerate(zip(show(course.orbs, 0), course.orbs))]
     if course.rings:
         out["rings"] = [[x, y, notes_for(s), ring_tones[i % len(ring_tones)]]
                         for i, (x, y, s) in enumerate(show(course.rings, 0))]

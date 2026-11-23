@@ -162,7 +162,8 @@ func _on_view_draw() -> void:
 
 	if _message_timer > 0.0 and not done:
 		_draw_message(size, edge)
-	if _hint != "" and _hint_alpha > 0.0:
+	## 只有標題（沒有換行說明）的段落不跳提示卡：教學只在機關第一次出現時顯示
+	if _hint.contains("\n") and _hint_alpha > 0.0:
 		_draw_hint(safe, edge)
 	if _tip_timer > 0.0 and not done and not _watching:
 		_draw_tip(safe)

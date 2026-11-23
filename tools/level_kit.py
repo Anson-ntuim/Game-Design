@@ -103,7 +103,7 @@ def render_chunk(chunk):
             out.append(f'\t\t"{key}": [')
             for item in chunk[key]:
                 x, y, n, t = item[:4]
-                extra = "".join(", " + ("true" if v is True else "false" if v is False else str(v)) for v in item[4:])
+                extra = "".join(", " + ("true" if v is True else "false" if v is False else f'"{v}"' if isinstance(v, str) else str(v)) for v in item[4:])
                 out.append(f'\t\t\t[{x}, {y}, "{n}", {t}{extra}],')
             out.append("\t\t],")
     if chunk.get("tempo_pads"):
@@ -116,6 +116,10 @@ def render_chunk(chunk):
         out.append("\t\t],")
     if chunk.get("trampolines"):
         out.append('\t\t"trampolines": ' + json.dumps(chunk["trampolines"]) + ',')
+    if chunk.get("showcases"):
+        out.append('\t\t"showcases": ' + json.dumps(chunk["showcases"]) + ',')
+    if chunk.get("swings"):
+        out.append('\t\t"swings": ' + json.dumps(chunk["swings"]) + ',')
     if chunk.get("mechanic"):
         out.append(f'\t\t"mechanic": "{chunk["mechanic"]}",')
     if chunk.get("hops"):

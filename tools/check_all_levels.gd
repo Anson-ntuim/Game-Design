@@ -188,6 +188,8 @@ func _play_level(index: int, cheat := false) -> void:
 			for pr: Dictionary in presses:
 				if not pr["done"] and b >= float(pr["beat"]) - 0.004:
 					pr["done"] = true
+					if String(pr["act"]) == "-":
+						continue
 					if String(pr["act"]) in ["D", "R"]:
 						dash = true
 					else:
@@ -195,6 +197,10 @@ func _play_level(index: int, cheat := false) -> void:
 			_set_action("jump", jump)
 			_set_action("dash", dash)
 			await physics_frame
+			if _args().has("--trace-swing") and f % 15 == 0 and base != INF and b < base + 14.0:
+				for sw: Node in level.get_tree().get_nodes_in_group("swing"):
+					if absf(sw.global_position.x - player.global_position.x) < 400.0:
+						print("    b %.2f player %s seat %s ride %s" % [b - base, player.global_position, sw.seat_at(b), player.ride])
 			if _args().has("--trace") and (jump or dash):
 				print("    beat %.2f %s pos %s vel %s floor %s" % [b, "J" if jump else "D", player.global_position, player.velocity, player.is_on_floor()])
 			if player.control_locked:
@@ -266,6 +272,8 @@ func _flow_level(index: int) -> void:
 		for pr: Dictionary in presses:
 			if not pr["done"] and b >= float(pr["beat"]) - 0.004:
 				pr["done"] = true
+				if String(pr["act"]) == "-":
+					continue
 				if String(pr["act"]) in ["D", "R"]:
 					dash = true
 				else:
@@ -321,6 +329,9 @@ func _flow_level(index: int) -> void:
 	for k in range(1, waits.size()):
 		if float(waits[k].split(" ")[-2]) > 0.35:
 			stops += 1
+	## --respawn：重生後下一面旗子一定停下來倒數（不算多停）
+	if _args().has("--respawn") and stops > 0:
+		stops -= 1
 	if not _args().has("--mistake"):
 		check(stops == 0, "Level %02d: only the first flag makes you wait (%d extra stops)" % [index + 1, stops])
 	level.queue_free()

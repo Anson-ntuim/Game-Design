@@ -391,7 +391,9 @@ func _on_player_died() -> void:
 	tw.tween_callback(func() -> void:
 		if _tempo_pad_mode:
 			set_world_tempo(_checkpoint_tempo_bpm, false)
-		_plan_synced_respawn())
+		## 一律在長椅出現，下一面旗子會停下來倒數（rest_after_respawn）；
+		## 不再等某一拍才出現：音樂時鐘如果往回跳，那一拍永遠不會到，角色會一直卡在黑畫面
+		_do_respawn(player.checkpoint_position))
 
 
 ## HUD 用：目前段落在「有連招的段落」裡是第幾段、共幾段、標題
@@ -564,6 +566,10 @@ func _build_level() -> void:
 		var tr := Trampoline.new()
 		tr.setup(t["top_left"], t["width"], TILE, int(t.get("need", 0)), float(t.get("phase", -1.0)))
 		add_child(tr)
+	for pos: Vector2 in data.get("showcases", []):
+		var show := OrbShowcase.new()
+		show.position = pos
+		add_child(show)
 	for s: Dictionary in data["swings"]:
 		var sw := SwingRope.new()
 		sw.setup(s["anchor"], s["length"], s["period"], s["dir"], s["offset"])
@@ -576,6 +582,7 @@ func _build_level() -> void:
 		var orb := RhythmOrb.new()
 		orb.setup(o["pos"], o["notes"], o["tone"], int(o.get("subdiv", 2)))
 		orb.quiet = bool(o.get("quiet", false))
+		orb.jump_kind = String(o.get("kind", ""))
 		add_child(orb)
 	for o: Dictionary in data["rings"]:
 		var ring := DashRing.new()

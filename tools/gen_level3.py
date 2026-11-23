@@ -171,6 +171,13 @@ def first_hit(sim, lasers=(), pistons=(), spikes=(), after=-1.0, hazards=()):
 
 # ───────────────────────── 區塊與節奏型 ─────────────────────────
 
+## campaign.py 第四關起：嚴格檢查「衝刺不能取代跳」，但最後一拍不算（見 dash_check）
+DASH_IGNORE_TAIL = False
+## 高音符／低音符：譜面裡用特別的按住幀數標記（都 >= FULL，所以其他地方照一般音符處理）
+HIGH_HOLD = FULL + 1001
+LOW_HOLD = FULL + 1002
+
+
 class Chunk:
     def __init__(self, width):
         self.w = width
@@ -309,7 +316,7 @@ class RingSim(Sim):
 
 
 def _fresh(items, cls):
-    return [cls(o.x, o.y, set(o.slots)) for o in items]
+    return [cls(o.x, o.y, set(o.slots), kind=getattr(o, "kind", "")) if cls is Orb else cls(o.x, o.y, set(o.slots)) for o in items]
 
 
 def to_presses(script):
@@ -327,6 +334,9 @@ def place_notes(start, solids, script, end_beat, right=1):
     """依標準節奏跑一次：'orb' 在按跳那一幀放音符，'ring' 在按衝刺那一幀放衝刺環（稍微偏前）"""
     orbs, rings = [], []
     sim = RingSim(start[0], start[1], solids, orbs, rings, start_beat=-0.5)
+    ## 高／低音符用按住幀數標記（HIGH_HOLD／LOW_HOLD），cap_holds 會改掉幀數，所以先從原始譜記下來
+    ORB_KIND = {round(b * SPB / DT): ("high" if h == HIGH_HOLD else "low") for (b, k, h) in script
+                if k == "orb" and h in (HIGH_HOLD, LOW_HOLD)}
     presses = cap_holds([(round(b * SPB / DT), k, h) for (b, k, h) in script])
     frame = round(sim.beat * SPB / DT)
     end = round(end_beat * SPB / DT)
@@ -337,7 +347,7 @@ def place_notes(start, solids, script, end_beat, right=1):
                 if frame == f0:
                     jp = True
                     if kind == "orb":
-                        orbs.append(Orb(sim.x, sim.y, {round(f0 * DT / SPB * 2)}))
+                        orbs.append(Orb(sim.x, sim.y, {round(f0 * DT / SPB * 2)}, kind=ORB_KIND.get(f0, "")))
                         sim.orbs.append(orbs[-1])
                 if f0 <= frame < f0 + max(hold, 1):
                     held = True
@@ -406,6 +416,10 @@ class Course:
                 sc[i] = (b + d, "dash", 0)
                 if self.outcome(sc) is None:
                     bad.append((b, d))
+        if DASH_IGNORE_TAIL and bad:
+            ## 終點平台會再往後退（campaign.far_landing），最後一拍用衝刺取代的情況交給實機檢查
+            last = max(b for (b, _, _) in self.script)
+            bad = [(b, d) for (b, d) in bad if b < last - 0.6]
         print(f"  跳改衝刺：{'都會失敗' if not bad else f'竟然過了！ {bad}'}")
         assert not (strict and bad), (self.name, "衝刺可以取代跳", bad)
 

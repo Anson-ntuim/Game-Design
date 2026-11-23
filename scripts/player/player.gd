@@ -73,6 +73,8 @@ var facing: int = 1
 var auto_running: bool = false
 ## 自動跑時在旗子前等候 3、2、1、GO（由 CueFlag 開關）
 var auto_flag_wait: bool = false
+## 剛重生：下一面旗子一定停下來完整倒數（至少 CueFlag.REST_BEATS 拍），不會一出生就直接衝進段落
+var rest_after_respawn: bool = false
 var control_locked: bool = false
 ## 看起跳旗示範的期間不能操作（重力等物理照常），會自己走到旗子下（watch_x）站好
 var watching: bool = false
@@ -143,6 +145,8 @@ var _launch_active: bool = false
 var _launch_vx: float = 0.0
 ## 被拋出去期間用的重力（0 = 一般）：彈簧床的拋物線要剛好一拍到最高點，重力和一般跳不同
 var _launch_gravity: float = 0.0
+## 高音符（飄）：重力減半，飛兩拍才回到原高度；落地、衝刺、再跳就恢復
+var _orb_float: float = 1.0
 ## 低畫質時略過不變的重畫（節點位移仍由引擎帶動）
 var _draw_key: String = ""
 
@@ -201,6 +205,7 @@ func _physics_process(delta: float) -> void:
 		## 剛被彈出去的那一幀，is_on_floor 還是上車前的舊值：往上飛的時候不算落地
 		if velocity.y >= 0.0:
 			_launch_active = false
+			_orb_float = 1.0
 		if not _was_on_floor:
 			_on_landed()
 	_was_on_floor = on_floor
@@ -272,7 +277,7 @@ func _physics_process(delta: float) -> void:
 		else:
 			_jumping = false
 	else:
-		velocity.y = minf(velocity.y + eff_gravity() * delta, max_fall_speed())
+		velocity.y = minf(velocity.y + eff_gravity() * _orb_float * delta, max_fall_speed())
 
 	if _wall_sliding:
 		velocity.y = minf(velocity.y, wall_slide_speed)
@@ -424,6 +429,8 @@ func begin_ride(node: Node, pose: String = "apex_0") -> void:
 	ride = node
 	ride_pose = pose
 	velocity = Vector2.ZERO
+	## 抓住機關就恢復一般重力（大音符的飄浮不會帶到鞦韆放手之後）
+	_orb_float = 1.0
 	_jumping = false
 	_jump_cancelable = false
 	_jump_buffer = 0.0
@@ -507,6 +514,12 @@ func _orb_jump(orb: Node) -> void:
 	_drum_timer = DRUM_POSE_TIME
 	_air_dash = true
 	_begin_jump(0.0, 0.0, false, "orb")
+	## 高音符：一樣的起跳速度、重力減半 → 高兩倍、兩拍才落回原高度；低音符：速度減半 → 很矮、半拍就落回來
+	match String(orb.get("jump_kind")):
+		"high":
+			_orb_float = 0.5
+		"low":
+			velocity.y *= 0.5
 
 
 ## 碰著還沒亮（或已用過）的音符按跳：出聲提示按錯拍
@@ -546,6 +559,7 @@ func _check_rings() -> void:
 ## 節拍鼓（kind = "pad"）才用 speed 等速上升 max_time 秒
 func _begin_jump(speed: float, max_time: float, cancelable: bool, kind: String) -> void:
 	_launch_active = false
+	_orb_float = 1.0
 	_jump_elapsed = 0.0
 	_hold_note = INF
 	last_jump = {"beat": Conductor.song_beat, "x": global_position.x, "kind": kind, "long": true, "held": 0.0}
@@ -610,6 +624,7 @@ func _try_dash(input_x: int, on_floor: bool) -> void:
 	facing = dir
 	_dash_dir = dir
 	_dash_timer = dash_time
+	_orb_float = 1.0
 	_dash_cooldown_timer = dash_cooldown
 	_dash_beat = Conductor.song_beat
 	recent_dashes.append(_dash_beat)
@@ -700,6 +715,7 @@ func respawn_at(pos: Vector2) -> void:
 	control_locked = false
 	watching = false
 	auto_running = GameState.auto_run
+	rest_after_respawn = true
 
 
 func _reset_motion() -> void:

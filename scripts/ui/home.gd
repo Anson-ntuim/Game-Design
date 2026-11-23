@@ -12,8 +12,13 @@ const THUMBS := {
 	"calm_city": ["res://assets/themes/heartbeat_city/bg/sky.png", "res://assets/themes/heartbeat_city/bg/city_near.png"],
 	"sakura_park": ["res://assets/themes/sakura_park/bg/sky.png", "res://assets/themes/sakura_park/bg/park_near.png"],
 	"music_festival": ["res://assets/themes/music_festival/bg/sky.png", "res://assets/themes/music_festival/bg/festival_near.png"],
+	## 和關卡內背景（scripts/level/background.gd）用同一組圖層
+	"rainy_street": ["res://assets/themes/rainy_street/bg/sky_base.png", "res://assets/themes/rainy_street/bg/city_far.png",
+		"res://assets/themes/rainy_street/bg/street_mid.png", "res://assets/themes/rainy_street/bg/promenade_near.png"],
+	"broken_memory": ["res://assets/themes/broken_memory/bg/sky.png", "res://assets/themes/broken_memory/bg/city.png",
+		"res://assets/themes/broken_memory/bg/bridge.png"],
 }
-const THEME_NAMES := {"calm_city": "月夜城市", "sakura_park": "櫻花公園", "music_festival": "音樂祭"}
+const THEME_NAMES := {"calm_city": "月夜城市", "sakura_park": "櫻花公園", "music_festival": "音樂祭", "rainy_street": "雨夜街道", "broken_memory": "破碎回憶"}
 const MENU_ITEMS := ["開始遊戲", "選擇關卡", "自訂音樂", "設定"]
 const NEXT_UP := "天花板尖刺、雷射：即將推出"
 

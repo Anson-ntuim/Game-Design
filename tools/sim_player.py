@@ -63,6 +63,7 @@ class Orb:
     y: float
     slots: set  # 絕對半拍編號（非循環），設計用
     used: set = field(default_factory=set)
+    kind: str = ""  # "" 一般、"high" 高音符（重力減半，兩拍回原高度）、"low" 低音符（速度減半，半拍回原高度）
 
     def active_slot(self, beat):
         s0 = int(beat * 2 // 1)
@@ -97,6 +98,8 @@ class Sim:
         self.events = []
         # 會出現／消失的單向平台：要有 left、right、top 與 solid(beat)
         self.platforms = []
+        # 高音符：重力倍率（落地、衝刺、再跳恢復 1）
+        self.gscale = 1.0
 
     def _land_on(self, ny):
         """往下（或站著）時腳底跨過實體單向平台的頂面 → 回傳頂面 y"""
@@ -169,6 +172,7 @@ class Sim:
         self.jmax = 0.0
         self.cancelable = False
         self.vy = -self.jspeed
+        self.gscale = 1.0
         self.buffer = 0.0
         self.coyote = 0.0
 
@@ -189,12 +193,15 @@ class Sim:
         if on_floor:
             self.coyote = COYOTE
             self.air_dash = True
+            if self.vy >= 0:
+                self.gscale = 1.0
         if jump_pressed:
             self.buffer = BUFFER
         if dash_pressed and self.dash_cd <= 0 and (on_floor or self.air_dash):
             self.dash_t = DASH_TIME
             self.dash_cd = DASH_COOLDOWN
             self.dash_dir = 1 if right >= 0 else -1
+            self.gscale = 1.0
             if not on_floor:
                 self.air_dash = False
             self.jumping = False
@@ -216,6 +223,10 @@ class Sim:
                     o.used.add(s)
                     self.air_dash = True
                     self.begin_jump(ORB_SPEED, ORB_MAX)
+                    if o.kind == "high":
+                        self.gscale = 0.5
+                    elif o.kind == "low":
+                        self.vy *= 0.5
                     self.events.append(("orb", round(self.beat, 3), round(self.x), round(self.y)))
         # 等速上升（jmax）結束後還在往上的期間也要計時，門檻可以比 jmax 長
         if self.jumping or self.cancelable:
@@ -231,7 +242,7 @@ class Sim:
                 if not holding:
                     self.vy = 0.0
         else:
-            self.vy = min(self.vy + eff_gravity(GRAVITY) * DT, MAX_FALL)
+            self.vy = min(self.vy + eff_gravity(GRAVITY) * self.gscale * DT, MAX_FALL)
             if self.cancelable and self.vy < 0 and not jump_held:
                 self.vy = 0.0
             if self.vy >= 0:
