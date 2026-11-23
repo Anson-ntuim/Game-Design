@@ -40,6 +40,8 @@ var _last_slot: int = -9999
 var _demo_step: int = 0
 ## 「↑ 示範」提示的淡入程度
 var _prompt: float = 0.0
+## 這段倒下太多次：在旗子前顯示「看示範」提示（任何關卡都會出現）
+var offer_demo: bool = false
 ## 玩家在起跑區（聽得到節拍器）時才顯示倒數
 var _counting: float = 0.0
 ## 自動跑：在這面旗子等候的目標 GO 拍；-1 表示沒在等
@@ -345,7 +347,7 @@ func _draw() -> void:
 		draw_arc(Vector2(0, -47), 20.0 + (1.0 - flash) * 24.0, 0.0, TAU, 32, Color(COLOR, flash), 3.0, true)
 	if _prompt > 0.0:
 		## 「↑ 示範」只在第一關提示，之後就不寫字了
-		if GameState.level_index == 0 and not TouchControls.wanted():
+		if offer_demo or (GameState.level_index == 0 and not TouchControls.wanted()):
 			_draw_prompt()
 	## 示範角色是關卡提示，不隨低畫質關掉（quality ghost 只影響其他裝飾）
 	if state == State.WATCH and ghost.size() > 1:
@@ -389,6 +391,21 @@ func _draw_countdown(until: float, since: float) -> void:
 func _draw_prompt() -> void:
 	var a := ease(_prompt, -2.0)
 	var y := -74.0 - 6.0 * a
+	## 倒下太多次後的提示：比較大、跟著拍子跳一下，比較顯眼
+	if offer_demo:
+		var label := "點上方「看示範」" if TouchControls.wanted() else "看示範"
+		var bump := 1.0 + 0.08 * Conductor.pulse(6.0)
+		draw_set_transform(Vector2(0, y - 8.0), 0.0, Vector2(bump, bump))
+		var tw := UiKit.width_of(label, 16) + (0.0 if TouchControls.wanted() else UiKit.KEY_H + 8.0)
+		var bx := Rect2(-tw * 0.5 - 12.0, -20.0, tw + 24.0, 36.0)
+		draw_colored_polygon(UiKit.chamfer(bx, 7.0), Color(UiKit.YELLOW, 0.92 * a))
+		var tx := bx.position.x + 12.0
+		if not TouchControls.wanted():
+			UiKit.keycap(self, Vector2(tx, -16.0), "↑", UiKit.INK, a)
+			tx += UiKit.KEY_H + 8.0
+		UiKit.text(self, Vector2(tx, 5.0), -1, label, 16, Color(UiKit.INK, a), HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
+		draw_set_transform(Vector2.ZERO)
+		return
 	var label_w := UiKit.width_of("示範", 14)
 	var w := UiKit.KEY_H + 6.0 + label_w
 	var box := Rect2(-w * 0.5 - 8.0, y - 20.0, w + 16.0, 32.0)

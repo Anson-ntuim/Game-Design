@@ -35,6 +35,12 @@ func _exit_tree() -> void:
 	_held.clear()
 
 
+## 「看示範」按鈕（倒下太多次、站在旗子前時才出現），在暫停鈕左邊
+func _demo_rect() -> Rect2:
+	var pc := _pause_center()
+	return Rect2(pc.x - PAUSE_R - 150.0, pc.y - 22.0, 132.0, 44.0)
+
+
 func _pause_center() -> Vector2:
 	return Vector2(_view.size.x * 0.5, 34.0)
 
@@ -48,6 +54,8 @@ func _action_at(pos: Vector2) -> String:
 		return ["back", "restart", "confirm"][i] if i >= 0 else ""
 	if pos.distance_to(_pause_center()) <= PAUSE_R + 10.0:
 		return "back"
+	if main and main.call("demo_offer_ready") and _demo_rect().grow(10.0).has_point(pos):
+		return "up"
 	return "dash" if pos.x < _view.size.x * 0.5 else "jump"
 
 
@@ -91,6 +99,14 @@ func _on_draw() -> void:
 	var y := size.y - r - 28.0
 	_draw_button(Vector2(r + 36.0, y), r, "衝刺", UiKit.CYAN, _flash["dash"])
 	_draw_button(Vector2(size.x - r - 36.0, y), r, "跳", UiKit.PINK, _flash["jump"])
+	if main and main.call("demo_offer_ready"):
+		var dr := _demo_rect()
+		var st := StyleBoxFlat.new()
+		st.anti_aliasing = true
+		st.set_corner_radius_all(22)
+		st.bg_color = Color(UiKit.YELLOW, 0.92)
+		_view.draw_style_box(st, dr)
+		UiKit.text(_view, Vector2(dr.position.x, dr.position.y + 29.0), dr.size.x, "看示範", 18, UiKit.INK, HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.6))
 	## 暫停
 	var pc := _pause_center()
 	_view.draw_circle(pc, PAUSE_R, Color(UiKit.NIGHT, 0.55))

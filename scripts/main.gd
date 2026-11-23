@@ -393,6 +393,10 @@ func _on_player_died() -> void:
 	for i in _hints.size():
 		if player.death_pos.x >= float(_hints[i]["from"]):
 			section = i
+	## 同一段倒下太多次：這段的旗子亮出「看示範」提示
+	_section_deaths[section] = int(_section_deaths.get(section, 0)) + 1
+	if int(_section_deaths[section]) >= DEMO_HINT_DEATHS:
+		_offer_demo(section)
 	var tip := {}
 	if GameState.level_index == 0:
 		tip = DeathCoach.advise(player, _plans[section] if section < _plans.size() else [])
@@ -408,6 +412,30 @@ func _on_player_died() -> void:
 		## 一律在長椅出現，下一面旗子會停下來倒數（rest_after_respawn）；
 		## 不再等某一拍才出現：音樂時鐘如果往回跳，那一拍永遠不會到，角色會一直卡在黑畫面
 		_do_respawn(player.checkpoint_position))
+
+
+## 同一段倒下幾次後提示可以看示範
+const DEMO_HINT_DEATHS := 3
+var _section_deaths: Dictionary = {}
+
+
+func _offer_demo(section: int) -> void:
+	if section >= _hints.size():
+		return
+	var h: Dictionary = _hints[section]
+	for f in _flags:
+		if f.position.x >= float(h["from"]) and f.position.x < float(h["to"]) and f.has_demo() and not f.offer_demo:
+			f.offer_demo = true
+			var how := "點畫面上方的「看示範」" if TouchControls.wanted() else "在旗子前按 ↑"
+			hud.show_message("卡在這段了嗎？%s看示範" % how, 2.8)
+
+
+## 觸控用：角色正站在一面有「看示範」提示的旗子前（可以按看示範）
+func demo_offer_ready() -> bool:
+	for f in _flags:
+		if f.offer_demo and f.state == CueFlag.State.FREE and f.call("_at_flag", player):
+			return true
+	return false
 
 
 ## HUD 用：目前段落在「有連招的段落」裡是第幾段、共幾段、標題
