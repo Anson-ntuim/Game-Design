@@ -9,10 +9,10 @@ extends CanvasLayer
 signal chosen(action: String)
 
 var actions: Array = ["繼續", "回到長椅", "從頭再來", "回選關"]
-var settings: Array = ["music", "sfx", "shake", "judge"]
+var settings: Array = ["music", "sfx", "latency", "shake", "judge"]
 var title: String = "暫停"
 const SETTING_LABEL := {"music": "音樂音量", "sfx": "音效音量", "shake": "畫面晃動", "auto": "自動前進",
-	"judge": "判定難度", "quality": "畫質", "skin": "角色造型"}
+	"judge": "判定難度", "quality": "畫質", "skin": "角色造型", "latency": "聲音延遲"}
 
 var _view: Control
 var _row: int = 0
@@ -75,6 +75,8 @@ func _adjust(step: int) -> void:
 			GameState.set_auto_run(not GameState.auto_run)
 		"judge":
 			GameState.set_difficulty(clampi(GameState.difficulty + step, 0, GameState.DIFFICULTIES.size() - 1))
+		"latency":
+			GameState.nudge_audio_offset_ms(5.0 * step)
 		"quality":
 			GameState.set_quality(clampi(GameState.quality + step, 0, GameState.QUALITIES.size() - 1))
 		"skin":
@@ -142,6 +144,9 @@ func _click_setting(id: String, r: Rect2, pos: Vector2) -> void:
 				GameState.set_difficulty(k)
 		"shake":
 			GameState.set_screen_shake(not GameState.screen_shake)
+		"latency":
+			## 點左半邊 −5 ms、右半邊 +5 ms
+			GameState.nudge_audio_offset_ms(-5.0 if pos.x < right.get_center().x else 5.0)
 		_:
 			_adjust(1)
 	GameState.play_sfx("pluck", 6.0, -8.0)
@@ -224,6 +229,23 @@ func _on_draw() -> void:
 					_view.draw_style_box(st3, sr2)
 					UiKit.text(_view, Vector2(sr2.position.x, sr2.position.y + 25), sr2.size.x, String(names[d]),
 						15, Color(UiKit.INK if sel2 else UiKit.TEXT, k), HORIZONTAL_ALIGNMENT_CENTER)
+			"latency":
+				## 聲音延遲：−／＋ 和目前數值；邊玩邊聽，聲音比畫面晚就加、早就減
+				var half := (right.size.x - 140.0) * 0.5
+				var mr := Rect2(right.position.x, cy - 18, half, 36)
+				var pr := Rect2(right.end.x - half, cy - 18, half, 36)
+				for rr: Rect2 in [mr, pr]:
+					var st4 := StyleBoxFlat.new()
+					st4.anti_aliasing = true
+					st4.set_corner_radius_all(12)
+					st4.bg_color = Color(UiKit.CARD, k)
+					st4.set_border_width_all(2)
+					st4.border_color = Color(UiKit.LINE, k)
+					_view.draw_style_box(st4, rr)
+				UiKit.text(_view, Vector2(mr.position.x, cy + 6), mr.size.x, "− 提早", 15, Color(UiKit.TEXT, k), HORIZONTAL_ALIGNMENT_CENTER)
+				UiKit.text(_view, Vector2(pr.position.x, cy + 6), pr.size.x, "＋ 延後", 15, Color(UiKit.TEXT, k), HORIZONTAL_ALIGNMENT_CENTER)
+				UiKit.text(_view, Vector2(mr.end.x, cy + 8), pr.position.x - mr.end.x, "%+.0f ms" % GameState.audio_offset_ms, 18,
+					Color(UiKit.YELLOW, k), HORIZONTAL_ALIGNMENT_CENTER, UiKit.display_font(700))
 			"judge":
 				var n := GameState.DIFFICULTIES.size()
 				var seg := (right.size.x - 6.0 * (n - 1)) / n

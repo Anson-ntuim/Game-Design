@@ -29,6 +29,8 @@ var _phase: Phase = Phase.INTRO
 var _saved_ms: float = 0.0
 var _result_ms: float = 0.0
 var _errors: Array[float] = []
+## 確認頁試按的誤差（秒，最近 8 下）
+var _tests: Array[float] = []
 var _start_beat: int = 0
 var _last_beat: int = -9999
 var _hit: float = 0.0
@@ -71,6 +73,7 @@ func _exit_tree() -> void:
 func _start() -> void:
 	_phase = Phase.COUNT_IN
 	_errors.clear()
+	_tests.clear()
 	_too_few = false
 	## 量測時用原本的設定當基準，量完再一次算好新的值
 	GameState.set_audio_offset_ms(_saved_ms, false)
@@ -89,6 +92,9 @@ func _on_beat(beat_index: int) -> void:
 		return
 	_last_beat = beat_index
 	if _phase == Phase.RESULT:
+		## 確認頁：鼓繼續打，讓玩家對照落下的球
+		if not _too_few:
+			_drum(posmod(beat_index, 4) == 0)
 		return
 	## 說明頁也一直打鼓：一打開就聽得到「要跟的是這個聲音」（沒聲音也馬上知道要開喇叭）
 	if _phase == Phase.INTRO:
@@ -147,7 +153,43 @@ func _tap() -> void:
 			if _too_few:
 				_start()
 			else:
-				_commit()
+				_test_tap()
+
+
+## 確認頁的試按：用目前的設定（song_beat，已扣延遲）量早晚，只顯示不改設定
+func _test_tap() -> void:
+	var b := Conductor.song_beat
+	var err := (b - roundf(b)) * Conductor.sec_per_beat / maxf(Conductor.rate, 0.01)
+	_hit = 1.0
+	_hit_err = err
+	if absf(err) <= MAX_ERR_SEC:
+		_tests.append(err)
+		if _tests.size() > 8:
+			_tests.pop_front()
+
+
+## 試按的平均（秒）
+func _test_mean() -> float:
+	if _tests.is_empty():
+		return 0.0
+	var t := 0.0
+	for e in _tests:
+		t += e
+	return t / float(_tests.size())
+
+
+## 照試按的平均修正：平均按晚（正）＝畫面／判定太早 → 延遲加大
+func _apply_tests() -> void:
+	if _tests.size() < 3:
+		return
+	_nudge(_test_mean() * 1000.0)
+	_tests.clear()
+
+
+func _nudge(ms: float) -> void:
+	_result_ms = clampf(_result_ms + ms, GameState.AUDIO_OFFSET_MIN, GameState.AUDIO_OFFSET_MAX)
+	GameState.set_audio_offset_ms(_result_ms, false)
+	GameState.play_sfx("pluck", GameState.next_note(), -8.0)
 
 
 func _commit() -> void:
@@ -174,13 +216,25 @@ func _on_gui_input(event: InputEvent) -> void:
 		return
 	var mb := event as InputEventMouseButton
 	if mb and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
-		if _phase == Phase.RESULT and not _too_few and _again_rect().has_point(mb.position):
-			_start()
+		if _phase == Phase.RESULT and not _too_few:
+			if _again_rect().has_point(mb.position):
+				_start()
+			elif _ok_rect().has_point(mb.position):
+				_commit()
+			elif _minus_rect().has_point(mb.position):
+				_nudge(-NUDGE_MS)
+			elif _plus_rect().has_point(mb.position):
+				_nudge(NUDGE_MS)
+			elif _fix_rect().has_point(mb.position):
+				_apply_tests()
+			else:
+				_test_tap()
 			return
 		_tap()
 		return
 	var st := event as InputEventScreenTouch
-	if st and st.pressed:
+	## 觸控會再模擬成滑鼠點擊（上面處理），這裡只處理沒有模擬滑鼠的情況
+	if st and st.pressed and not ProjectSettings.get_setting("input_devices/pointing/emulate_mouse_from_touch", true):
 		_tap()
 
 
@@ -198,34 +252,52 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("back"):
 		_skip()
 		return
+	var checking := _phase == Phase.RESULT and not _too_few
+	## 確認頁：Enter 完成；空白鍵是試按（不是確定）
+	if checking and Input.is_action_just_pressed("confirm"):
+		_commit()
+		return
 	if Input.is_action_just_pressed("jump") or Input.is_action_just_pressed("confirm"):
 		_tap()
 		return
 	if _phase == Phase.RESULT:
 		if Input.is_action_just_pressed("restart"):
 			_start()
-		elif not _too_few:
-			var step := 0.0
+		elif checking:
 			if Input.is_action_just_pressed("move_left") or Input.is_action_just_pressed("easier"):
-				step = -NUDGE_MS
+				_nudge(-NUDGE_MS)
 			elif Input.is_action_just_pressed("move_right") or Input.is_action_just_pressed("harder"):
-				step = NUDGE_MS
-			if step != 0.0:
-				_result_ms = clampf(_result_ms + step, GameState.AUDIO_OFFSET_MIN, GameState.AUDIO_OFFSET_MAX)
-				GameState.set_audio_offset_ms(_result_ms, false)
-				GameState.play_sfx("pluck", GameState.next_note(), -8.0)
+				_nudge(NUDGE_MS)
+			elif Input.is_action_just_pressed("up"):
+				_apply_tests()
 
 
 # ---------------------------------------------------------------- 畫面
 
 func _again_rect() -> Rect2:
 	var size := _view.size
-	return Rect2(size.x * 0.5 - 250, size.y * 0.5 + 170, 220, 64)
+	return Rect2(size.x * 0.5 - 250, size.y - 96, 220, 60)
 
 
 func _ok_rect() -> Rect2:
 	var size := _view.size
-	return Rect2(size.x * 0.5 + 30, size.y * 0.5 + 170, 220, 64)
+	return Rect2(size.x * 0.5 + 30, size.y - 96, 220, 60)
+
+
+## 確認頁：延遲 −／＋ 按鈕和「照試按修正」
+func _minus_rect() -> Rect2:
+	var size := _view.size
+	return Rect2(size.x * 0.5 - 300, size.y * 0.5 + 92, 190, 52)
+
+
+func _plus_rect() -> Rect2:
+	var size := _view.size
+	return Rect2(size.x * 0.5 + 110, size.y * 0.5 + 92, 190, 52)
+
+
+func _fix_rect() -> Rect2:
+	var size := _view.size
+	return Rect2(size.x * 0.5 + 170, size.y * 0.5 + 172, 130, 40)
 
 
 func _on_view_draw() -> void:
@@ -267,12 +339,47 @@ func _on_view_draw() -> void:
 				_draw_key_prompt(c.y + 190, "空白鍵", "再試一次")
 				_line(size.y - 40, "Esc 跳過", 15, UiKit.MUTED)
 			else:
-				_draw_check(drum)
-				_line(c.y + 100, "好了！", 34, UiKit.TEXT)
-				_line(c.y + 140, _verdict(), 18, UiKit.MUTED)
-				UiKit.solid_button(_view, _again_rect(), "R　再測一次", UiKit.CYAN, Color("2A8C97"), 18)
-				UiKit.solid_button(_view, _ok_rect(), "空白鍵　開始玩", UiKit.PINK, UiKit.PINK_DARK, 18)
-				_line(size.y - 40, "覺得還是不準？ ← 提早一點　→ 延後一點", 15, UiKit.MUTED)
+				_draw_check_page(c, drum)
+
+
+## 確認頁：球落到鼓上（畫面拍子）和鼓聲（聲音拍子）是不是同時；不同時就 −／＋ 調，或跟著鼓按幾下自動修正
+func _draw_check_page(c: Vector2, drum: Vector2) -> void:
+	var size := _view.size
+	_line(c.y - 290, "確認一下：球落到鼓上的那一刻，剛好聽到鼓聲嗎？", 24, UiKit.TEXT)
+	_line(c.y - 258, _verdict(), 16, UiKit.MUTED)
+	## 鼓＋落下的球（用 song_beat：已扣延遲的畫面拍子）
+	var b := Conductor.song_beat
+	var f := fposmod(b, 1.0)
+	var land := 1.0 - minf(f * 6.0, 1.0)
+	_draw_drum(drum + Vector2(0, 20), 1.0, maxf(_hit, land * 0.6))
+	var top := drum.y + 20 - 74.0
+	var ball_y := top - 100.0 * 4.0 * f * (1.0 - f) - 14.0
+	_view.draw_circle(Vector2(drum.x, ball_y), 14.0, UiKit.YELLOW)
+	_view.draw_arc(Vector2(drum.x, ball_y), 14.0, 0.0, TAU, 24, UiKit.INK, 2.5, true)
+	## −／＋ 和目前數值
+	UiKit.solid_button(_view, _minus_rect(), "← 球太晚", UiKit.TEXT, UiKit.LINE, 18)
+	UiKit.solid_button(_view, _plus_rect(), "球太早 →", UiKit.TEXT, UiKit.LINE, 18)
+	UiKit.text(_view, Vector2(c.x - 100, c.y + 128), 200, "%+.0f ms" % _result_ms, 26, UiKit.YELLOW, HORIZONTAL_ALIGNMENT_CENTER, UiKit.display_font(700))
+	## 試按：最近 8 下落在早／晚哪邊
+	var bar := Rect2(c.x - 300, c.y + 190, 440, 6)
+	_view.draw_rect(bar, Color(UiKit.LINE, 0.9))
+	var mid := bar.position.x + bar.size.x * 0.5
+	_view.draw_line(Vector2(mid, bar.position.y - 10), Vector2(mid, bar.end.y + 10), UiKit.TEXT, 2.0)
+	UiKit.text(_view, Vector2(bar.position.x, bar.position.y - 12), -1, "早", 14, UiKit.MUTED)
+	UiKit.text(_view, Vector2(bar.end.x - 16, bar.position.y - 12), -1, "晚", 14, UiKit.MUTED)
+	for e in _tests:
+		var x := clampf(mid + e / MAX_ERR_SEC * bar.size.x * 0.5, bar.position.x, bar.end.x)
+		_view.draw_circle(Vector2(x, bar.get_center().y), 6.0, UiKit.CYAN)
+	var hint := "跟著鼓聲按空白鍵（或點鼓）試幾下"
+	if _tests.size() >= 3:
+		var m := _test_mean() * 1000.0
+		hint = "你平均按得剛好" if absf(m) < 15.0 else ("你平均按晚 %d ms" % roundi(m) if m > 0.0 else "你平均按早 %d ms" % roundi(-m))
+	UiKit.text(_view, Vector2(bar.position.x, bar.position.y + 32), -1, hint, 15, UiKit.TEXT)
+	if _tests.size() >= 3:
+		UiKit.solid_button(_view, _fix_rect(), "↑ 照這個修正", UiKit.CYAN, Color("2A8C97"), 15)
+	UiKit.solid_button(_view, _again_rect(), "R　重新測", UiKit.TEXT, UiKit.LINE, 18)
+	UiKit.solid_button(_view, _ok_rect(), "Enter　完成", UiKit.PINK, UiKit.PINK_DARK, 18)
+	_line(size.y - 18, "Esc 取消（用原本的設定）", 13, UiKit.MUTED)
 
 
 ## 結果一句話：不講毫秒，講「快／慢」

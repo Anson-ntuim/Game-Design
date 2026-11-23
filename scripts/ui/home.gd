@@ -247,7 +247,7 @@ func _open_settings() -> void:
 	if not OS.has_feature("web"):
 		acts.append("離開遊戲")
 	_settings.actions = acts
-	_settings.settings = ["music", "sfx", "quality", "skin", "shake", "judge"]
+	_settings.settings = ["music", "sfx", "latency", "quality", "skin", "shake", "judge"]
 	add_child(_settings)
 	_settings.chosen.connect(_on_settings_chosen)
 	GameState.play_sfx("pluck", 7.0, -6.0)
