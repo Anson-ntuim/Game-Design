@@ -12,7 +12,9 @@ signal closed
 enum Phase { INTRO, COUNT_IN, TAPPING, RESULT }
 
 const COUNT_IN_BEATS := 4
-const TAP_BEATS := 8
+const TAP_BEATS := 12
+## 前幾下當暖身不算（剛開始常常抓不準）
+const WARMUP_TAPS := 2
 ## 按的時間離最近一拍超過這麼多秒就不算（大概是亂按）
 const MAX_ERR_SEC := 0.22
 ## 至少要對到幾下才算數
@@ -38,6 +40,8 @@ var _duck_before: float = 0.0
 ## 剛打開的這段時間不收輸入（上一個畫面按的鍵、點擊不要直接帶進來）
 const INPUT_GRACE := 0.6
 var _age: float = 0.0
+## 說明頁／預備時鼓聲響起的小喇叭動畫（對拍時不顯示，避免看畫面按）
+var _ping: float = 0.0
 
 
 func _ready() -> void:
@@ -51,15 +55,12 @@ func _ready() -> void:
 	add_child(_view)
 	_view.draw.connect(_on_view_draw)
 	_view.gui_input.connect(_on_gui_input)
-	Conductor.beat.connect(_on_beat)
-	## 校正時把背景音樂壓低，鼓聲才聽得清楚
+	## 校正時把背景音樂幾乎關掉，只聽得到鼓聲
 	_duck_before = Conductor.duck_target
-	Conductor.duck_target = 0.85
+	Conductor.duck_target = 1.0
 
 
 func _exit_tree() -> void:
-	if Conductor.beat.is_connected(_on_beat):
-		Conductor.beat.disconnect(_on_beat)
 	Conductor.duck_target = _duck_before
 	if not _committed:
 		GameState.set_audio_offset_ms(_saved_ms, true)
@@ -73,27 +74,42 @@ func _start() -> void:
 	_too_few = false
 	## 量測時用原本的設定當基準，量完再一次算好新的值
 	GameState.set_audio_offset_ms(_saved_ms, false)
-	_start_beat = ceili(Conductor.song_beat)
+	_start_beat = ceili(_raw_beat())
 	GameState.play_sfx("pluck", 7.0, -6.0)
+
+
+## 不含玩家目前延遲設定的拍子：鼓聲和量測都用這個，校正結果才不會一次比一次偏
+## （以前用含延遲的拍子，鼓聲跟著舊設定移動，量到的誤差又加回去，會越校越大）
+func _raw_beat() -> float:
+	return Conductor.song_beat + Conductor.user_offset * Conductor.rate / Conductor.sec_per_beat
 
 
 func _on_beat(beat_index: int) -> void:
 	if beat_index == _last_beat:
 		return
 	_last_beat = beat_index
-	if _phase == Phase.INTRO or _phase == Phase.RESULT:
+	if _phase == Phase.RESULT:
+		return
+	## 說明頁也一直打鼓：一打開就聽得到「要跟的是這個聲音」（沒聲音也馬上知道要開喇叭）
+	if _phase == Phase.INTRO:
+		_drum(posmod(beat_index, 4) == 0)
 		return
 	if beat_index < _start_beat:
 		return
 	var step := beat_index - _start_beat
 	if step < COUNT_IN_BEATS + TAP_BEATS:
-		## 鼓聲：每小節第一下高一點
-		var down := step % 4 == 0
-		GameState.play_sfx("cue", 7.0 if down else 0.0, -4.0 if down else -7.0)
+		_drum(step % 4 == 0)
 	if step == COUNT_IN_BEATS:
 		_phase = Phase.TAPPING
 	elif step >= COUNT_IN_BEATS + TAP_BEATS:
 		_finish()
+
+
+## 鼓聲：拍手＋提示音疊在一起，夠大聲、起音清楚；每小節第一下高一點
+func _drum(down: bool) -> void:
+	GameState.play_sfx("clap", 0.0, 0.0 if down else -2.0)
+	GameState.play_sfx("cue", 7.0 if down else 0.0, -1.0 if down else -3.0)
+	_ping = 1.0
 
 
 func _finish() -> void:
@@ -103,11 +119,14 @@ func _finish() -> void:
 		_result_ms = _saved_ms
 		GameState.play_sfx("miss", 0.0, -6.0)
 		return
-	var sorted := _errors.duplicate()
-	sorted.sort()
-	var mid: float = sorted[sorted.size() / 2]
-	## 按得晚（正）＝聲音比時鐘晚 → 延遲加大
-	_result_ms = clampf(_saved_ms + mid * 1000.0, GameState.AUDIO_OFFSET_MIN, GameState.AUDIO_OFFSET_MAX)
+	## 去掉暖身的前幾下，取中位數（偶爾按歪一兩下不影響）
+	var used := _errors.slice(mini(WARMUP_TAPS, _errors.size() - MIN_TAPS))
+	used.sort()
+	var mid: float = used[used.size() / 2]
+	## 鼓聲從觸發到耳朵聽到要「裝置回報的輸出延遲」那麼久；音樂時鐘本來就扣掉了這段，
+	## 所以玩家設定只補剩下的部分（藍牙耳機、瀏覽器額外的延遲）。每次重算，不疊加在舊設定上
+	var ms := mid * 1000.0 - Conductor._output_latency * 1000.0
+	_result_ms = clampf(ms, GameState.AUDIO_OFFSET_MIN, GameState.AUDIO_OFFSET_MAX)
 	GameState.set_audio_offset_ms(_result_ms, false)
 	GameState.play_sfx("cue", 12.0, -4.0)
 
@@ -117,13 +136,13 @@ func _tap() -> void:
 		Phase.INTRO:
 			_start()
 		Phase.TAPPING:
-			var beat := Conductor.song_beat
+			var beat := _raw_beat()
 			var err := (beat - roundf(beat)) * Conductor.sec_per_beat / maxf(Conductor.rate, 0.01)
 			_hit = 1.0
 			_hit_err = err
+			## 按下去不出聲：自己的按鍵聲會干擾對鼓聲的判斷
 			if absf(err) <= MAX_ERR_SEC:
 				_errors.append(err)
-				GameState.play_sfx("pluck", GameState.next_note() + 12.0, -8.0)
 		Phase.RESULT:
 			if _too_few:
 				_start()
@@ -167,7 +186,12 @@ func _on_gui_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	_hit = move_toward(_hit, 0.0, delta * 4.0)
+	## 自己追拍子（不用 Conductor.beat：那是含延遲設定的拍子）
+	var rb := floori(_raw_beat())
+	if rb != _last_beat:
+		_on_beat(rb)
 	_age += delta
+	_ping = move_toward(_ping, 0.0, delta * 3.0)
 	_view.queue_redraw()
 	if Engine.get_process_frames() == _opened_frame or _age < INPUT_GRACE:
 		return
@@ -213,14 +237,15 @@ func _on_view_draw() -> void:
 		Phase.INTRO:
 			_draw_drum(drum, 1.0, 0.0)
 			_line(c.y + 110, "聽到鼓聲時，按空白鍵", 30, UiKit.TEXT)
+			_draw_speaker(Vector2(c.x + 150, drum.y - 40))
 			_line(c.y + 150, "也可以點一下畫面", 18, UiKit.MUTED)
 			_draw_key_prompt(c.y + 210, "空白鍵", "開始")
 			if first_run:
 				_line(size.y - 74, "先校正一次，節奏會比較準。之後可以在主選單按 O 再校正", 15, UiKit.MUTED)
 			_line(size.y - 40, "Esc 跳過", 15, UiKit.MUTED)
 		Phase.COUNT_IN:
-			var left: int = clampi(_start_beat + COUNT_IN_BEATS - floori(Conductor.song_beat), 1, COUNT_IN_BEATS)
-			if Conductor.song_beat < float(_start_beat):
+			var left: int = clampi(_start_beat + COUNT_IN_BEATS - floori(_raw_beat()), 1, COUNT_IN_BEATS)
+			if _raw_beat() < float(_start_beat):
 				left = COUNT_IN_BEATS
 			_draw_drum(drum, 0.55, 0.0)
 			var p := Conductor.pulse(6.0)
@@ -281,6 +306,15 @@ func _draw_drum(at: Vector2, alpha: float, hit: float) -> void:
 		var r := 110.0 + (1.0 - hit) * 60.0
 		var col := Color(0.55, 1.0, 0.7) if absf(_hit_err) <= 0.04 else UiKit.YELLOW
 		_view.draw_arc(Vector2(at.x, rect.position.y + h * 0.35), r, PI, TAU, 40, Color(col, hit), 4.0, true)
+
+
+## 小喇叭＋聲波：鼓響的時候亮一下，提醒「現在應該聽得到聲音」
+func _draw_speaker(at: Vector2) -> void:
+	var col := Color(UiKit.YELLOW, 0.5 + 0.5 * _ping)
+	_view.draw_colored_polygon(PackedVector2Array([at + Vector2(-14, -8), at + Vector2(-6, -8), at + Vector2(4, -18),
+		at + Vector2(4, 18), at + Vector2(-6, 8), at + Vector2(-14, 8)]), col)
+	for i in 2:
+		_view.draw_arc(at + Vector2(6, 0), 12.0 + i * 9.0, -0.8, 0.8, 12, Color(col, col.a * (1.0 - i * 0.35) * (0.4 + 0.6 * _ping)), 3.0, true)
 
 
 func _draw_check(at: Vector2) -> void:

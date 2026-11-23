@@ -19,9 +19,10 @@ func _ready() -> void:
 	add_to_group("checkpoint")
 	var shape := CollisionShape2D.new()
 	var r := RectangleShape2D.new()
-	r.size = Vector2(60, 60)
+	## 整條直的：從彈簧床、高台飛過長椅上空也算碰到（只要從這一格經過就存檔）
+	r.size = Vector2(80, 1600)
 	shape.shape = r
-	shape.position = Vector2(0, -30)
+	shape.position = Vector2(0, -800)
 	add_child(shape)
 
 

@@ -577,18 +577,7 @@ func _build_level() -> void:
 		zone.show_right_boundary = i + 1 < spans.size() and float(spans[i + 1]["gravity"]) >= 2400.0
 		add_child(zone)
 
-	var solid: Array[PackedByteArray] = []
-	for y in height:
-		var row := PackedByteArray()
-		row.resize(width)
-		for x in width:
-			match grid[y][x]:
-				"#": row[x] = 1
-				"%": row[x] = 2
-				_: row[x] = 0
-		solid.append(row)
-
-	_build_terrain(solid, width, height)
+	_build_terrain(_solid_grid(grid, width, height), width, height)
 	var wave_trigger := -1.0
 	var wave_end := INF
 
@@ -597,6 +586,10 @@ func _build_level() -> void:
 		var x := 0
 		while x < width:
 			var c := line[x]
+			## 空白和實心地形佔了地圖的絕大多數，直接跳過（重玩時重建關卡才不會頓）
+			if c == " " or c == "#" or c == "%":
+				x += 1
+				continue
 			var top_left := Vector2(x * TILE, y * TILE)
 			var feet := Vector2((x + 0.5) * TILE, (y + 1) * TILE)
 			var run := 1
@@ -809,11 +802,16 @@ func _build_terrain(solid: Array[PackedByteArray], width: int, height: int) -> v
 	view.tile = TILE
 	add_child(view)
 
-	for r in _merge_rects(solid, width, height, 1):
+	## 同一關重玩時，合併好的地形方塊和邊線直接沿用上次算好的結果
+	var key := GameState.level_index
+	var cached: Dictionary = _terrain_cache.get(key, {})
+	if cached.is_empty():
+		cached = {"solid": _merge_rects(solid, width, height, 1), "slick": _merge_rects(solid, width, height, 2)}
+	for r: Rect2i in cached["solid"]:
 		var world := Rect2(Vector2(r.position) * TILE, Vector2(r.size) * TILE)
 		_add_box(body, world)
 		view.fill_rects.append(world)
-	for r in _merge_rects(solid, width, height, 2):
+	for r: Rect2i in cached["slick"]:
 		var world := Rect2(Vector2(r.position) * TILE, Vector2(r.size) * TILE)
 		_add_box(slick_body, world)
 		view.fill_rects.append(world)
@@ -828,6 +826,10 @@ func _build_terrain(solid: Array[PackedByteArray], width: int, height: int) -> v
 			r.size.y += TILE * 60.0
 			view.fill_rects[i] = r
 
+	if cached.has("top"):
+		view.top_edges = cached["top"].duplicate()
+		view.side_edges = cached["side"].duplicate()
+		return
 	for y in height:
 		var x := 0
 		while x < width:
@@ -852,6 +854,31 @@ func _build_terrain(solid: Array[PackedByteArray], width: int, height: int) -> v
 				else:
 					y += 1
 
+	cached["top"] = view.top_edges.duplicate()
+	cached["side"] = view.side_edges.duplicate()
+	_terrain_cache[key] = cached
+
+
+## 地形方塊和邊線的計算結果（關卡編號 → 結果），跨場景保留：重玩同一關不用再掃一次整張地圖
+static var _terrain_cache: Dictionary = {}
+static var _solid_cache: Dictionary = {}
+
+
+func _solid_grid(grid: Array[String], width: int, height: int) -> Array[PackedByteArray]:
+	var key := GameState.level_index
+	if _solid_cache.has(key):
+		return _solid_cache[key]
+	var solid: Array[PackedByteArray] = []
+	for y in height:
+		var row := PackedByteArray()
+		row.resize(width)
+		var line := grid[y]
+		for x in width:
+			var c := line[x]
+			row[x] = 1 if c == "#" else (2 if c == "%" else 0)
+		solid.append(row)
+	_solid_cache[key] = solid
+	return solid
 
 func _merge_rects(solid: Array[PackedByteArray], width: int, height: int, value: int) -> Array[Rect2i]:
 	var rects: Array[Rect2i] = []
