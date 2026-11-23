@@ -66,7 +66,8 @@ LONG_CYCLE = 4.0
 ## 折成 4 拍會多出傷害的機關種類：節奏型必須本來就每 4 拍重複
 HAZARD_KINDS = ("spike", "ceiling", "piston", "laser")
 LEAD = 1.0
-BENCH_MIN = 6
+## 長椅平地最少幾格：重生點放在長椅左邊，離下一面旗子至少約 3 拍的路，來得及反應
+BENCH_MIN = 8
 ## 平地寬度只能一格一格調（一格約 0.26 拍）：寧可早到一點點（旗子前停不到 EARLY_OK 拍就 GO），不要晚到（晚了要等一整輪）
 EARLY_OK = 0.27
 
@@ -105,7 +106,8 @@ def _bench_chunk(hint, width, t_in=None):
                     c.fill(c0, c1, 16, 19, " ")
                     hops.append(round(x))
             T += HOP_EVERY
-    cp = width - 6 if hops else min(4, width - 2)
+    ## 重生點離下一面旗子遠一點（跑一段才到旗子，來得及反應）：有小坑放在最後那段平地的開頭，沒有就放在最左邊
+    cp = width - HOP_TAIL + 1 if hops else 1
     c.fill(cp, cp, 15, 15, "C")
     out = {"hint": hint, "rows": c.lines()}
     if hops:
@@ -242,7 +244,8 @@ def fold_cycle(pat, chunks):
         if cyc == CYCLE:
             for key in ("orbs", "rings"):
                 for item in ch.get(key, []):
-                    item[2] = _fold(item[2], int(CYCLE * 2))
+                    sub = item[4] if key == "orbs" and len(item) > 4 else 2
+                    item[2] = _fold(item[2], int(CYCLE * sub))
     for c, spec in list(pat.items.items()):
         cyc = max(users.get(c, {CYCLE}))
         if spec.get("kind") == "flag":
@@ -867,12 +870,50 @@ def level5(pat):
         gen_level3.DASH_IGNORE_TAIL = False
 
 
+T = lambda n: n / 3.0  ## 三連音拍子：T(10) = 第 3⅓ 拍
+
+
+def level6(pat):
+    """第六關（隱藏關，第五關過關才出現）：新東西是三連音（一拍平均三下）。每段都很長（14～17 拍），
+    小／一般／大音符混著上上下下，夾連續衝刺和音符串中間的鞦韆。段落由隨機搜尋產生、再經產生器嚴格驗證（只有一種過法）"""
+    import gen_level3
+    gen_level3.DASH_IGNORE_TAIL = True
+    S = dict(FO, flow=True)
+    try:
+        return seamless(pat, [
+            intro("第六關・終極節奏\n新東西：三連音（快的一拍三下、慢的兩拍三下）。每一段都很長，小、中、大音符上上下下"),
+            strict(sec(pat, "三連音", [J(0), O(0.5), OL(1.5), OH(2), O(4), OL(T(14)), OL(T(16)), O(6), O(T(19)), O(T(20)), OH(8), O(10)],
+                tut("triplet", "三連音", "外圈偏橘、上面標 3 的是三連音：快的一拍按三下（往上爬），慢的兩拍按三下（小音符，往下走）"), **S)),
+            bench(),
+            chain_swing(pat, "鞦韆長串", [("O", 0.5), ("O", 1), ("OL", 2), ("O", 2.5), ("D", 3)],
+                        [("OH", 1), ("O", 3), ("D", 3.5), ("O", 4.5), ("OL", 5.5), ("O", 6), ("O", 7)]),
+            bench(),
+            strict(sec(pat, "快慢三連音", [J(0), O(0.5), OL(1.5), O(2), OL(T(8)), OL(T(10)), O(4), O(T(13)), O(T(14)), O(6), OL(T(20)), OL(T(22)), O(8), O(T(25)), O(T(26)), OH(10)], "快慢三連音（10 拍）", **S)),
+            bench(),
+            strict(sec(pat, "衝刺長段", [J(0), O(0.5), OL(1.5), OH(2), OL(3), OH(3.5), O(5.5), OL(7), OL(7.5), OL(8), O(8.5), D(9), O(10), OH(11), O(12.5), O(13.5), D(14), O(14.5), O(16)], "衝刺長段（16 拍）", **S)),
+            bench(),
+            chain_swing(pat, "鞦韆大長串", [("O", 0.5), ("OL", 1.5), ("O", 2), ("OH", 3)],
+                        [("O", 1), ("O", 1.5), ("OL", 2.5), ("O", 3), ("D", 3.5), ("O", 4.5), ("OH", 5.5), ("O", 7.5)], grab=2.0),
+            bench(),
+            strict(sec(pat, "三連音長段", [J(0), O(0.5), O(1.5), OH(2.5), O(3.5), OH(5), O(7), OL(T(23)), OL(T(25)), O(9), O(T(28)), O(T(29)), O(11), O(T(34)), O(T(35)), O(13), OH(14), O(16)], "三連音長段（16 拍）", **S)),
+            bench(),
+            strict(sec(pat, "混合長段", [J(0), O(0.5), D(1), O(1.5), D(2), O(2.5), O(4), D(4.5), OL(5), OH(5.5), OL(7.5), O(8), OL(T(26)), OL(T(28)), O(10), O(11), OL(T(35)), OL(T(37)), O(13), O(14)], "混合長段（14 拍）", **S)),
+            bench(),
+            strict(sec(pat, "終極長段", [J(0), O(0.5), OL(1.5), O(2), O(T(7)), O(T(8)), OH(4), O(5.5), O(7), O(8), O(T(25)), O(T(26)), O(10), O(T(31)), O(T(32)), O(12), O(T(37)), O(T(38)), O(14), D(14.5), O(15), O(16)], "終極長段（16 拍）", **S)),
+            bench(),
+            goal("終點"),
+        ], hops=False)
+    finally:
+        gen_level3.DASH_IGNORE_TAIL = False
+
+
 LEVELS = {
     1: (level1, "Campaign1Data", "正式版第一關・教學：自動前進、固定跳躍、尖刺預告、空中衝刺、光柱、黃色音符。"),
     2: (level2, "Campaign2Data", "正式版第二關：衝刺環、節拍平台、旋律平台，後半和第一關的東西混合。"),
     3: (level3, "Campaign3Data", "正式版第三關：彈簧床（和音符、衝刺環接在一起）、大量黃色音符與反拍、高低地形。"),
     4: (level4, "Campaign4Data", "正式版第四關（雨夜街道）：盪鞦韆、音符上下、音符串夾旋律平台。"),
     5: (level5, "Campaign5Data", "正式版第五關（破碎回憶）：大音符、小音符，鞦韆夾在音符串中間。"),
+    6: (level6, "Campaign6Data", "正式版第六關（隱藏關）：三連音、大中小音符上下、超長段落。"),
 }
 
 

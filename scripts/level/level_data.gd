@@ -54,7 +54,22 @@ const LEVELS: Array[Dictionary] = [
 	{"name": "05", "desc": "破碎回憶", "stars": 3, "tags": ["大小音符", "音符接鞦韆", "連續衝刺", "長段"],
 		"patterns": Campaign5Data.PATTERNS, "chunks": Campaign5Data.CHUNKS,
 		"background_profile": "broken_memory"},
+	## 隱藏關：第五關過關後才出現在選單（unlock_after = 要先通關的關卡編號，從 0 算）
+	{"name": "06", "desc": "終極節奏", "stars": 3, "tags": ["三連音", "大中小音符", "超長段", "高難度"],
+		"patterns": Campaign6Data.PATTERNS, "chunks": Campaign6Data.CHUNKS,
+		"background_profile": "music_festival", "unlock_after": 4},
 ]
+
+## 選單上看得到幾關：隱藏關（unlock_after）要等指定的關卡通關才算進來；隱藏關一律排在最後
+static func visible_count() -> int:
+	var n := 0
+	for info: Dictionary in LEVELS:
+		var need := int(info.get("unlock_after", -1))
+		if need >= 0 and not GameState.records.has(need):
+			break
+		n += 1
+	return n
+
 
 ## 封存的舊關卡（scripts/level/archive/，tools/gen_demo.py、tools/ride_levels.py）：選單不顯示，
 ## 用 level_index = LEVELS.size() + 封存序號 仍可載入（測試、參考用）

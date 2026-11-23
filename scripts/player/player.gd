@@ -147,6 +147,12 @@ var _launch_vx: float = 0.0
 var _launch_gravity: float = 0.0
 ## 高音符（飄）：重力減半，飛兩拍才回到原高度；落地、衝刺、再跳就恢復
 var _orb_float: float = 1.0
+## 打中時角色閃白一下（秒）
+var _flash_t: float = 0.0
+## 打擊停頓：角色停住幾個物理幀，之後每幀多走一步補回來（位置和拍子最後一樣，不會脫拍）
+var _hitstop_frames: int = 0
+var _owed_frames: int = 0
+var _pending_dash: bool = false
 ## 低畫質時略過不變的重畫（節點位移仍由引擎帶動）
 var _draw_key: String = ""
 
@@ -188,6 +194,24 @@ func _physics_process(delta: float) -> void:
 		_update_visuals(delta)
 		return
 
+	if _hitstop_frames > 0:
+		_hitstop_frames -= 1
+		_owed_frames += 1
+		## 停住的那幾幀按的鍵不要丟掉
+		if Input.is_action_just_pressed("jump"):
+			_jump_buffer = jump_buffer_time
+		if Input.is_action_just_pressed("dash"):
+			_pending_dash = true
+		_update_visuals(delta)
+		return
+	if _owed_frames > 0:
+		if ride == null and _dash_timer <= 0.0 and not is_on_floor():
+			_owed_frames -= 1
+			velocity.y = minf(velocity.y + eff_gravity() * _orb_float * delta, max_fall_speed())
+			move_and_slide()
+		else:
+			_owed_frames = 0
+
 	if ride != null:
 		if is_instance_valid(ride):
 			ride.call("ride_step", self, delta)
@@ -217,7 +241,8 @@ func _physics_process(delta: float) -> void:
 
 	if Input.is_action_just_pressed("jump") and not watching:
 		_jump_buffer = jump_buffer_time
-	if Input.is_action_just_pressed("dash") and not watching:
+	if (Input.is_action_just_pressed("dash") or _pending_dash) and not watching:
+		_pending_dash = false
 		_try_dash(input_x, on_floor)
 	if Input.is_action_just_pressed("use_item") and not watching:
 		_try_slow_item()
@@ -307,6 +332,9 @@ func _tick_timers(delta: float) -> void:
 	_invincible_timer = maxf(0.0, _invincible_timer - delta)
 	_wing_timer = maxf(0.0, _wing_timer - delta)
 	_fail_puff = maxf(0.0, _fail_puff - delta)
+	_flash_t = maxf(0.0, _flash_t - delta)
+	var glow := clampf(_flash_t / 0.12, 0.0, 1.0)
+	modulate = Color(1, 1, 1).lerp(Color(1.9, 1.85, 1.6), glow)
 	_land_timer = maxf(0.0, _land_timer - delta)
 	_drum_timer = maxf(0.0, _drum_timer - delta)
 	_hurt_timer = maxf(0.0, _hurt_timer - delta)
@@ -506,8 +534,12 @@ func _try_slow_item() -> void:
 
 ## 節奏音符：在音符亮起的瞬間按跳，再跳一次並補回空中衝刺
 func _orb_jump(orb: Node) -> void:
+	var dt := 0.0
 	if orb.has_method("consume"):
-		orb.call("consume")
+		var r: Variant = orb.call("consume")
+		if r is float:
+			dt = r
+	_hit_feedback((orb as Node2D).global_position, GameState.judge(dt), Vector2(0, -1))
 	var note := GameState.next_note() + 12.0
 	GameState.play_sfx("pluck", note)
 	_wing_timer = 0.3
@@ -540,7 +572,8 @@ func _check_rings() -> void:
 		if ring == null or ring == _ring_hit:
 			continue
 		if ring.accepts(_dash_beat):
-			ring.consume(_dash_beat)
+			var dt := ring.consume(_dash_beat)
+			_hit_feedback(ring.global_position, GameState.judge(dt), Vector2(_dash_dir, 0), Color(0.45, 0.9, 1.0))
 			_ring_hit = ring
 			GameState.play_sfx("pluck", GameState.next_note() + 12.0)
 			_dash_cooldown_timer = 0.0
@@ -904,3 +937,23 @@ static func draw_skin(ci: CanvasItem, index: int, feet: Vector2, body_scale: Vec
 		var w := SKIN_HEIGHT * tex.get_width() / float(tex.get_height())
 		ci.draw_texture_rect(tex, Rect2(-w * 0.5, -SKIN_HEIGHT, w, SKIN_HEIGHT), false, tint)
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## 打擊回饋交給 main（特效、鏡頭）；在測試場景沒有 main 就什麼都不做
+func _hit_feedback(at: Vector2, grade: String, dir: Vector2, tint: Color = Color(1.0, 0.78, 0.35)) -> void:
+	var main := get_tree().get_first_node_in_group("main")
+	if main and main.has_method("hit_feedback"):
+		main.call("hit_feedback", at, grade, dir, tint)
+
+
+## 角色閃白 sec 秒
+func flash(sec: float) -> void:
+	_flash_t = maxf(_flash_t, sec)
+
+
+## 打擊停頓 frames 個物理幀（120 幀／秒，2 幀約 0.02 秒）
+## 衝刺中（穿環）不停：衝刺計時照走，停了會少衝一段
+func hitstop(frames: int) -> void:
+	if _dash_timer > 0.0:
+		return
+	_hitstop_frames = maxi(_hitstop_frames, frames)

@@ -93,6 +93,9 @@ const VISUAL_THEMES: Array[Dictionary] = [
 ]
 
 var deaths: int = 0
+## 這一趟打中幾次 perfect／good（音符、衝刺環、鞦韆放手）
+var perfects: int = 0
+var goods: int = 0
 var skin: int = 0
 var difficulty: int = 1
 ## 0=低 1=中 2=高；未存檔時桌面預設高、網頁預設中
@@ -288,6 +291,8 @@ func _process(delta: float) -> void:
 
 func reset_stats() -> void:
 	deaths = 0
+	perfects = 0
+	goods = 0
 	groove = 0.0
 	_note_step = 0
 	_palette_from = 0
@@ -311,13 +316,31 @@ func is_path_unlock(id: String) -> bool:
 	return path_unlocks.get(id, false)
 
 
-## 記下過關成績，回傳是否刷新了任何一項紀錄
-func record_clear(level: int, time: float, death_count: int) -> bool:
+## 評等分數（0～100）：準度 =（perfect + 0.5 × good）／打中總數，再每倒下一次扣 5 分
+static func rank_score(p: int, g: int, d: int) -> float:
+	var total := p + g
+	var acc := 100.0 if total == 0 else 100.0 * (float(p) + 0.5 * float(g)) / float(total)
+	return clampf(acc - 5.0 * float(d), 0.0, 100.0)
+
+
+## 分數 → 等級：S ≥ 90、A ≥ 75、B ≥ 55、其餘 C
+static func rank_of(score: float) -> String:
+	return "S" if score >= 90.0 else "A" if score >= 75.0 else "B" if score >= 55.0 else "C"
+
+
+## 記下過關成績（時間、倒下、perfect／good、評等分數，各自留最好的），回傳是否刷新了任何一項紀錄
+func record_clear(level: int, time: float, death_count: int, p: int = 0, g: int = 0) -> bool:
 	var old: Dictionary = records.get(level, {})
-	var improved := old.is_empty() or time < float(old["time"]) or death_count < int(old["deaths"])
+	var score := rank_score(p, g, death_count)
+	var improved := old.is_empty() or time < float(old["time"]) or death_count < int(old["deaths"]) \
+		or score > float(old.get("score", -1.0))
+	var best_score := maxf(score, float(old.get("score", -1.0)))
 	records[level] = {
 		"time": minf(time, float(old.get("time", time))),
 		"deaths": mini(death_count, int(old.get("deaths", death_count))),
+		"score": best_score,
+		"perfects": p if score >= float(old.get("score", -1.0)) else int(old.get("perfects", p)),
+		"goods": g if score >= float(old.get("score", -1.0)) else int(old.get("goods", g)),
 	}
 	_save()
 	return improved
@@ -512,6 +535,14 @@ func in_window(dt: float) -> bool:
 	return dt >= -judge_early() and dt <= judge_late()
 
 
+## 打中之後的評價：離正拍 0.05 秒內（或判定窗一半內，取小的）是 perfect，其餘 good；自由模式一律 good
+func judge(dt: float) -> String:
+	if free_rhythm():
+		return "good"
+	var limit := minf(0.05, 0.5 * minf(judge_early(), judge_late()))
+	return "perfect" if absf(dt) <= limit else "good"
+
+
 ## 目前造型的靜態圖
 func skin_texture(index: int = -1) -> Texture2D:
 	var path: String = SKINS[skin if index < 0 else index]["texture"]
@@ -547,6 +578,9 @@ func _save() -> void:
 	for k: int in records:
 		cfg.set_value("level_%d" % k, "time", records[k]["time"])
 		cfg.set_value("level_%d" % k, "deaths", records[k]["deaths"])
+		for key: String in ["score", "perfects", "goods"]:
+			if records[k].has(key):
+				cfg.set_value("level_%d" % k, key, records[k][key])
 	cfg.save(SAVE_PATH)
 
 
@@ -586,6 +620,10 @@ func _load_records() -> void:
 				"time": float(cfg.get_value(section, "time", 0.0)),
 				"deaths": int(cfg.get_value(section, "deaths", 0)),
 			}
+			if cfg.has_section_key(section, "score"):
+				records[index]["score"] = float(cfg.get_value(section, "score", 0.0))
+				records[index]["perfects"] = int(cfg.get_value(section, "perfects", 0))
+				records[index]["goods"] = int(cfg.get_value(section, "goods", 0))
 
 
 func color(key: String) -> Color:

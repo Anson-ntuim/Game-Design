@@ -35,6 +35,9 @@ var _look_x: float = 0.0
 var _player_prev := Vector2.ZERO
 var _player_curr := Vector2.ZERO
 var _zoom_punch: float = 0.0
+## 打擊回饋：鏡頭往某方向推一下再彈回（px）；_cam_hold 秒內鏡頭停住不追（打中的「頓一下」）
+var _kick: Vector2 = Vector2.ZERO
+var _cam_hold: float = 0.0
 var _camera_ground_y: float = 0.0
 var _score_cue_slot: int = -99999
 var _tempo_pad_mode: bool = false
@@ -140,8 +143,10 @@ func _update_camera(delta: float) -> void:
 	var y_rate := rate
 	if not flag and level_size.y > LevelData.HEIGHT * TILE:
 		y_rate = 5.0 if target.y < camera.position.y else 10.0
-	camera.position.x = lerpf(camera.position.x, target.x, 1.0 - exp(-rate * delta))
-	camera.position.y = lerpf(camera.position.y, target.y, 1.0 - exp(-y_rate * delta))
+	_cam_hold = maxf(0.0, _cam_hold - delta)
+	if _cam_hold <= 0.0:
+		camera.position.x = lerpf(camera.position.x, target.x, 1.0 - exp(-rate * delta))
+		camera.position.y = lerpf(camera.position.y, target.y, 1.0 - exp(-y_rate * delta))
 	if not flag and level_size.y > LevelData.HEIGHT * TILE:
 		# 平滑追蹤仍有硬性安全範圍，連續接跳也不會把角色推到提示卡後面。
 		camera.position.y = clampf(camera.position.y,
@@ -151,10 +156,11 @@ func _update_camera(delta: float) -> void:
 	_shake = move_toward(_shake, 0.0, 40.0 * delta)
 	## 畫面晃動預設關（設定裡可開）；開的時候也只用 35% 的平滑擺動，不用每幀亂跳的雜訊
 	var amt := _shake * GameState.shake_amount()
+	_kick = _kick.lerp(Vector2.ZERO, 1.0 - exp(-12.0 * delta))
 	if amt > 0.05:
-		camera.offset = Vector2(sin(_level_time * 37.0), cos(_level_time * 29.0)) * amt
+		camera.offset = Vector2(sin(_level_time * 37.0), cos(_level_time * 29.0)) * amt + _kick
 	else:
-		camera.offset = Vector2.ZERO
+		camera.offset = _kick
 	_zoom_punch = move_toward(_zoom_punch, 0.0, 3.0 * delta)
 	## 素材主題不用鏡頭 zoom punch：zoom 會整層縮放，遠城／近城看起來像被水平抽動
 	if GameState.theme_is_procedural() and GameState.screen_shake:
@@ -227,7 +233,7 @@ func _process(delta: float) -> void:
 	elif Input.is_action_just_pressed("restart"):
 		get_tree().reload_current_scene()
 	elif _completed and (Input.is_action_just_pressed("confirm") or Input.is_action_just_pressed("jump")):
-		if GameState.level_index + 1 < LevelData.LEVELS.size():
+		if GameState.level_index + 1 < LevelData.visible_count():
 			GameState.level_index += 1
 			get_tree().reload_current_scene()
 		else:
@@ -241,7 +247,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if key == null or not key.pressed or key.echo:
 		return
 	var idx := key.physical_keycode - KEY_1
-	if idx >= 0 and idx < LevelData.LEVELS.size():
+	if idx >= 0 and idx < LevelData.visible_count():
 		GameState.level_index = idx
 		get_tree().reload_current_scene()
 
@@ -309,6 +315,27 @@ func _on_measure(_m: int) -> void:
 
 func shake(amount: float) -> void:
 	_shake = maxf(_shake, amount)
+
+
+## 鏡頭推一下（dir 是畫面要往哪邊動，px）。很小的位移，畫面晃動關掉時減半
+func kick(dir: Vector2) -> void:
+	var k := GameState.anim_amount() * (1.0 if GameState.screen_shake else 0.5)
+	_kick += dir * k
+	_kick = _kick.limit_length(18.0)
+
+
+## 打中音符／環／鞦韆放手：碎片＋評價字＋角色閃白；perfect 再加亮音（鏡頭不動，不會有停住的感覺）
+func hit_feedback(at: Vector2, grade: String, dir: Vector2, tint: Color = Color(1.0, 0.78, 0.35)) -> void:
+	HitFx.spawn(self, at, "burst", grade, tint)
+	if grade == "perfect":
+		GameState.perfects += 1
+		GameState.play_sfx("pluck", GameState.next_note() + 24.0, -12.0)
+		player.flash(0.12)
+	else:
+		GameState.goods += 1
+		player.flash(0.05)
+
+
 
 
 func show_message(text: String, duration: float = 2.0) -> void:
@@ -475,12 +502,16 @@ func _on_goal_reached() -> void:
 	player.control_locked = true
 	if _wave:
 		_wave.stop()
-	var new_record := GameState.record_clear(GameState.level_index, _level_time, GameState.deaths)
+	var new_record := GameState.record_clear(GameState.level_index, _level_time, GameState.deaths,
+		GameState.perfects, GameState.goods)
 	var best: Dictionary = GameState.records[GameState.level_index]
 	hud.show_results({
 		"time": _level_time, "deaths": GameState.deaths, "judge": GameState.DIFFICULTIES[GameState.difficulty]["name"],
+		"perfects": GameState.perfects, "goods": GameState.goods,
+		"score": GameState.rank_score(GameState.perfects, GameState.goods, GameState.deaths),
+		"best_score": float(best.get("score", 0.0)),
 		"new_record": new_record, "best_time": float(best["time"]), "best_deaths": int(best["deaths"]),
-		"has_next": GameState.level_index + 1 < LevelData.LEVELS.size(),
+		"has_next": GameState.level_index + 1 < LevelData.visible_count(),
 	})
 
 
@@ -746,6 +777,7 @@ func _add_pattern_tile(pat: Dictionary, grid: Array[String], x: int, y: int, run
 			var flag := CueFlag.new()
 			flag.setup(top_left + Vector2(TILE * 0.5, TILE), pat.get("demo", ""))
 			flag.cycle_beats = float(pat.get("cycle", CueFlag.CYCLE_BEATS))
+			flag.demo_sub = int(pat.get("demo_sub", 2))
 			flag.phase8 = float(pat.get("phase", -1.0))
 			_flags.append(flag)
 			add_child(flag)

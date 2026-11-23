@@ -23,16 +23,21 @@ def demo_char(kind, hold):
 def flag_spec(script, rests=(), slots=DEMO_SLOTS):
     """script: [(beat, kind, hold)] → 旗子的示範連招（demo），預設 8 拍，可由 slots 指定更長的整段譜面；
     rests: [(起拍, 迄拍)] 休止，開頭那格寫 '-'（示範時響收音）"""
-    demo = ["."] * slots
+    ## 有三連音就把示範切成一拍 6 格（半拍和 1/3 拍都排得進去）
+    sub = 6 if any(abs(b * 2 - round(b * 2)) > 0.05 for (b, _, _) in script) else 2
+    demo = ["."] * (slots * sub // 2)
     for (b, k, h) in script:
-        s = round(b * 2)
-        assert 0 <= s < slots, ("連招超過示範長度", script)
+        s = round(b * sub)
+        assert 0 <= s < len(demo), ("連招超過示範長度", script)
         demo[s] = demo_char(k, h)
     for (r0, _) in rests:
-        s = round(r0 * 2) % DEMO_SLOTS
+        s = round(r0 * sub) % (DEMO_SLOTS * sub // 2)
         assert demo[s] == ".", ("休止開頭和動作撞在一起", r0)
         demo[s] = "-"
-    return {"kind": "flag", "notes": "", "demo": "".join(demo)}
+    out = {"kind": "flag", "notes": "", "demo": "".join(demo)}
+    if sub != 2:
+        out["demo_sub"] = sub
+    return out
 
 
 def ghost_points(sim, until_beat):

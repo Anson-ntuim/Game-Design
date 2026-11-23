@@ -417,7 +417,8 @@ func _draw_results(size: Vector2, edge: Color) -> void:
 	UiKit.panel(_view, box, UiKit.PINK, 0.0, k, 18.0, Color(UiKit.CARD, 0.97))
 	var p := box.position
 	var deaths := int(_results["deaths"])
-	var grade := "S" if deaths == 0 else ("A" if deaths <= 2 else ("B" if deaths <= 5 else "C"))
+	var score := float(_results.get("score", 0.0))
+	var grade := GameState.rank_of(score)
 	var g := Rect2(p + Vector2(32, 32), Vector2(120, 120))
 	var st := StyleBoxFlat.new()
 	st.anti_aliasing = true
@@ -425,7 +426,7 @@ func _draw_results(size: Vector2, edge: Color) -> void:
 	st.bg_color = Color(UiKit.PINK, k)
 	_view.draw_style_box(st, g)
 	_view.draw_string(UiKit.title_font(), Vector2(g.position.x, g.position.y + 88), grade, HORIZONTAL_ALIGNMENT_CENTER, g.size.x, 80, Color(UiKit.INK, k))
-	UiKit.text(_view, p + Vector2(180, 64), -1, "評等依倒下次數", 15, Color(UiKit.MUTED, k))
+	UiKit.text(_view, p + Vector2(180, 64), -1, "分數 %d（準度扣倒下）" % roundi(score), 15, Color(UiKit.MUTED, k))
 	UiKit.text(_view, p + Vector2(180, 112), -1, "判定　" + String(_results["judge"]), 24, Color(UiKit.TEXT, k), HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.6))
 	if _results["new_record"]:
 		var tag := Rect2(p + Vector2(180, 126), Vector2(UiKit.width_of("新紀錄", 13) + 22.0, 26))
@@ -435,19 +436,23 @@ func _draw_results(size: Vector2, edge: Color) -> void:
 		UiKit.text(_view, Vector2(tag.position.x, tag.position.y + 18), tag.size.x, "新紀錄", 13, Color(UiKit.INK, k), HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.6))
 
 	var tiles := [
-		["通關時間", "%.1f 秒" % float(_results["time"]), UiKit.CYAN],
+		["PERFECT", str(int(_results.get("perfects", 0))), UiKit.YELLOW],
+		["GOOD", str(int(_results.get("goods", 0))), UiKit.CYAN],
 		["倒下次數", str(deaths), UiKit.PINK],
-		["最佳時間", "%.1f 秒" % float(_results["best_time"]), UiKit.YELLOW],
+		["通關時間", "%.1f 秒" % float(_results["time"]), UiKit.TEXT],
 	]
-	var tw := (box.size.x - 64.0 - 20.0) / 3.0
-	for i in 3:
+	var tw := (box.size.x - 64.0 - 30.0) / 4.0
+	for i in 4:
 		var r := Rect2(p.x + 32.0 + i * (tw + 10.0), p.y + 184, tw, 96)
 		st.set_corner_radius_all(16)
 		st.bg_color = Color(UiKit.NIGHT, k)
 		_view.draw_style_box(st, r)
 		UiKit.text(_view, r.position + Vector2(14, 30), -1, tiles[i][0], 14, Color(tiles[i][2], k))
-		UiKit.text(_view, r.position + Vector2(14, 72), -1, tiles[i][1], 26, Color(UiKit.TEXT, k), HORIZONTAL_ALIGNMENT_LEFT, UiKit.display_font(700))
-	UiKit.text(_view, p + Vector2(32, 324), box.size.x - 64, "最少倒下　%d 次" % int(_results["best_deaths"]), 17, Color(UiKit.MUTED, k))
+		UiKit.text(_view, r.position + Vector2(12, 72), -1, tiles[i][1], 22, Color(UiKit.TEXT, k), HORIZONTAL_ALIGNMENT_LEFT, UiKit.display_font(700))
+	UiKit.text(_view, p + Vector2(32, 324), box.size.x - 64, "最佳評等　%s（%d 分）　最佳時間　%.1f 秒　最少倒下　%d 次" % [
+		GameState.rank_of(float(_results.get("best_score", score))), roundi(float(_results.get("best_score", score))),
+		float(_results["best_time"]), int(_results["best_deaths"])], 15, Color(UiKit.MUTED, k))
+	UiKit.text(_view, p + Vector2(32, 354), box.size.x - 64, "S ≥ 90　A ≥ 75　B ≥ 55　準度 = (PERFECT + 半個 GOOD) ÷ 總數，倒下一次 −5", 13, Color(UiKit.MUTED, 0.8 * k))
 
 	var bw := (box.size.x - 64.0 - 20.0) / 3.0
 	var labels := ["Esc　選關", "R　再玩一次", ("Enter　下一關" if _results["has_next"] else "Enter　選關")]

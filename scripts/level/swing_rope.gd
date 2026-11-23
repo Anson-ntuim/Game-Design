@@ -121,6 +121,8 @@ func ride_step(p: Player, delta: float) -> void:
 		GameState.play_sfx("pluck", GameState.next_note(), -3.0)
 		GameState.play_cue("cue", 19.0, -4.0)
 		p.end_ride(Vector2(dir * LAUNCH_VX, -LAUNCH_VY))
+		p._hit_feedback(p.global_position, GameState.judge((b - peak) * Conductor.sec_per_beat), Vector2(dir, -1).normalized(),
+			Color(0.98, 0.62, 0.36))
 	else:
 		p.fail_feedback()
 		GameState.play_sfx("pluck", GameState.next_note() - 12.0, -10.0)

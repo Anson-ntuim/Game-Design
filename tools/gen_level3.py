@@ -316,7 +316,7 @@ class RingSim(Sim):
 
 
 def _fresh(items, cls):
-    return [cls(o.x, o.y, set(o.slots), kind=getattr(o, "kind", "")) if cls is Orb else cls(o.x, o.y, set(o.slots)) for o in items]
+    return [cls(o.x, o.y, set(o.slots), sub=getattr(o, "sub", 2), kind=getattr(o, "kind", "")) if cls is Orb else cls(o.x, o.y, set(o.slots)) for o in items]
 
 
 def to_presses(script):
@@ -347,7 +347,10 @@ def place_notes(start, solids, script, end_beat, right=1):
                 if frame == f0:
                     jp = True
                     if kind == "orb":
-                        orbs.append(Orb(sim.x, sim.y, {round(f0 * DT / SPB * 2)}, kind=ORB_KIND.get(f0, "")))
+                        ## 三連音（拍子落在 1/3、2/3）的音符一拍切三格
+                        bt = f0 * DT / SPB
+                        sub = 3 if abs(bt * 2 - round(bt * 2)) > 0.05 else 2
+                        orbs.append(Orb(sim.x, sim.y, {round(bt * sub)}, sub=sub, kind=ORB_KIND.get(f0, "")))
                         sim.orbs.append(orbs[-1])
                 if f0 <= frame < f0 + max(hold, 1):
                     held = True
@@ -434,7 +437,12 @@ class Course:
             lo = beats[i - 1] if i else -0.5
             hi = beats[i + 1] if i + 1 < len(beats) else b + 3.0
             c = lo + 0.5
+            ## 三連音（1/3 拍）音符和半拍只差 1/6 拍，判定窗本來就重疊：旁邊的半拍不算另一種解法
+            trip = [x for x in beats if abs(x * 2 - round(x * 2)) > 0.05]
             while c < hi:
+                if any(abs(c - x) < 0.2 for x in trip):
+                    c += 0.5
+                    continue
                 if c != b and any(self.outcome(sorted(rest + [(c, "jump", hh)])) is None for hh in (FULL, TAP)):
                     bad.append((b, c))
                 c += 0.5

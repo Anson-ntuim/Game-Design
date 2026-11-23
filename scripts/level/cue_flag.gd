@@ -23,6 +23,8 @@ const CYCLE_BEATS := 8.0
 const GO_LEAD := 1.0
 
 var demo: String = ""
+## demo 一拍切幾格（預設 2 = 半拍；有三連音的段落用 6）
+var demo_sub: int = 2
 ## 示範角色的路徑（世界座標），第 0 點 = 連招第 0 拍
 var ghost: PackedVector2Array = PackedVector2Array()
 ## 這面旗子所在段落的左右範圍
@@ -48,8 +50,6 @@ var last_sync_beat: float = -INF
 ## 這面旗子多久可以放行一次（拍）：段落裡的機關若是 4 拍一輪（tools/campaign.py 會折成 4 拍），GO 就每 4 拍一次
 var cycle_beats: float = CYCLE_BEATS
 ## 設計時連招第 0 拍落在 8 拍小節的第幾拍（關卡產生器算的；-1 = 沒有）。重生時對齊它，後面 8 拍一輪的段落才不會差半小節
-## 剛重生時在旗子前至少停幾拍再 GO（有完整的 3、2、1 倒數）
-const REST_BEATS := 2.0
 var phase8: float = -1.0
 
 
@@ -68,7 +68,7 @@ func has_demo() -> bool:
 
 func go_beat() -> float:
 	# 長譜面先完整示範，再留出鏡頭返回與倒數時間；仍對齊八拍循環。
-	var demo_beats := maxf(demo.length() * 0.5, ghost_end())
+	var demo_beats := maxf(demo.length() / float(demo_sub), ghost_end())
 	return start_beat + maxf(GO_BEATS, ceilf((demo_beats + 2.0) / CYCLE_BEATS) * CYCLE_BEATS)
 
 
@@ -139,7 +139,7 @@ func _physics_process(delta: float) -> void:
 				state = State.WATCH
 				start_beat = ceilf((b + 1.0) / 8.0) * 8.0
 				_demo_step = 0
-				_last_slot = floori((b - start_beat) * 2.0)
+				_last_slot = floori((b - start_beat) * float(demo_sub))
 				p.watching = true
 				p.watch_x = _start_x() if p.auto_running else position.x
 			else:
@@ -160,18 +160,18 @@ func _physics_process(delta: float) -> void:
 
 
 func _tick_sounds(b: float) -> void:
-	var s := floori((b - start_beat) * 2.0)
+	var s := floori((b - start_beat) * float(demo_sub))
 	if s == _last_slot:
 		return
 	_last_slot = s
-	var go := roundi((go_beat() - start_beat) * 2.0)
+	var go := roundi((go_beat() - start_beat) * float(demo_sub))
 	if s >= 0 and s < demo.length() and s < go and demo[s] != ".":
 		_play_demo(demo[s])
-	var lead := roundi(GO_LEAD * 2.0)
+	var lead := roundi(GO_LEAD * float(demo_sub))
 	if s == go - lead:
 		GameState.play_cue("cue", 0.0, -6.0)
 		GameState.reset_notes()
-	elif s == go - lead - 6 or s == go - lead - 4 or s == go - lead - 2:
+	elif s == go - lead - 3 * demo_sub or s == go - lead - 2 * demo_sub or s == go - lead - demo_sub:
 		GameState.play_cue("block", 0.0, -8.0)
 
 
@@ -226,7 +226,10 @@ func _tick_auto_flag(b: float, p: Player, _near: bool) -> void:
 		_auto_can_stop = false
 		## 至少留出完整倒數：離下一個小節頭太近就等再下一輪
 		## 不再為了湊滿 3、2、1 多等一整輪：最近一個來得及的小節頭就出發，倒數從現在一路數到 0
-		var rest := REST_BEATS if p.rest_after_respawn else 0.02
+		## 最近一個來得及的小節頭就出發：在旗子前最多等一輪（4 拍）。
+		## 重生後一樣只等最近的一輪（rest_after_respawn 只保證會停下來倒數、不會直接衝過去）；
+		## 反應時間改由長椅離旗子比較遠來給（tools/campaign.py _bench_chunk）
+		var rest := 0.02
 		_auto_go_at = ceilf((b + rest + LEAD_BEATS) / cycle_beats) * cycle_beats
 		p.auto_flag_wait = true
 		p.watch_x = _start_x()
@@ -372,11 +375,11 @@ func _draw_prompt() -> void:
 
 func _draw_ghost(t: float) -> void:
 	var fade := clampf(t * 4.0, 0.0, 1.0) * clampf((ghost_end() + 0.3 - t) * 3.0, 0.0, 1.0)
-	var slot := mini(floori(t * 2.0), demo.length() - 1)
+	var slot := mini(floori(t * float(demo_sub)), demo.length() - 1)
 	var hit := -1.0
 	for k in range(slot, -1, -1):
 		if demo[k] != "." and demo[k] != "-":
-			hit = t - k * 0.5
+			hit = t - k / float(demo_sub)
 			break
 	var p := to_local(_ghost_at(minf(t, ghost_end())))
 	var body := Color(GHOST_COLOR, 0.55 * fade)

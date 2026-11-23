@@ -63,13 +63,14 @@ class Orb:
     y: float
     slots: set  # 絕對半拍編號（非循環），設計用
     used: set = field(default_factory=set)
+    sub: int = 2  # 一拍切幾格：2 = 半拍（slots 是半拍編號）、3 = 三連音（slots 是 1/3 拍編號）
     kind: str = ""  # "" 一般、"high" 高音符（重力減半，兩拍回原高度）、"low" 低音符（速度減半，半拍回原高度）
 
     def active_slot(self, beat):
-        s0 = int(beat * 2 // 1)
+        s0 = int(beat * self.sub // 1)
         for s in (s0, s0 + 1, s0 - 1, s0 + 2):
             if s in self.slots:
-                dt = (beat - s * 0.5) * SPB
+                dt = (beat - s / self.sub) * SPB
                 if -ORB_EARLY <= dt <= ORB_LATE:
                     return s
         return None

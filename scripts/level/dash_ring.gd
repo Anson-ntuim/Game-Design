@@ -59,9 +59,14 @@ func accepts(dash_beat: float) -> bool:
 	return s != -1 and s != _used_slot
 
 
-func consume(dash_beat: float) -> void:
-	_used_slot = _slot_at(dash_beat)
+## 回傳衝刺時離 x 格幾秒（負的是提早），給打擊評價用
+func consume(dash_beat: float) -> float:
+	var s := _slot_at(dash_beat)
+	_used_slot = s
 	_burst = 1.0
+	if s == -1 or GameState.free_rhythm():
+		return 0.0
+	return (dash_beat - s * 0.5) * Conductor.sec_per_beat
 
 
 func _physics_process(_delta: float) -> void:

@@ -44,7 +44,7 @@ var _settings: PauseMenu
 
 func _ready() -> void:
 	Engine.time_scale = 1.0
-	_selected = clampi(GameState.level_index, 0, maxi(0, LevelData.LEVELS.size() - 1))
+	_selected = clampi(GameState.level_index, 0, maxi(0, LevelData.visible_count() - 1))
 	GameState.level_index = _selected
 	if String(GameState.get_meta("home_screen", "")) == "levels":
 		_screen = Screen.LEVELS
@@ -103,10 +103,10 @@ func _overlay_open() -> bool:
 
 ## 「開始遊戲」接續的關卡：還沒通關的第一關，全破就是上次玩的那關
 func _continue_level() -> int:
-	for i in LevelData.LEVELS.size():
+	for i in LevelData.visible_count():
 		if not GameState.records.has(i):
 			return i
-	return clampi(GameState.level_index, 0, LevelData.LEVELS.size() - 1)
+	return clampi(GameState.level_index, 0, LevelData.visible_count() - 1)
 
 
 func _handle_main() -> void:
@@ -146,7 +146,7 @@ func _handle_levels() -> void:
 	elif Input.is_action_just_pressed("move_right") or Input.is_action_just_pressed("down"):
 		step = 1
 	if step != 0:
-		var next := clampi(_selected + step, 0, LevelData.LEVELS.size() - 1)
+		var next := clampi(_selected + step, 0, LevelData.visible_count() - 1)
 		if next != _selected:
 			_selected = next
 			_bump = 1.0
@@ -164,7 +164,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _starting or _overlay_open() or key == null or not key.pressed or key.echo:
 		return
 	var digit := key.physical_keycode - KEY_1
-	if _screen == Screen.LEVELS and digit >= 0 and digit < LevelData.LEVELS.size():
+	if _screen == Screen.LEVELS and digit >= 0 and digit < LevelData.visible_count():
 		_selected = digit
 		_start_level(digit)
 
@@ -365,7 +365,7 @@ func _draw_main(size: Vector2) -> void:
 
 ## 卡片排法：最多同時看三張，選中的那張大一點、往上提
 func _card_layout() -> Array[Dictionary]:
-	var n := LevelData.LEVELS.size()
+	var n := LevelData.visible_count()
 	var first := clampi(_selected - 1, 0, maxi(0, n - 3))
 	var out: Array[Dictionary] = []
 	for k in range(first, mini(n, first + 3)):
@@ -423,7 +423,7 @@ func _draw_levels(size: Vector2) -> void:
 	dash.bg_color = Color(0, 0, 0, 0)
 	_round(next, Color(UiKit.NIGHT, 0.4), 22, UiKit.LINE, 3)
 	UiKit.text(_view, Vector2(next.position.x, next.get_center().y + 8), next.size.x,
-		"%02d　%s" % [LevelData.LEVELS.size() + 1, NEXT_UP], 16, Color("A598D1"), HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.6))
+		"%02d　%s" % [LevelData.visible_count() + 1, NEXT_UP], 16, Color("A598D1"), HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.6))
 
 	_draw_detail(_detail_rect())
 	## 底部操作說明
@@ -482,7 +482,8 @@ func _draw_card(i: int, r: Rect2, selected: bool) -> void:
 		_round(Rect2(tx, ty, tw, 24), Color("3B2A6B"), 10)
 		UiKit.text(_view, Vector2(tx, ty + 17), tw, t, 12, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER, UiKit.font(0.6))
 		tx += tw + 6
-	var line := "尚未通關" if rec.is_empty() else "最佳 %s · 倒下 %d" % [_fmt_time(float(rec["time"])), int(rec["deaths"])]
+	var line := "尚未通關" if rec.is_empty() else "%s最佳 %s · 倒下 %d" % [
+		("評等 %s · " % GameState.rank_of(float(rec["score"]))) if rec.has("score") else "", _fmt_time(float(rec["time"])), int(rec["deaths"])]
 	UiKit.text(_view, Vector2(x, lr.end.y - 16), -1, line, 13, UiKit.CYAN if not rec.is_empty() else UiKit.MUTED)
 	_view.draw_set_transform(Vector2.ZERO)
 
@@ -500,7 +501,7 @@ func _draw_detail(panel: Rect2) -> void:
 	var tiles := [
 		["最佳時間", _fmt_time(float(rec["time"])) if not rec.is_empty() else "—"],
 		["最少倒下", str(int(rec["deaths"])) if not rec.is_empty() else "—"],
-		["新機關", str((info.get("tags", []) as Array).size())],
+		["最佳評等", GameState.rank_of(float(rec["score"])) if rec.has("score") else "—"],
 	]
 	var tw := (panel.size.x - 56.0 - 20.0) / 3.0
 	for k in 3:

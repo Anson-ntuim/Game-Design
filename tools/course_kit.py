@@ -598,8 +598,9 @@ def _section_body(pat, name, script, hint, *, gates=(), pistons=(), crates=(), l
         ]
         print(f"  重力切換：x={flip_x}格  {g_a:g} → {float(g_other):g}")
     if course.orbs:
-        out["orbs"] = [[x, y, notes_for(s), orb_tones[i % len(orb_tones)]]
-                       + ([2, False, o.kind] if getattr(o, "kind", "") else [])
+        out["orbs"] = [[x, y, notes_for(s, 8 * getattr(o, "sub", 2)), orb_tones[i % len(orb_tones)]]
+                       + ([getattr(o, "sub", 2), False] + ([o.kind] if getattr(o, "kind", "") else [])
+                          if getattr(o, "kind", "") or getattr(o, "sub", 2) != 2 else [])
                        for i, ((x, y, s), o) in enumerate(zip(show(course.orbs, 0), course.orbs))]
     if course.rings:
         out["rings"] = [[x, y, notes_for(s), ring_tones[i % len(ring_tones)]]

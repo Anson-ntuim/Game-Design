@@ -70,9 +70,14 @@ func is_ready() -> bool:
 	return s != -1 and (GameState.free_rhythm() or s != _used_slot)
 
 
-func consume() -> void:
-	_used_slot = _active_slot()
+## 回傳按下時離 x 格幾秒（負的是提早），給打擊評價用
+func consume() -> float:
+	var s := _active_slot()
+	_used_slot = s
 	_burst = 1.0
+	if s == -1 or GameState.free_rhythm():
+		return 0.0
+	return (Conductor.song_beat - _slot_beats(s)) * Conductor.sec_per_beat
 
 
 func _physics_process(_delta: float) -> void:
