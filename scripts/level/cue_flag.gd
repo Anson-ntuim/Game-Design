@@ -47,6 +47,8 @@ var _auto_go_at: float = -1.0
 var _auto_waiting: bool = false
 ## GO 出發後要先離開旗子旁，才會再在這面旗停一次
 var _auto_can_stop: bool = true
+## 這一趟已經被旗子放行（GO 或剛好在 GO 拍跑到）：放行前不能用跳／衝刺越過起跑點；回到段落左邊、倒下、重生就重來
+var _cleared: bool = false
 var _last_player_x: float = -INF
 ## 最近一次放玩家出發的連招第 0 拍（停下倒數或直接通過都算；測試機器人用來對拍）
 var last_sync_beat: float = -INF
@@ -154,6 +156,7 @@ func _physics_process(delta: float) -> void:
 			if p.auto_running and p.watching and b + 0.004 >= go_beat() - LEAD_BEATS:
 				p.watching = false
 				_auto_can_stop = false
+				_cleared = true
 			elif not p.auto_running and b >= go_beat() - 0.25:
 				p.watching = false
 			_tick_sounds(b)
@@ -211,15 +214,28 @@ func _tick_auto_flag(b: float, p: Player, _near: bool) -> void:
 	if p.control_locked or teleported:
 		_clear_auto_wait(p)
 		_auto_can_stop = true
+		_cleared = false
 	if x > position.x + TRIGGER_AHEAD + 40.0 or x < section_from:
 		_auto_can_stop = true
+	if x < section_from:
+		_cleared = false
 	var sx := _start_x()
+	## 還沒放行就想用跳的、衝刺的越過起跑點：拉回起跑點（落地後就會停下倒數）。
+	## 只有剛好在 GO 拍跑到（下面的直接通過）或 GO 之後，才能往前
+	if not _cleared and not _auto_waiting and not p.control_locked and not p.is_on_floor() \
+			and x > sx + 2.0 and x < position.x + TRIGGER_AHEAD + 400.0:
+		p.global_position.x = sx
+		p.velocity.x = minf(p.velocity.x, 0.0)
+		p.cancel_dash()
+		x = sx
+		_last_player_x = x
 	## 跑到起跑點：剛好在 GO 拍就直接通過，否則停下倒數
 	var arrive := p.is_on_floor() and not p.control_locked and x >= sx - 6.0 and x < position.x + TRIGGER_AHEAD
 	var phase := fposmod(b + LEAD_BEATS, cycle_beats)
 	if not _auto_waiting and arrive and _auto_can_stop and not p.rest_after_respawn \
 			and (phase < PASS_TOLERANCE or phase > cycle_beats - PASS_TOLERANCE):
 		_auto_can_stop = false
+		_cleared = true
 		last_sync_beat = roundf((b + LEAD_BEATS) / cycle_beats) * cycle_beats
 		GameState.play_cue("cue", 0.0, -6.0)
 		GameState.reset_notes()
@@ -245,6 +261,7 @@ func _tick_auto_flag(b: float, p: Player, _near: bool) -> void:
 		last_sync_beat = _auto_go_at
 		_clear_auto_wait(p)
 		_auto_can_stop = false
+		_cleared = true
 		p.auto_running = true
 		p.rest_after_respawn = false
 

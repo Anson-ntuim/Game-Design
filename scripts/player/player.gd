@@ -220,9 +220,10 @@ func _physics_process(delta: float) -> void:
 		_air_dash = true
 		_launch_active = false
 
-	if Input.is_action_just_pressed("jump") and not watching:
+	## 在旗子前等 GO 的時候不能跳、不能衝（不能用跳或衝刺越過旗子）
+	if Input.is_action_just_pressed("jump") and not watching and not auto_flag_wait:
 		_jump_buffer = jump_buffer_time
-	if Input.is_action_just_pressed("dash") and not watching:
+	if Input.is_action_just_pressed("dash") and not watching and not auto_flag_wait:
 		_try_dash(input_x, on_floor)
 	if Input.is_action_just_pressed("use_item") and not watching:
 		_try_slow_item()
@@ -340,6 +341,12 @@ func _tick_timers(delta: float) -> void:
 					## 輕重力時等比縮小上彈，避免連續穿環一路爬出螢幕
 					var g_scale := sqrt(maxf(_gravity_strength, 1.0) / 2400.0)
 					velocity.y = -ring_pop_speed * g_scale
+
+
+## 旗子把角色拉回起跑點時用：立刻停掉衝刺
+func cancel_dash() -> void:
+	if _dash_timer > 0.0:
+		_end_dash()
 
 
 func _end_dash() -> void:
