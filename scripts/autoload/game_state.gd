@@ -184,7 +184,8 @@ func _ready() -> void:
 		music_player.bus = "Music"
 
 
-## 執行時建立 Music、SFX 兩條匯流排（專案沒有 bus layout 檔）
+## Music、SFX 兩條匯流排：default_bus_layout.tres 已經建好（網頁版要一開始就有，執行時才加的匯流排網頁版會沒聲音）；
+## 這裡只是保險，萬一沒有就補上
 static func _ensure_buses() -> void:
 	for bus_name: String in ["Music", "SFX"]:
 		if AudioServer.get_bus_index(bus_name) == -1:

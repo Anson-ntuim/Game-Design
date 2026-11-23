@@ -2,11 +2,10 @@ extends Node2D
 ## 主選單與選關（照設計稿「Heart Beat UI 改版提案」的主選單、選擇關卡兩個畫面）。
 ##   主選單：大標題、角色、四個按鈕（開始遊戲＝接續上次的關、選擇關卡、自訂音樂、設定）。
 ##   選擇關卡：關卡卡片沿著一條路線排、右邊是選中那關的詳細資料、判定難度和開始按鈕。
-##   設定：用暫停選單同一個面板（PauseMenu），左邊換成返回、延遲校正、機關說明、關卡設計台。
+##   設定：用暫停選單同一個面板（PauseMenu），左邊換成返回、延遲校正、機關說明。
 ## 從遊戲裡「回選關」會直接進到選擇關卡（GameState 的 meta "home_screen"）。
 
 const MAIN_SCENE := "res://scenes/main.tscn"
-const CHART_SCENE := "res://scenes/chart_studio.tscn"
 ## 關卡卡片的場景縮圖：背景主題 → 天空、近景兩層
 const THUMBS := {
 	"calm_city": ["res://assets/themes/heartbeat_city/bg/sky.png", "res://assets/themes/heartbeat_city/bg/city_near.png"],
@@ -244,7 +243,7 @@ func _open_music_setup() -> void:
 func _open_settings() -> void:
 	_settings = PauseMenu.new()
 	_settings.title = "設定"
-	var acts: Array = ["返回", "延遲校正", "機關說明", "關卡設計台"]
+	var acts: Array = ["返回", "延遲校正", "機關說明"]
 	if not OS.has_feature("web"):
 		acts.append("離開遊戲")
 	_settings.actions = acts
@@ -262,8 +261,6 @@ func _on_settings_chosen(action: String) -> void:
 		_open_calibrator()
 	elif action == "機關說明":
 		_open_guide()
-	elif action == "關卡設計台":
-		get_tree().change_scene_to_file(CHART_SCENE)
 	elif action == "離開遊戲":
 		get_tree().quit()
 
