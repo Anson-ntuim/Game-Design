@@ -278,6 +278,9 @@ func _on_gui_input(event: InputEvent) -> void:
 	if mb == null or not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT or _overlay_open() or _starting:
 		return
 	if _screen == Screen.MAIN:
+		if _latency_rect().has_point(mb.position):
+			_open_calibrator()
+			return
 		for dir: int in [-1, 1]:
 			if _skin_arrow_rect(dir).has_point(mb.position):
 				_change_skin(dir)
@@ -336,6 +339,16 @@ func _round(r: Rect2, fill: Color, radius: float, border: Color = Color(0, 0, 0,
 		st.set_border_width_all(bw)
 		st.border_color = border
 	_view.draw_style_box(st, r)
+
+
+## 主畫面右上的「校正延遲」按鈕位置（在目前音樂標籤的左邊）
+func _latency_rect() -> Rect2:
+	var size := _view.size
+	var music := "♪ %s · %d BPM" % [UiKit.safe_text(Conductor.track_name), roundi(Conductor.bpm)]
+	var mw := UiKit.width_of(music, 15) + 32.0
+	var off := "%+.0f ms" % GameState.audio_offset_ms
+	var w := 42.0 + UiKit.width_of("校正延遲", 16) + 10.0 + UiKit.width_of(off, 14) + 18.0
+	return Rect2(size.x - 88 - mw - 12 - w, 72, w, 40)
 
 
 func _chip(pos: Vector2, label: String, dot: Color = Color(0, 0, 0, 0)) -> float:
@@ -400,9 +413,17 @@ func _draw_main(size: Vector2) -> void:
 	var music := "♪ %s · %d BPM" % [UiKit.safe_text(Conductor.track_name), roundi(Conductor.bpm)]
 	var mw := UiKit.width_of(music, 15) + 32.0
 	_chip(Vector2(size.x - 88 - mw, 72), music)
-	var off := "延遲 %+.0f ms" % GameState.audio_offset_ms
-	var ow := UiKit.width_of(off, 15) + 48.0
-	_chip(Vector2(size.x - 88 - mw - 10 - ow, 72), off, UiKit.CYAN)
+	## 延遲校正按鈕（獨立一顆，點了就開校正）：耳機圖示＋「校正延遲」＋目前數值
+	var lr := _latency_rect()
+	var hot := lr.has_point(_view.get_local_mouse_position())
+	_round(lr, Color(UiKit.CYAN, 0.95 if hot else 0.85), 20, UiKit.TEXT if hot else Color(UiKit.CYAN, 0.0), 2)
+	var hc := Vector2(lr.position.x + 24, lr.get_center().y + 2)
+	_view.draw_arc(hc + Vector2(0, 2), 9.0, PI, TAU, 16, UiKit.INK, 3.0, true)
+	_view.draw_rect(Rect2(hc.x - 11, hc.y + 1, 5, 9), UiKit.INK)
+	_view.draw_rect(Rect2(hc.x + 6, hc.y + 1, 5, 9), UiKit.INK)
+	UiKit.text(_view, Vector2(lr.position.x + 42, lr.position.y + 27), -1, "校正延遲", 16, UiKit.INK, HORIZONTAL_ALIGNMENT_LEFT, UiKit.font(0.7))
+	var off := "%+.0f ms" % GameState.audio_offset_ms
+	UiKit.text(_view, Vector2(lr.position.x + 42 + UiKit.width_of("校正延遲", 16) + 10, lr.position.y + 27), -1, off, 14, Color(UiKit.INK, 0.7))
 
 	## 左下操作說明
 	var x := 88.0

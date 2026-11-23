@@ -344,11 +344,11 @@ func break_combo() -> void:
 	combo = 0
 
 
-## 評等分數（0～100）：準度 =（perfect + 0.5 × good）／打中總數，再每倒下一次扣 5 分
+## 評等分數（0～100）：準度 =（perfect + 0.5 × good）／打中總數，再每倒下一次扣 1 分
 static func rank_score(p: int, g: int, d: int) -> float:
 	var total := p + g
 	var acc := 100.0 if total == 0 else 100.0 * (float(p) + 0.5 * float(g)) / float(total)
-	return clampf(acc - 5.0 * float(d), 0.0, 100.0)
+	return clampf(acc - 1.0 * float(d), 0.0, 100.0)
 
 
 ## 分數 → 等級：S ≥ 90、A ≥ 75、B ≥ 55、其餘 C

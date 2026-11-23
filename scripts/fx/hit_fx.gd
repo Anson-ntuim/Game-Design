@@ -79,6 +79,6 @@ func _draw() -> void:
 		draw_set_transform(Vector2(0, rise), 0.0, Vector2(pop, pop))
 		var font := UiKit.display_font(800)
 		var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-		draw_string_outline(font, Vector2(-w * 0.5, 0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 6, Color(0.08, 0.05, 0.12, fade))
+		draw_string_outline(font, Vector2(-w * 0.5, 0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 4, Color(0.08, 0.05, 0.12, fade * 0.45))
 		draw_string(font, Vector2(-w * 0.5, 0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(lc, fade))
 		draw_set_transform(Vector2.ZERO)

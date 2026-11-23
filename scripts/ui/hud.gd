@@ -301,11 +301,11 @@ func _draw_combo(safe: Rect2, lift: float) -> void:
 		var num := str(c)
 		var w := font.get_string_size(num, HORIZONTAL_ALIGNMENT_LEFT, -1, 54).x
 		_view.draw_set_transform(Vector2(right - w * 0.5 * s, y), 0.0, Vector2(s, s))
-		_view.draw_string_outline(font, Vector2(-w * 0.5, 0), num, HORIZONTAL_ALIGNMENT_LEFT, -1, 54, 8, Color(UiKit.NIGHT, 0.85))
+		_view.draw_string_outline(font, Vector2(-w * 0.5, 0), num, HORIZONTAL_ALIGNMENT_LEFT, -1, 54, 5, Color(UiKit.NIGHT, 0.45))
 		_view.draw_string(font, Vector2(-w * 0.5, 0), num, HORIZONTAL_ALIGNMENT_LEFT, -1, 54, col)
 		_view.draw_set_transform(Vector2.ZERO)
 		var lw := font.get_string_size("COMBO", HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-		_view.draw_string_outline(font, Vector2(right - lw, y + 24), "COMBO", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 5, Color(UiKit.NIGHT, 0.85))
+		_view.draw_string_outline(font, Vector2(right - lw, y + 24), "COMBO", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 3, Color(UiKit.NIGHT, 0.45))
 		_view.draw_string(font, Vector2(right - lw, y + 24), "COMBO", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(col, 0.85))
 	elif _break_t > 0.0:
 		var a := clampf(_break_t / 0.4, 0.0, 1.0)

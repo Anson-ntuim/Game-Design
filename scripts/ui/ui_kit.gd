@@ -131,7 +131,9 @@ static func text(ci: CanvasItem, pos: Vector2, width: float, s: String, size: in
 		align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT, f: Font = null) -> void:
 	if f == null:
 		f = font()
-	ci.draw_string(f, pos + Vector2(0, 2), s, align, width, size, Color(0, 0, 0, color.a * 0.6))
+	## 很淡的陰影（只給淺色字）：深色字（按鈕上的字）加陰影反而糊掉，就不加
+	if color.get_luminance() > 0.5:
+		ci.draw_string(f, pos + Vector2(0, 1), s, align, width, size, Color(0, 0, 0, color.a * 0.22))
 	ci.draw_string(f, pos, s, align, width, size, color)
 
 
@@ -139,10 +141,11 @@ static func text(ci: CanvasItem, pos: Vector2, width: float, s: String, size: in
 static func bold_text(ci: CanvasItem, pos: Vector2, width: float, s: String, size: int, fill: Color, glow: Color,
 		align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_LEFT) -> void:
 	var f := title_font()
-	var o := maxi(4, int(size / 7.0))
-	ci.draw_string_outline(f, pos + Vector2(0, 4), s, align, width, size, o + 4, Color(INK, fill.a * 0.8))
-	ci.draw_string_outline(f, pos, s, align, width, size, o + 4, Color(INK, fill.a))
-	ci.draw_string_outline(f, pos, s, align, width, size, o, Color(glow, glow.a * fill.a))
+	## 外框和陰影都減輕：太粗太深會吃掉字的形狀、不好讀
+	var o := maxi(3, int(size / 10.0))
+	ci.draw_string_outline(f, pos + Vector2(0, 2), s, align, width, size, o + 2, Color(INK, fill.a * 0.3))
+	ci.draw_string_outline(f, pos, s, align, width, size, o + 2, Color(INK, fill.a * 0.55))
+	ci.draw_string_outline(f, pos, s, align, width, size, o, Color(glow, glow.a * fill.a * 0.8))
 	ci.draw_string(f, pos, s, align, width, size, fill)
 
 

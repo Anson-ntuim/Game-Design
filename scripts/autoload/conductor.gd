@@ -57,6 +57,10 @@ var song_position: float:
 			return _phys_raw - first_beat_offset - user_offset * rate
 		return _raw_position() - first_beat_offset - user_offset * rate
 
+## 開始播音樂後等它真的出聲（播放位置 > 0）才開始走時計；最多等這麼久
+const AUDIO_START_TIMEOUT_USEC := 600000
+var _await_audio_until: int = 0
+
 ## 物理時計：每個物理步固定前進 delta × rate 秒，再慢慢對齊真實時鐘（差太多直接跳過去）
 var _phys_raw: float = 0.0
 var _phys_prev: float = 0.0
@@ -179,6 +183,9 @@ func start(gameplay: bool = true, from_beginning: bool = true) -> void:
 	set_rate(recommended_rate())
 	if _player.stream:
 		_player.play(0.0)
+		## 音樂真正開始出聲之前，節拍時計先停在起點等它（網頁版要等好幾十毫秒），
+		## 不然一開始時計跑在音樂前面，第一面旗子的倒數聲會和音樂對不上
+		_await_audio_until = _start_usec + AUDIO_START_TIMEOUT_USEC
 
 
 func is_music_playing() -> bool:
@@ -255,6 +262,17 @@ func _process(_delta: float) -> void:
 	if not _running or paused:
 		return
 	var now := Time.get_ticks_usec()
+	if _await_audio_until > 0:
+		if not _clock_only and _player.playing and _player.get_playback_position() <= 0.0 and now < _await_audio_until:
+			## 還沒出聲：時計停在原地
+			_anchor_usec = now
+			_phys_valid = false
+			return
+		_await_audio_until = 0
+		_anchor_usec = now
+		if not _clock_only and _player.playing:
+			_anchor_position = _measured_position(now)
+		_phys_valid = false
 	var real_dt := float(now - _anchor_usec) / 1000000.0
 	_duck = move_toward(_duck, duck_target, real_dt * 10.0)
 	_player.volume_db = linear_to_db(1.0 - 0.8 * _duck)
