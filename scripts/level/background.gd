@@ -1,6 +1,11 @@
 class_name Background
 extends Node2D
 const BrokenRing := preload("res://scripts/level/memory_ring.gd")
+const FIRST_STREET_PARALLAX := 0.46
+const FIRST_STREET_HEIGHT := 0.76
+## 高架橋原圖中，愛心招牌正上方的三扇玻璃。保留窗框與裡面的剪影。
+const LANDING_WINDOWS := [Rect2(562, 426, 21, 30), Rect2(587, 426, 18, 30),
+	Rect2(610, 426, 21, 30)]
 ## 多層視差背景：依 GameState.visual_theme 切換經典霓虹／心動之城／暮色遺跡。
 ## 經典＝天空漸層、月亮、等化器、遺跡剪影；素材主題＝貼圖分層或全景＋輕量光點。
 ## 顏色取自目前風格的色盤，每個音樂段落仍會換氛圍。
@@ -13,6 +18,7 @@ var quiet: bool = false
 ## 關卡可選的背景演出；第一關先使用低干擾的動態城市試作。
 var profile: String = ""
 var _ambient_time: float = 0.0
+var _window_beats: float = -1.0
 var _bird_rng := RandomNumberGenerator.new()
 var _next_flock := 4.0
 class MemoryFlock:
@@ -42,6 +48,11 @@ func _on_theme_changed(_index: int) -> void:
 
 func _process(delta: float) -> void:
 	_ambient_time += delta
+	if _window_beats >= 0.0:
+		# 遊戲的 delta 已隨音樂速度縮放；世界時間一拍固定為參考 BPM 的拍長。
+		_window_beats += delta * Conductor.REFERENCE_BPM / 60.0
+		if _window_beats >= 2.5:
+			clear_landing_windows()
 	if profile == "broken_memory" and _ambient_time >= _next_flock:
 		while not _flocks.is_empty() and _ambient_time - _flocks.front().start >= 10.0:
 			_flocks.pop_front()
@@ -255,12 +266,41 @@ func _draw_first_beat_sunset(tl: Vector2, size: Vector2, center: Vector2) -> voi
 	# 只移動街景的水平視差；高度依原圖比例，拱橋與實際可走的平台分開。
 	var street_origin := tl - Vector2(0, size.y * 0.07)
 	if blocks != null:
-		_blit_parallax(blocks, street_origin, size, center, 0.46, "bottom",
-			Color(0.94, 0.91, 0.97, 0.94), true, 0.76)
+		_blit_parallax(blocks, street_origin, size, center, FIRST_STREET_PARALLAX, "bottom",
+			Color(0.94, 0.91, 0.97, 0.94), true, FIRST_STREET_HEIGHT)
+		_draw_landing_windows(blocks, street_origin, size, center)
 	if signs != null:
 		var alpha := 0.5 * Conductor.pulse(4.5) * GameState.anim_amount()
-		_blit_parallax(signs, street_origin, size, center, 0.46, "bottom",
-			Color(1, 1, 1, alpha), true, 0.76)
+		_blit_parallax(signs, street_origin, size, center, FIRST_STREET_PARALLAX, "bottom",
+			Color(1, 1, 1, alpha), true, FIRST_STREET_HEIGHT)
+
+
+func light_landing_windows() -> void:
+	_window_beats = 0.0
+
+
+func clear_landing_windows() -> void:
+	_window_beats = -1.0
+
+
+func _draw_landing_windows(street: Texture2D, tl: Vector2, size: Vector2, center: Vector2) -> void:
+	# 只點亮第一坑後面那棟樓，使用第一段街景的原圖座標；其他重複街區照常。
+	var height := size.y * FIRST_STREET_HEIGHT
+	var street_scale := height / street.get_height()
+	var origin := Vector2(center.x * (1.0 - FIRST_STREET_PARALLAX), tl.y + size.y - height)
+	if origin.x + LANDING_WINDOWS.back().end.x * street_scale < tl.x:
+		return
+	draw_set_transform(origin, 0.0, Vector2.ONE * street_scale)
+	for i in LANDING_WINDOWS.size():
+		var pane: Rect2 = LANDING_WINDOWS[i]
+		var age := _window_beats - 0.25 * i
+		var light := smoothstep(0.0, 0.15, age) * (1.0 - smoothstep(1.15, 2.0, age))
+		draw_rect(pane, Color(0.17, 0.12, 0.25, 0.64 * (1.0 - light)))
+		if light > 0.0:
+			draw_rect(pane.grow(3), Color(1.0, 0.70, 0.36, light * 0.09 * GameState.anim_amount()))
+			draw_texture_rect_region(street, pane, pane, Color(1.54, 1.46, 1.12, light))
+			draw_rect(pane, Color(1.0, 0.88, 0.56, 0.30 * light))
+	draw_set_transform(Vector2.ZERO)
 
 
 ## 第一關試作：拆開天空元素，讓環境緩慢呼吸，但不干擾平台判讀。

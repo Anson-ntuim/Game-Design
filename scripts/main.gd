@@ -9,6 +9,9 @@ var camera: Camera2D
 var hud: Hud
 var level_size: Vector2 = Vector2.ZERO
 var spawn_point: Vector2 = Vector2.ZERO
+var _background: Background
+var _first_pit_center_x := INF
+var _first_bank_end_x := 0.0
 
 var _hints: Array[Dictionary] = []
 ## 和 _hints 一一對應的標準節奏（見 level_data.gd）
@@ -49,14 +52,14 @@ func _ready() -> void:
 	# 角色與機關先更新，鏡頭最後才追蹤物理解算後的位置。
 	process_physics_priority = 10
 	add_to_group("main")
-	var bg := Background.new()
-	add_child(bg)
+	_background = Background.new()
+	_background.profile = String(LevelData.level_info(GameState.level_index).get("background_profile", ""))
+	add_child(_background)
 	_build_level()
 	_collect_cullable()
 	_camera_ground_y = spawn_point.y
-	bg.level_height = level_size.y
-	bg.stage = _stage
-	bg.profile = String(LevelData.level_info(GameState.level_index).get("background_profile", ""))
+	_background.level_height = level_size.y
+	_background.stage = _stage
 
 	player = Player.new()
 	player.position = spawn_point
@@ -64,6 +67,8 @@ func _ready() -> void:
 	add_child(player)
 	player.died.connect(_on_player_died)
 	player.damaged.connect(_on_player_damaged)
+	if is_finite(_first_pit_center_x):
+		player.ground_jump_landed.connect(_on_city_jump_landed)
 
 	camera = Camera2D.new()
 	camera.limit_left = 0
@@ -456,9 +461,15 @@ func hud_section_info() -> Dictionary:
 
 
 func _do_respawn(pos: Vector2) -> void:
+	_background.clear_landing_windows()
 	player.respawn_at(pos)
 	camera.position = player.global_position
 	_camera_ground_y = player.global_position.y
+
+
+func _on_city_jump_landed(takeoff_x: float, landing: Vector2) -> void:
+	if takeoff_x < _first_pit_center_x and landing.x > _first_pit_center_x and landing.x < _first_bank_end_x:
+		_background.light_landing_windows()
 
 
 func _on_checkpoint_activated(cp: Checkpoint) -> void:
@@ -497,10 +508,8 @@ func _warp_to_section(index: int, silent: bool = false) -> void:
 	if i < _section_spawns.size():
 		target = _section_spawns[i]
 	var h: Dictionary = _hints[i]
-	player.respawn_at(target)
+	_do_respawn(target)
 	player.checkpoint_position = target
-	camera.position = target
-	_camera_ground_y = target.y
 	_gravity_applied = -1.0
 	_gravity_target = float(h.get("gravity", 2400.0))
 	_apply_section_gravity()
@@ -560,6 +569,15 @@ func _build_level() -> void:
 	_tempo_pad_mode = data["tempo_stage"]
 	_gravity_zones = data["gravity_zones"]
 	level_size = Vector2(width * TILE, height * TILE)
+	if _background.profile == "first_beat_sunset":
+		# 取首坑兩岸與下一個坑的邊緣，讓燈光跟著實際地形，支援踩在岸邊落地。
+		var floor_row := grid[height - 1].replace("%", "#")
+		var left := floor_row.find("# ") + 1
+		var right := floor_row.find(" #", left) + 1
+		if left > 0 and right > left:
+			_first_pit_center_x = (left + right) * TILE * 0.5
+			var next_gap := floor_row.find("# ", right)
+			_first_bank_end_x = (next_gap + 1 if next_gap >= 0 else width) * TILE
 	for spec: Dictionary in data["tempo_pads"]:
 		var pad := TempoPad.new()
 		pad.setup(spec["pos"], spec["bpm"], spec["width"])
