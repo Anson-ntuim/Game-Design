@@ -137,7 +137,7 @@ func _physics_process(delta: float) -> void:
 		return
 	var b := Conductor.song_beat
 	## 倒數、節拍器、示範的聲音用聲音時計（和音樂對齊）；畫面、放行時機照 song_beat
-	var ab := Conductor.audio_beat
+	var ab := Conductor.cue_beat
 	var near := state == State.FREE and _at_flag(p)
 	_prompt = move_toward(_prompt, 1.0 if near else 0.0, delta * 5.0)
 	_counting = move_toward(_counting, 1.0 if state == State.WATCH or _auto_waiting or _in_start_zone(p) else 0.0, delta * 4.0)

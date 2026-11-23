@@ -90,7 +90,7 @@ func _physics_process(_delta: float) -> void:
 		var p := get_tree().get_first_node_in_group("player") as Player
 		if p and p.is_on_floor():
 			_used_slot = -9999
-	var s := floori(Conductor.audio_beat * float(subdiv))
+	var s := floori(Conductor.cue_beat * float(subdiv))
 	if s != _last_cue_slot and notes[posmod(s, notes.length())] == "x":
 		_last_cue_slot = s
 		if BeatPattern.near_player(self, 700.0) and (_awake or not quiet):

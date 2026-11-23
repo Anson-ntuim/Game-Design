@@ -46,7 +46,7 @@ func _physics_process(_delta: float) -> void:
 	var since := BeatPattern.since_hit(notes, b) * Conductor.sec_per_beat
 	_harmful = since >= FIRE_DELAY and since < FIRE_DELAY + FIRE_TIME
 	## 提示音用聲音時計（和音樂對齊），尖刺本身的畫面照 song_beat
-	var ab := Conductor.audio_beat
+	var ab := Conductor.cue_beat
 	var since_a := BeatPattern.since_hit(notes, ab) * Conductor.sec_per_beat
 	var hit_id := roundi((ab - since_a / Conductor.sec_per_beat) * 2.0)
 	if since_a < 0.1 and hit_id != _last_hit:

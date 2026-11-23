@@ -36,7 +36,7 @@ func _ready() -> void:
 	_shape.one_way_collision = true
 	add_child(_shape)
 	solid = _is_solid(Conductor.song_beat)
-	_was_on = BeatPattern.is_on(notes, Conductor.audio_beat)
+	_was_on = BeatPattern.is_on(notes, Conductor.cue_beat)
 	_shape.disabled = not solid
 
 
@@ -47,7 +47,7 @@ func _is_solid(b: float) -> bool:
 func _physics_process(_delta: float) -> void:
 	var b := Conductor.song_beat
 	## 出現的提示音用聲音時計（和音樂對齊）；平台實體照 song_beat
-	var on := BeatPattern.is_on(notes, Conductor.audio_beat)
+	var on := BeatPattern.is_on(notes, Conductor.cue_beat)
 	if on and not _was_on and BeatPattern.near_player(self):
 		GameState.play_cue("cue", tone - 12.0, -8.0)
 	_was_on = on

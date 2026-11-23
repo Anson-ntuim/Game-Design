@@ -241,7 +241,8 @@ func _on_gui_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	_hit = move_toward(_hit, 0.0, delta * 4.0)
 	## 自己追拍子（不用 Conductor.beat：那是含延遲設定的拍子）
-	var rb := floori(_raw_beat())
+	## 鼓聲用提示音時計（和遊戲裡的提示音一樣提早一點點），按鍵量測照 _raw_beat
+	var rb := floori(Conductor.cue_beat)
 	if rb != _last_beat:
 		_on_beat(rb)
 	_age += delta

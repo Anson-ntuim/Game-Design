@@ -150,6 +150,8 @@ var _launch_gravity: float = 0.0
 var _orb_float: float = 1.0
 ## 打中時角色閃白一下（秒）
 var _flash_t: float = 0.0
+## 按早的那一下：等保留時間過了還沒打到音符才算按錯（見 _orb_miss_feedback）
+var _miss_pending: Dictionary = {}
 ## 上一次踩拍的拍號
 var _step_beat: int = -99999
 ## 低畫質時略過不變的重畫（節點位移仍由引擎帶動）
@@ -275,6 +277,7 @@ func _physics_process(delta: float) -> void:
 				recent_air_presses.append(Conductor.song_beat)
 				if recent_air_presses.size() > 8:
 					recent_air_presses.pop_front()
+	_tick_miss_pending()
 	# 垂直：跳躍是固定拋物線（放開跳鍵不會切短）；只有節拍鼓有一小段等速上升
 	_tick_gravity_blend(delta)
 	if _jumping:
@@ -418,6 +421,8 @@ func _floor_pad() -> Node:
 
 ## 動作就是樂器：每次跳躍依序彈出目前和弦的音
 func _ground_jump() -> void:
+	## 那一下落地變成地面跳（也沒按錯）
+	_miss_pending = {}
 	var note := GameState.next_note()
 	GameState.play_sfx("pluck", note)
 	_begin_jump(0.0, 0.0, false, "ground")
@@ -520,6 +525,8 @@ func _try_slow_item() -> void:
 
 ## 節奏音符：在音符亮起的瞬間按跳，再跳一次並補回空中衝刺
 func _orb_jump(orb: Node) -> void:
+	## 按早一點、在保留時間內打中了：剛才那一下不算按錯
+	_miss_pending = {}
 	var dt := 0.0
 	if orb.has_method("consume"):
 		var r: Variant = orb.call("consume")
@@ -541,15 +548,24 @@ func _orb_jump(orb: Node) -> void:
 
 
 ## 碰著還沒亮（或已用過）的音符按跳：出聲提示按錯拍
+## 先別算按錯：按早一點點時，這一下會保留 jump_buffer_time，音符在這段時間內亮起照樣算打中。
+## 等保留時間過了還是沒打到音符，才出錯音、斷連擊（_tick_miss_pending）
 func _orb_miss_feedback() -> void:
 	for area in _hurtbox.get_overlapping_areas():
 		if area is RhythmOrb:
-			GameState.break_combo()
-			GameState.play_sfx("miss", 0.0, -6.0)
-			_fail_puff = 0.35
 			var b := Conductor.song_beat
-			last_miss = {"what": "orb", "beat": b, "off": BeatPattern.offset((area as RhythmOrb).notes, b)}
+			_miss_pending = {"beat": b, "off": BeatPattern.offset((area as RhythmOrb).notes, b)}
 			return
+
+
+func _tick_miss_pending() -> void:
+	if _miss_pending.is_empty() or _jump_buffer > 0.0:
+		return
+	GameState.break_combo()
+	GameState.play_sfx("miss", 0.0, -6.0)
+	_fail_puff = 0.35
+	last_miss = {"what": "orb", "beat": _miss_pending["beat"], "off": _miss_pending["off"]}
+	_miss_pending = {}
 
 
 ## 衝刺中穿過衝刺環：按下衝刺的時間在環的拍子上，就清掉冷卻、補回空中衝刺，衝刺結束時往上彈
@@ -740,6 +756,7 @@ func respawn_at(pos: Vector2) -> void:
 
 
 func _reset_motion() -> void:
+	_miss_pending = {}
 	auto_running = false
 	auto_flag_wait = false
 	ride = null

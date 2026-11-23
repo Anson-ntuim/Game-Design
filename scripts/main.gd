@@ -189,7 +189,7 @@ func _process(delta: float) -> void:
 
 	var b := Conductor.song_beat
 	## 節拍提示音用聲音時計（和音樂對齊）
-	var cue_slot := floori(Conductor.audio_beat * 2.0)
+	var cue_slot := floori(Conductor.cue_beat * 2.0)
 	if cue_slot != _score_cue_slot:
 		_score_cue_slot = cue_slot
 		if subdivision_cue and not _completed and not watching and not player.control_locked:

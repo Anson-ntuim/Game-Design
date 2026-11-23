@@ -71,7 +71,7 @@ func _physics_process(_delta: float) -> void:
 	var st := _state_at(Conductor.song_beat)
 	position = bottom_pos - Vector2(0, st[0])
 	## 每升一格的提示音用聲音時計（和音樂對齊）；位置照畫面的拍子
-	var count: int = _state_at(Conductor.audio_beat)[1]
+	var count: int = _state_at(Conductor.cue_beat)[1]
 	if count != _last_step:
 		if count > _last_step and count > 0 and BeatPattern.near_player(self, 800.0):
 			var k := (count - 1) % STEP_TONES.size()

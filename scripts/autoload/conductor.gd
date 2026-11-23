@@ -119,6 +119,14 @@ var audio_beat: float:
 	get:
 		return song_beat + user_offset * rate / sec_per_beat
 
+## 節奏提示音提早這麼多秒觸發：音效在畫面更新時才檢查、才送出，平均比音樂晚一點點（實測約 5 ms）
+const CUE_LEAD_SEC := 0.005
+
+## 「提示音時計」：聲音時計再提早 CUE_LEAD_SEC。遊戲發出的節奏提示音（旗子倒數、節拍器、音符／環的提示音……）都用這個觸發
+var cue_beat: float:
+	get:
+		return audio_beat + CUE_LEAD_SEC * rate / sec_per_beat
+
 var _player: AudioStreamPlayer
 var _stream_length: float = 0.0
 var _loop_count: int = 0

@@ -80,7 +80,7 @@ func _physics_process(_delta: float) -> void:
 		_last_cue_slot = s
 		_open_flash = 1.0
 	## 提示音用聲音時計，和音樂對齊（閃光照畫面的拍子）
-	var sa := floori(Conductor.audio_beat * 2.0)
+	var sa := floori(Conductor.cue_beat * 2.0)
 	if sa != _last_sound_slot and notes[posmod(sa, notes.length())] == "x":
 		_last_sound_slot = sa
 		if BeatPattern.near_player(self, 700.0):
