@@ -26,6 +26,8 @@ const FESTIVAL_GOLD := Color("ffe19a")
 const RAIN_BLUE := Color("78bfff")
 const RAIN_VIOLET := Color("b89cff")
 const RAIN_AMBER := Color("ffd18a")
+const DAWN_BLUE := Color("bed8ea")
+const DAWN_IVORY := Color("fff1d4")
 
 var player: Player
 var tempo_mode: bool = false
@@ -149,6 +151,8 @@ func _on_view_draw() -> void:
 		edge = FESTIVAL_PINK
 	elif _rainy_street_style():
 		edge = RAIN_BLUE
+	elif _dawn_airport_style():
+		edge = DAWN_BLUE
 	var done := not _results.is_empty()
 	var lift := 110.0 * ease(_bars, -2.0)
 	if not done and lift < 109.0:
@@ -199,6 +203,11 @@ func _broken_memory_style() -> bool:
 	return idx >= 0 and idx < LevelData.LEVELS.size() and LevelData.LEVELS[idx].get("background_profile", "") == "broken_memory"
 
 
+func _dawn_airport_style() -> bool:
+	var idx := GameState.level_index
+	return idx >= 0 and idx < LevelData.LEVELS.size() and LevelData.LEVELS[idx].get("background_profile", "") == "dawn_airport"
+
+
 ## 左上：關卡編號和整關縮圖，亮起的部分是已經跑過的距離
 func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
 	var box := Rect2(safe.position.x, safe.position.y - lift, 320, 72)
@@ -213,6 +222,8 @@ func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
 	elif _broken_memory_style():
 		UiKit.memory_panel(_view, box)
 		edge = Color("ceb7d6")
+	elif _dawn_airport_style():
+		UiKit.dawn_panel(_view, box)
 	else:
 		UiKit.panel(_view, box, edge)
 	var idx := GameState.level_index
@@ -223,6 +234,8 @@ func _draw_progress(safe: Rect2, edge: Color, lift: float) -> void:
 		code_fill = FESTIVAL_CYAN
 	elif _rainy_street_style():
 		code_fill = RAIN_BLUE
+	elif _dawn_airport_style():
+		code_fill = DAWN_IVORY
 	UiKit.pill(_view, box.position + Vector2(14, 10), LevelData.level_code(idx), code_fill, UiKit.INK, 13)
 	var info := UiKit.minimap(idx)
 	var progress := 0.0
@@ -241,6 +254,7 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 	var lit_g := UiKit.gravity_lightness(_gravity)
 	var box_h := 72.0 + (28.0 if lit_g > 0.02 else 0.0)
 	var box := Rect2(safe.end.x - 260, safe.position.y - lift, 260, box_h)
+	var label_color := Color(1, 1, 1, 0.6)
 	if _soft_city_style():
 		UiKit.soft_panel(_view, box)
 	elif _sakura_park_style():
@@ -252,10 +266,13 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 	elif _broken_memory_style():
 		UiKit.memory_panel(_view, box)
 		edge = Color("ceb7d6")
+	elif _dawn_airport_style():
+		UiKit.dawn_panel(_view, box)
+		label_color = Color(DAWN_IVORY, 0.90)
 	else:
 		UiKit.panel(_view, box, edge, 0.6 * _death_bump)
 	var p := box.position
-	UiKit.text(_view, p + Vector2(16, 30), -1, "死亡", 13, Color(1, 1, 1, 0.6))
+	UiKit.text(_view, p + Vector2(16, 30), -1, "死亡", 13, label_color)
 	var s := 1.0 + 0.4 * _death_bump
 	_view.draw_set_transform(p + Vector2(52, 31), 0.0, Vector2(s, s))
 	UiKit.bold_text(_view, Vector2.ZERO, -1, str(GameState.deaths), 22,
@@ -263,7 +280,7 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 	_view.draw_set_transform(Vector2.ZERO)
 	var judge := String(GameState.DIFFICULTIES[GameState.difficulty]["name"])
 	var jw := UiKit.width_of(judge, 13) + 24.0
-	UiKit.text(_view, Vector2(box.end.x - jw - 52, p.y + 30), -1, "判定", 13, Color(1, 1, 1, 0.6))
+	UiKit.text(_view, Vector2(box.end.x - jw - 52, p.y + 30), -1, "判定", 13, label_color)
 	var judge_fill := Color(edge, 0.9)
 	if _sakura_park_style():
 		judge_fill = Color(SAKURA_MINT, 0.94)
@@ -273,7 +290,7 @@ func _draw_stats(safe: Rect2, edge: Color, lift: float) -> void:
 		judge_fill = Color(RAIN_VIOLET, 0.94)
 	UiKit.pill(_view, Vector2(box.end.x - jw - 14, p.y + 12), judge, judge_fill, UiKit.INK, 13)
 
-	UiKit.text(_view, p + Vector2(16, 60), -1, "律動", 13, Color(1, 1, 1, 0.6))
+	UiKit.text(_view, p + Vector2(16, 60), -1, "律動", 13, label_color)
 	var segs := 12
 	var x0 := p.x + 56.0
 	var seg_w := (box.end.x - 16.0 - x0 - (segs - 1) * 3.0) / segs
@@ -398,6 +415,7 @@ func _draw_hint(safe: Rect2, edge: Color) -> void:
 	var box := Rect2(safe.get_center().x - box_w * 0.5, top, box_w, y - top + 14.0)
 	var a := _hint_alpha
 	var memory := _broken_memory_style()
+	var dawn := _dawn_airport_style()
 	var soft_city := _soft_city_style()
 	var sakura := _sakura_park_style()
 	var festival := _music_festival_style()
@@ -412,6 +430,8 @@ func _draw_hint(safe: Rect2, edge: Color) -> void:
 		UiKit.rainy_panel(_view, box, a, 0.25)
 	elif memory:
 		UiKit.memory_panel(_view, box, a)
+	elif dawn:
+		UiKit.dawn_panel(_view, box, a)
 	else:
 		UiKit.panel(_view, box, edge, 0.3, a, 10.0)
 	for i in lines.size():
@@ -433,6 +453,9 @@ func _draw_hint(safe: Rect2, edge: Color) -> void:
 		elif memory:
 			title_col = Color("fff0dc")
 			body_col = Color("f1eaf4")
+		elif dawn:
+			title_col = DAWN_IVORY
+			body_col = Color("fffaf1")
 		var col := Color(title_col, a) if title else Color(body_col, 0.92 * a)
 		UiKit.text(_view, Vector2(0, baselines[i]), safe.end.x + safe.position.x, lines[i], sizes[i], col, HORIZONTAL_ALIGNMENT_CENTER)
 
@@ -452,6 +475,8 @@ func _draw_tip(safe: Rect2) -> void:
 		UiKit.festival_panel(_view, box, a, 0.35)
 	elif _rainy_street_style():
 		UiKit.rainy_panel(_view, box, a, 0.35)
+	elif _dawn_airport_style():
+		UiKit.dawn_panel(_view, box, a)
 	else:
 		UiKit.panel(_view, box, TIP_COLOR, 0.35, a, 10.0)
 	var x := box.position.x + 22.0

@@ -3,6 +3,7 @@ extends Node2D
 
 const TILE := LevelData.TILE
 const SELECT_SCENE := "res://scenes/home.tscn"
+const AirportCheckpoint := preload("res://scripts/level/airport_checkpoint.gd")
 
 var player: Player
 var camera: Camera2D
@@ -47,12 +48,12 @@ func _ready() -> void:
 	process_physics_priority = 10
 	add_to_group("main")
 	var bg := Background.new()
+	bg.profile = String(LevelData.LEVELS[GameState.level_index].get("background_profile", ""))
 	add_child(bg)
-	_build_level()
+	_build_level(bg.profile)
 	_camera_ground_y = spawn_point.y
 	bg.level_height = level_size.y
 	bg.stage = _stage
-	bg.profile = String(LevelData.LEVELS[GameState.level_index].get("background_profile", ""))
 
 	player = Player.new()
 	player.position = spawn_point
@@ -403,7 +404,7 @@ func _compute_section_spawns(grid: Array[String], width: int, height: int) -> vo
 		_section_spawns.append(found if has else spawn_point)
 
 
-func _build_level() -> void:
+func _build_level(background_profile: String) -> void:
 	var data := LevelData.build(GameState.level_index)
 	var grid: Array[String] = data["grid"]
 	var width: int = data["width"]
@@ -510,7 +511,7 @@ func _build_level() -> void:
 					en.setup(feet)
 					add_child(en)
 				"C":
-					var cp := Checkpoint.new()
+					var cp: Checkpoint = AirportCheckpoint.new() if background_profile == "dawn_airport" else Checkpoint.new()
 					cp.setup(feet)
 					cp.activated.connect(_on_checkpoint_activated)
 					_checkpoints.append(cp)

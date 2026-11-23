@@ -40,6 +40,7 @@ func _draw() -> void:
 	var music_festival := GameState.level_index == 2 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
 	var rainy_street := GameState.level_index == 3 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
 	var broken_memory := GameState.level_index == 4 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
+	var dawn_airport := GameState.level_index == 5 and String(GameState.current_theme().get("id", "")) == "heartbeat_city"
 	var edge_col := edge.lerp(Color.WHITE, pulse * 0.4)
 	if soft_city:
 		edge_col = Color("e9a9c6").lerp(Color("ffe1ed"), pulse * 0.22)
@@ -62,16 +63,22 @@ func _draw() -> void:
 			continue
 		if broken_memory:
 			_draw_memory_stone(r, view, detail)
+		elif dawn_airport:
+			_draw_airport_support(r, view, detail)
 		else:
 			_draw_solid_body(r, ground, detail, soft_city, sakura_park, music_festival, rainy_street)
 
 	var stripe := Color(ground.lightened(0.25), 0.5)
+	if dawn_airport:
+		stripe = Color("b3a5b5", 0.52)
 	var stripe_step := 28.0 if detail == 0 else 18.0
 	for r in slick_rects:
 		if not r.intersects(view):
 			continue
 		if broken_memory:
 			draw_rect(r, Color("3c304e"))
+		elif dawn_airport:
+			draw_rect(r, Color("605668"))
 		else:
 			draw_rect(r, Color("273454") if rainy_street else (Color("34255a") if music_festival else ground.lightened(0.06)))
 		if detail == 0:
@@ -85,11 +92,14 @@ func _draw() -> void:
 
 	for r in side_edges:
 		if r.intersects(view):
-			draw_rect(r, Color(edge_col, edge_col.a * 0.45))
+			draw_rect(r, Color("afa1ad", 0.7) if dawn_airport else Color(edge_col, edge_col.a * 0.45))
 
 	var beat_i := floori(Conductor.song_beat)
 	for r in top_edges:
 		if not r.intersects(view):
+			continue
+		if dawn_airport:
+			_draw_airport_deck(r, view, detail)
 			continue
 		draw_rect(Rect2(r.position, Vector2(r.size.x, 4.0)), edge_col)
 		if detail > 0:
@@ -125,6 +135,45 @@ func _draw() -> void:
 					c = Color(Color("75c8ff").lerp(Color("e6a1ff"), 1.0 if i % 3 == 0 else 0.0),
 						0.24 + pulse * 0.30)
 				draw_rect(Rect2(r.position.x + i * tile + tile * 0.35, r.position.y + 14, tile * 0.3, 4), c)
+
+
+## 觀景台側板由受光上緣漸入灰紫陰影。
+func _draw_airport_support(r: Rect2, view: Rect2, detail: int) -> void:
+	var shoulder := r.position.y + minf(120.0, r.size.y)
+	var light := Color("aa99a2")
+	var shadow := Color("817482")
+	draw_rect(r, shadow)
+	draw_polygon(PackedVector2Array([r.position, Vector2(r.end.x, r.position.y),
+		Vector2(r.end.x, shoulder), Vector2(r.position.x, shoulder)]),
+		PackedColorArray([light, light, shadow, shadow]))
+	if detail == 0:
+		return
+	var visible := r.intersection(view)
+	for col in range(ceili(visible.position.x / 168.0), ceili(visible.end.x / 168.0)):
+		var x := col * 168.0
+		draw_rect(Rect2(x, r.position.y, 1.0, r.size.y), Color("786b78", 0.28))
+		if x + 2.0 < r.end.x:
+			draw_rect(Rect2(x + 1.0, r.position.y, 1.0, r.size.y), Color("dfd1d1", 0.10))
+
+
+func _draw_airport_deck(r: Rect2, view: Rect2, detail: int) -> void:
+	draw_rect(Rect2(r.position, Vector2(r.size.x, 15)), Color("938793"))
+	draw_rect(Rect2(r.position, Vector2(r.size.x, 10)), Color("d0c6bf"))
+	draw_rect(Rect2(r.position + Vector2(0, 9), Vector2(r.size.x, 2)), Color("b5a9ad"))
+	draw_rect(Rect2(r.position, Vector2(r.size.x, 2)), Color("f1e8db"))
+	if detail == 0:
+		return
+	var visible := r.intersection(view)
+	for col in range(floori(visible.position.x / 112.0), ceili(visible.end.x / 112.0)):
+		var x := col * 112.0
+		var slab := Rect2(x, r.position.y + 2.0, 112.0, 7.0).intersection(r)
+		if slab.has_area():
+			var warm := Color("e2d8ca")
+			var cool := Color("d4cbca")
+			draw_polygon(PackedVector2Array([slab.position, Vector2(slab.end.x, slab.position.y),
+				slab.end, Vector2(slab.position.x, slab.end.y)]), PackedColorArray([warm, cool, cool, warm]))
+		if x > r.position.x:
+			draw_rect(Rect2(x, r.position.y + 2.0, 1.0, 8.0), Color("c1b5b8"))
 
 
 ## 磚縫跟隨世界座標，跨越地形矩形時仍能對齊。斷裂只出現在磚面，走道亮邊最後才繪製。

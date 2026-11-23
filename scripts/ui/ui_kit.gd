@@ -154,6 +154,17 @@ static func memory_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0) -> voi
 	ci.draw_line(outline[5], outline[0], Color("dfb5c9", 0.82 * alpha), 1.5, true)
 
 
+## 航廈指示牌：上緣映著晨光，文字區以深灰藍玻璃壓住亮天空。
+static func dawn_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0) -> void:
+	var outline := chamfer(rect, 6.0)
+	var upper := Color("344c62", 0.90 * alpha)
+	var lower := Color("21354a", 0.91 * alpha)
+	ci.draw_polygon(outline, PackedColorArray([upper, upper, lower, lower, lower, upper]))
+	outline.append(outline[0])
+	ci.draw_polyline(outline, Color("c0d7e5", 0.72 * alpha), 1.0, true)
+	ci.draw_line(outline[0], outline[0] + Vector2(30, 0), Color("ffdf9e", 0.90 * alpha), 2.0, true)
+
+
 ## 心動之城的柔和面板：圓角、葡萄紫半透明底與粉彩細框，保留文字對比。
 static func soft_panel(ci: CanvasItem, rect: Rect2, alpha: float = 1.0) -> void:
 	if _soft_panel_style == null:

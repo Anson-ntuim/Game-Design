@@ -54,7 +54,8 @@ const LEVELS: Array[Dictionary] = [
 		"patterns": TempoCourseData.PATTERNS, "chunks": TempoCourseData.CHUNKS, "tempo_stage": true,
 		"background_profile": "broken_memory"},
 	{"name": "06", "desc": "", "stars": 3,
-		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true},
+		"patterns": Demo4Data.PATTERNS, "chunks": Demo4Data.CHUNKS, "stage": true,
+		"background_profile": "dawn_airport"},
 ]
 
 ## 同一種機關（含不同按法）在整條關卡線上，前幾次才保留提示文字

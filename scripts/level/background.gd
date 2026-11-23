@@ -1,6 +1,7 @@
 class_name Background
 extends Node2D
 const BrokenRing := preload("res://scripts/level/memory_ring.gd")
+const DawnAirport := preload("res://scripts/level/dawn_airport.gd")
 ## 多層視差背景：依 GameState.visual_theme 切換經典霓虹／心動之城／暮色遺跡。
 ## 經典＝天空漸層、月亮、等化器、遺跡剪影；素材主題＝貼圖分層或全景＋輕量光點。
 ## 顏色取自目前風格的色盤，每個音樂段落仍會換氛圍。
@@ -99,7 +100,7 @@ func _draw() -> void:
 		"layered":
 			_draw_art_layers(theme, tl, size, center, quiet)
 			## 雨夜本身已有前後景雨絲與漣漪，通用圓形光點會使畫面過於雜亂。
-			if (detail > 0 or quiet) and profile not in ["rainy_street", "broken_memory"]:
+			if (detail > 0 or quiet) and profile not in ["rainy_street", "broken_memory", "dawn_airport"]:
 				_draw_motes(tl, size, center, b, pulse, groove)
 		"panorama":
 			_draw_panorama(theme, tl, size, center, quiet)
@@ -135,6 +136,9 @@ func _draw_classic(tl: Vector2, size: Vector2, center: Vector2, b: float, pulse:
 
 
 func _draw_art_layers(theme: Dictionary, tl: Vector2, size: Vector2, center: Vector2, dim: bool) -> void:
+	if profile == "dawn_airport" and not dim:
+		_draw_dawn_airport(tl, size, center)
+		return
 	if profile == "broken_memory" and not dim:
 		_draw_broken_memory(tl, size, center)
 		return
@@ -169,6 +173,23 @@ func _draw_art_layers(theme: Dictionary, tl: Vector2, size: Vector2, center: Vec
 				_blit_parallax(tex, tl, size, center, factor, anchor, tint, true, height_frac)
 			_:
 				_blit_parallax(tex, tl, size, center, factor, anchor, tint, false, height_frac)
+
+
+func _draw_dawn_airport(tl: Vector2, size: Vector2, center: Vector2) -> void:
+	var base := "res://assets/themes/dawn_airport/bg/"
+	var sky := GameState.theme_texture(base + "sky.png")
+	var terminal := GameState.theme_texture(base + "airport.png")
+	var bridge := GameState.theme_texture(base + "bridge.png")
+	if sky != null:
+		DawnAirport.draw_sky(self, sky, tl, size, Conductor.beat_fraction(), GameState.anim_amount())
+	DawnAirport.draw_balloons(self, tl, size, _ambient_time)
+	if terminal != null:
+		_blit_parallax(terminal, tl - Vector2(0, size.y * 0.115), size, center - Vector2(1000, 0),
+			0.16, "bottom", Color(1.0, 0.97, 0.96, 0.94), true, 0.82)
+	if bridge != null:
+		_blit_parallax(bridge, tl - Vector2(0, size.y * 0.06), size, center, 0.36, "bottom",
+			Color(0.94, 0.90, 0.96, 0.87), true, 0.50)
+	DawnAirport.draw_promenade(self, tl, size, center, Conductor.song_beat, GameState.anim_amount())
 
 
 func _draw_broken_memory(tl: Vector2, size: Vector2, center: Vector2) -> void:
