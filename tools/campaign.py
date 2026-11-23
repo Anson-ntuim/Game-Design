@@ -41,8 +41,13 @@ FO = dict(F, orb_footholds=True)
 SEEN = set()
 
 
+## 只是新的節奏、或學過的東西組合起來的段落：不跳說明卡（只有新機關、新物件第一次出現才教）
+RHYTHM_ONLY = {"hops", "rise", "pillar_air", "ring2", "offbeat", "tramp_air", "orb_down", "swing2",
+               "swing_dash", "dash_chain", "swing_mid", "half", "triplet"}
+
+
 def tut(key, title, body):
-    if key in SEEN:
+    if key in SEEN or key in RHYTHM_ONLY:
         return title
     SEEN.add(key)
     return f"{title}\n{body}"
