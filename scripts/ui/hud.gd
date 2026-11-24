@@ -323,6 +323,20 @@ func _timing_stats() -> Array[float]:
 
 
 ## 照測試結果修正延遲：平均按早（負）＝判定時計比你聽到的晚 → 延遲設定減少同樣多；紀錄清空重新量
+## 測試關：[ ／ ] 讓旗子等提示音早 5 ms／晚 5 ms（直接改 Conductor._sfx_extra，用耳朵對音樂，再把數字回報）
+func _unhandled_input(event: InputEvent) -> void:
+	if not LevelData.is_test(GameState.level_index):
+		return
+	var k := event as InputEventKey
+	if k == null or not k.pressed or k.echo:
+		return
+	if k.physical_keycode == KEY_BRACKETLEFT or k.physical_keycode == KEY_BRACKETRIGHT:
+		var step := 0.005 if k.physical_keycode == KEY_BRACKETLEFT else -0.005
+		Conductor._sfx_extra = clampf(Conductor._sfx_extra + step, -0.2, 0.4)
+		show_message("提示音提早 %d ms" % roundi(Conductor._sfx_extra * 1000.0), 1.0)
+		get_viewport().set_input_as_handled()
+
+
 func _apply_timing_test() -> void:
 	var st := _timing_stats()
 	if st[0] < TIMING_APPLY_MIN:
@@ -335,10 +349,12 @@ func _apply_timing_test() -> void:
 func _draw_timing_test(safe: Rect2) -> void:
 	var tl: Array[Dictionary] = GameState.timing_log
 	var w := minf(520.0, safe.size.x - 40.0)
-	var box := Rect2(safe.get_center().x - w * 0.5, safe.position.y + 62.0, w, 124.0)
+	var box := Rect2(safe.get_center().x - w * 0.5, safe.position.y + 62.0, w, 148.0)
 	_capsule(box, Color(UiKit.NIGHT, 0.85))
 	var x0 := box.position.x + 18.0
 	var tw := box.size.x - 36.0
+	UiKit.text(_view, Vector2(x0, box.position.y + 136), tw, "旗子提示音提早 %d ms　按 [ 更早、] 更晚" % roundi(Conductor._sfx_extra * 1000.0),
+		13, UiKit.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	if tl.is_empty():
 		UiKit.text(_view, Vector2(box.position.x, box.position.y + 40), box.size.x, "跟著音樂踩音符，這裡會顯示你按早還是按晚", 16, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
 		UiKit.text(_view, Vector2(box.position.x, box.position.y + 70), box.size.x, "延遲設定 %+d ms" % roundi(GameState.audio_offset_ms), 14, UiKit.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
