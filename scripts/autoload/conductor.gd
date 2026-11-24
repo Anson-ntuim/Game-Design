@@ -96,6 +96,11 @@ func _physics_process(delta: float) -> void:
 		_phys_raw += err * 0.05
 
 
+## 除錯用：物理時計比真實時鐘快（正）或慢（負）幾 ms
+func phys_lag_ms() -> float:
+	return (_phys_raw - _raw_position()) * 1000.0 if _phys_valid else 0.0
+
+
 ## 畫面用的拍子：和角色一樣在前後兩個物理步之間插值（鞦韆座椅、繩子才會和抓著的角色完全對齊）
 func visual_beat() -> float:
 	if not _phys_valid or paused:
@@ -127,7 +132,12 @@ const CUE_LEAD_SEC := 0.005
 ## 所以提示音要再提早一個輸出延遲，才會和音樂同時到耳朵（網頁上這段常有幾十 ms；桌機回報 0）
 var cue_beat: float:
 	get:
-		return audio_beat + (_output_latency + CUE_LEAD_SEC) * rate / sec_per_beat
+		return audio_beat + (_output_latency + CUE_LEAD_SEC + _sfx_extra) * rate / sec_per_beat
+
+## 網頁版：音效從送出到聽到，實測比音樂多慢約 110 ms（網頁的混音一次算一大段，新的音效要等下一段才開始）。
+## 實測：校正（聽鼓聲）+53 ms、測試關（聽音樂）要 −60 ms 才準，差 113 ms。提示音在網頁上再提早這麼多
+const WEB_SFX_EXTRA_SEC := 0.11
+var _sfx_extra: float = WEB_SFX_EXTRA_SEC if OS.has_feature("web") else 0.0
 
 var _player: AudioStreamPlayer
 var _stream_length: float = 0.0
