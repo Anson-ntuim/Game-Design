@@ -19,6 +19,10 @@ const SKINS: Array[Dictionary] = [
 		"name": "開心小猴", "texture": "res://assets/characters/monkey_side.png",
 		"frames": "res://assets/characters/monkey/", "frame_anchor": Vector2(224, 280), "frame_height": 192.0,
 	},
+	{
+		"name": "志玲姐姐", "texture": "res://assets/characters/giraffe_side.png",
+		"frames": "res://assets/characters/giraffe/", "frame_anchor": Vector2(224, 280), "frame_height": 192.0,
+	},
 ]
 ## 判定難度：音符、衝刺環、光柱的判定窗，以 60 fps 的幀數計（x 拍前 early 幀到後 late 幀內按下都算準）。
 ## 簡單比半拍（120 BPM 時 15 幀）還寬，提早或晚半拍也算準；音符和衝刺環最多往前找兩個半拍格，所以不能超過 30 幀。
