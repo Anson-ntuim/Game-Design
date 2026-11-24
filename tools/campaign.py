@@ -965,6 +965,24 @@ def level6(pat):
         gen_level3.DASH_IGNORE_TAIL = False
 
 
+def level7(pat):
+    """測試關（不在選單裡，首頁按 T 進來）：整關都是一拍一顆的黃色音符，HUD 顯示每一下按早／按晚幾 ms"""
+    ## 一連串超過 4 顆會一路往下沉掉坑，所以每 4 顆音符落地一次、落地那拍直接再跳：每一拍都要按
+    chain = lambda groups: [J(0)] + [x for g in range(groups) for x in
+                                     ([O(g * 5 + b) for b in range(1, 5)] + ([J(g * 5 + 5)] if g < groups - 1 else []))]
+    return seamless(pat, [
+        intro("節奏測試\n跟著音樂一拍一下踩音符，上方會顯示你每一下按早／按晚幾 ms"),
+        (sec(pat, "測試 1", chain(2), "測試 1", **FO)),
+        bench(),
+        (sec(pat, "測試 2", chain(3), "測試 2", **FO)),
+        bench(),
+        (sec(pat, "測試 3", chain(4), "測試 3", **FO)),
+        bench(),
+        (sec(pat, "測試 4", chain(4), "測試 4", **FO)),
+        goal("終點"),
+    ])
+
+
 LEVELS = {
     1: (level1, "Campaign1Data", "正式版第一關・教學：自動前進、固定跳躍、尖刺預告、空中衝刺、光柱、黃色音符。"),
     2: (level2, "Campaign2Data", "正式版第二關：衝刺環、節拍平台、旋律平台，後半和第一關的東西混合。"),
@@ -972,6 +990,7 @@ LEVELS = {
     4: (level4, "Campaign4Data", "正式版第四關（雨夜街道）：盪鞦韆、音符上下、音符串夾旋律平台。"),
     5: (level5, "Campaign5Data", "正式版第五關（破碎回憶）：大音符、小音符，鞦韆夾在音符串中間。"),
     6: (level6, "Campaign6Data", "正式版第六關（隱藏關）：三連音、大中小音符上下、超長段落。"),
+    7: (level7, "Campaign7Data", "測試關：整關一拍一顆黃色音符，量按鍵早晚（首頁按 T）。"),
 }
 
 

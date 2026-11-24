@@ -102,6 +102,8 @@ var death_pos: Vector2 = Vector2.ZERO
 
 var _coyote: float = 0.0
 var _jump_buffer: float = 0.0
+## 最近一次按跳的拍子（測試關用來算「實際按下」比音符早晚多少）
+var _press_beat: float = 0.0
 var _jumping: bool = false
 var _jump_elapsed: float = 0.0
 var _jump_speed_current: float = 0.0
@@ -225,6 +227,7 @@ func _physics_process(delta: float) -> void:
 	## 在旗子前等 GO 的時候不能跳、不能衝（不能用跳或衝刺越過旗子）
 	if Input.is_action_just_pressed("jump") and not watching and not auto_flag_wait:
 		_jump_buffer = jump_buffer_time
+		_press_beat = Conductor.song_beat
 	if Input.is_action_just_pressed("dash") and not watching and not auto_flag_wait:
 		_try_dash(input_x, on_floor)
 	if Input.is_action_just_pressed("use_item") and not watching:
@@ -532,7 +535,11 @@ func _orb_jump(orb: Node) -> void:
 		var r: Variant = orb.call("consume")
 		if r is float:
 			dt = r
-	_hit_feedback((orb as Node2D).global_position, GameState.judge(dt), Vector2(0, -1))
+	var verdict := GameState.judge(dt)
+	_hit_feedback((orb as Node2D).global_position, verdict, Vector2(0, -1))
+	## 判定用的 dt 是「碰到音符那一刻」算的；真正按下的時間可能更早（按早了、跳鍵先保留著）
+	var press_ms := (dt - (Conductor.song_beat - _press_beat) * Conductor.sec_per_beat) * 1000.0
+	GameState.log_timing(press_ms, dt * 1000.0, verdict)
 	var note := GameState.next_note() + 12.0
 	GameState.play_sfx("pluck", note)
 	_wing_timer = 0.3
@@ -565,6 +572,8 @@ func _tick_miss_pending() -> void:
 	GameState.play_sfx("miss", 0.0, -6.0)
 	_fail_puff = 0.35
 	last_miss = {"what": "orb", "beat": _miss_pending["beat"], "off": _miss_pending["off"]}
+	var off_ms: float = float(_miss_pending["off"]) * Conductor.sec_per_beat * 1000.0
+	GameState.log_timing(off_ms, off_ms, "miss")
 	_miss_pending = {}
 
 

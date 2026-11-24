@@ -303,7 +303,18 @@ func _process(delta: float) -> void:
 		_palette_t = minf(1.0, _palette_t + delta / 1.2)
 
 
+## 測試關的按鍵紀錄：每一下 {"press": 實際按下比音符早晚幾 ms（負＝早）, "judge": 判定用的 ms, "v": perfect/good/miss}
+var timing_log: Array[Dictionary] = []
+
+
+func log_timing(press_ms: float, judge_ms: float, verdict: String) -> void:
+	timing_log.append({"press": press_ms, "judge": judge_ms, "v": verdict})
+	if timing_log.size() > 200:
+		timing_log.pop_front()
+
+
 func reset_stats() -> void:
+	timing_log.clear()
 	deaths = 0
 	perfects = 0
 	goods = 0
@@ -612,6 +623,8 @@ func _save() -> void:
 	cfg.set_value("settings", "screen_shake", screen_shake)
 	cfg.set_value("settings", "prefer_reference_tempo", Conductor.prefer_reference_tempo)
 	for k: int in records:
+		if LevelData.is_test(k):
+			continue
 		cfg.set_value("level_%d" % k, "time", records[k]["time"])
 		cfg.set_value("level_%d" % k, "deaths", records[k]["deaths"])
 		for key: String in ["score", "perfects", "goods", "combo"]:

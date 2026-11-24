@@ -58,12 +58,18 @@ const LEVELS: Array[Dictionary] = [
 	{"name": "06", "desc": "終極節奏", "stars": 3, "tags": ["三連音", "大中小音符", "超長段", "高難度"],
 		"patterns": Campaign6Data.PATTERNS, "chunks": Campaign6Data.CHUNKS,
 		"background_profile": "music_festival", "unlock_after": 4},
+	## 測試關：不在選單裡（首頁按 T 進來），不記成績；整關一拍一顆黃色音符，HUD 顯示每一下按早／按晚幾 ms
+	{"name": "測試", "desc": "節奏測試", "stars": 1, "tags": [], "test": true,
+		"patterns": Campaign7Data.PATTERNS, "chunks": Campaign7Data.CHUNKS,
+		"background_profile": "calm_city"},
 ]
 
 ## 選單上看得到幾關：隱藏關（unlock_after）要等指定的關卡通關才算進來；隱藏關一律排在最後
 static func visible_count() -> int:
 	var n := 0
 	for info: Dictionary in LEVELS:
+		if info.get("test", false):
+			break
 		var need := int(info.get("unlock_after", -1))
 		if need >= 0 and not GameState.records.has(need):
 			break
@@ -74,6 +80,18 @@ static func visible_count() -> int:
 ## 關卡資料（超出範圍就回傳第一關，避免舊存檔的關卡編號讓遊戲當掉）
 static func level_info(index: int) -> Dictionary:
 	return LEVELS[clampi(index, 0, LEVELS.size() - 1)]
+
+
+## 測試關的編號（沒有就 -1）
+static func test_index() -> int:
+	for i in LEVELS.size():
+		if LEVELS[i].get("test", false):
+			return i
+	return -1
+
+
+static func is_test(index: int) -> bool:
+	return index >= 0 and index < LEVELS.size() and bool(LEVELS[index].get("test", false))
 
 
 static func total_count() -> int:

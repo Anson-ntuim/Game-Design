@@ -197,6 +197,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if _starting or _overlay_open() or key == null or not key.pressed or key.echo:
 		return
+	## 隱藏的節奏測試關（量按鍵早晚）
+	if key.physical_keycode == KEY_T and LevelData.test_index() >= 0:
+		_start_level(LevelData.test_index())
+		return
 	var digit := key.physical_keycode - KEY_1
 	if _screen == Screen.LEVELS and digit >= 0 and digit < LevelData.visible_count():
 		_selected = digit

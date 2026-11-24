@@ -201,6 +201,8 @@ func _on_view_draw() -> void:
 	if _bars > 0.0:
 		_draw_bars(size, edge)
 	_draw_beat_bar(safe, edge)
+	if LevelData.is_test(GameState.level_index) and not done:
+		_draw_timing_test(safe)
 
 	if _message_timer > 0.0 and not done:
 		_draw_message(size, edge)
@@ -288,6 +290,64 @@ func _draw_stats(safe: Rect2, _edge: Color, lift: float) -> void:
 		var g := Rect2(safe.end.x - gw, box.end.y + 8, gw, 28)
 		_capsule(g, Color(UiKit.CYAN, 0.9))
 		UiKit.text(_view, Vector2(g.position.x, g.position.y + 19), gw, glabel, 13, UiKit.INK, HORIZONTAL_ALIGNMENT_CENTER)
+
+
+## 測試關：上方中間顯示每一下實際按下比音符早晚幾 ms、最近幾下的平均，和一條早晚分布條
+const TIMING_RANGE_MS := 150.0
+const TIMING_RECENT := 16
+
+func _draw_timing_test(safe: Rect2) -> void:
+	var tl: Array[Dictionary] = GameState.timing_log
+	var w := minf(520.0, safe.size.x - 40.0)
+	var box := Rect2(safe.get_center().x - w * 0.5, safe.position.y + 62.0, w, 112.0)
+	_capsule(box, Color(UiKit.NIGHT, 0.85))
+	var x0 := box.position.x + 18.0
+	var tw := box.size.x - 36.0
+	if tl.is_empty():
+		UiKit.text(_view, Vector2(box.position.x, box.position.y + 40), box.size.x, "跟著音樂踩音符，這裡會顯示你按早還是按晚", 16, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+		UiKit.text(_view, Vector2(box.position.x, box.position.y + 70), box.size.x, "延遲設定 %+d ms" % roundi(GameState.audio_offset_ms), 14, UiKit.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+		return
+	var last: Dictionary = tl[tl.size() - 1]
+	var pm := float(last["press"])
+	var verdict := String(last["v"])
+	var vname := {"perfect": "PERFECT", "good": "GOOD", "miss": "沒踩到"}.get(verdict, verdict) as String
+	var line1 := "上一下：按%s %d ms（%s）" % ["早" if pm < 0.0 else "晚", roundi(absf(pm)), vname]
+	if verdict != "miss" and absf(float(last["judge"]) - pm) >= 8.0:
+		line1 += "　判定算 %+d ms" % roundi(float(last["judge"]))
+	var col := UiKit.YELLOW if verdict == "perfect" else (UiKit.CYAN if verdict == "good" else UiKit.PINK)
+	UiKit.text(_view, Vector2(x0, box.position.y + 28), tw, line1, 18, col, HORIZONTAL_ALIGNMENT_CENTER)
+	## 最近幾下（只算有踩到的）的平均和起伏
+	var hits: Array[float] = []
+	for i in range(tl.size() - 1, -1, -1):
+		if String(tl[i]["v"]) != "miss":
+			hits.append(float(tl[i]["press"]))
+			if hits.size() >= TIMING_RECENT:
+				break
+	if not hits.is_empty():
+		var mean := 0.0
+		for h in hits:
+			mean += h
+		mean /= hits.size()
+		var dev := 0.0
+		for h in hits:
+			dev += absf(h - mean)
+		dev /= hits.size()
+		UiKit.text(_view, Vector2(x0, box.position.y + 54), tw,
+			"最近 %d 下平均：按%s %d ms　起伏 ±%d ms　延遲設定 %+d ms" % [hits.size(), "早" if mean < 0.0 else "晚",
+			roundi(absf(mean)), roundi(dev), roundi(GameState.audio_offset_ms)], 14, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	## 分布條：中間＝正拍，左早右晚，最近的點最亮
+	var by := box.position.y + 84.0
+	_view.draw_line(Vector2(x0, by), Vector2(x0 + tw, by), Color(UiKit.LINE, 0.9), 2.0)
+	_view.draw_line(Vector2(x0 + tw * 0.5, by - 10), Vector2(x0 + tw * 0.5, by + 10), Color(UiKit.TEXT, 0.8), 2.0)
+	UiKit.text(_view, Vector2(x0, by + 22), -1, "早", 12, UiKit.MUTED)
+	UiKit.text(_view, Vector2(x0 + tw - 14, by + 22), -1, "晚", 12, UiKit.MUTED)
+	var n := mini(tl.size(), TIMING_RECENT)
+	for i in n:
+		var e: Dictionary = tl[tl.size() - n + i]
+		var t := clampf(float(e["press"]) / TIMING_RANGE_MS, -1.0, 1.0)
+		var a := 0.25 + 0.75 * float(i + 1) / float(n)
+		var c := UiKit.PINK if String(e["v"]) == "miss" else UiKit.YELLOW
+		_view.draw_circle(Vector2(x0 + tw * 0.5 + t * tw * 0.5, by), 4.0 if i < n - 1 else 7.0, Color(c, a))
 
 
 ## 右邊：連擊數（2 連擊以上才出現）。10 連擊變黃、25 連擊變粉紅
