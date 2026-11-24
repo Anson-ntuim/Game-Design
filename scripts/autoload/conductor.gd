@@ -134,10 +134,19 @@ var cue_beat: float:
 	get:
 		return audio_beat + (_output_latency + CUE_LEAD_SEC + _sfx_extra) * rate / sec_per_beat
 
-## 網頁版：音效從送出到聽到，實測比音樂多慢約 110 ms（網頁的混音一次算一大段，新的音效要等下一段才開始）。
-## 實測：校正（聽鼓聲）+53 ms、測試關（聽音樂）要 −60 ms 才準，差 113 ms。提示音在網頁上再提早這麼多
-const WEB_SFX_EXTRA_SEC := 0.11
+## 網頁版：音效從送出到聽到比音樂慢（網頁的混音一次算一大段，新的音效要等下一段才開始）。
+## 實測：校正（聽鼓聲）+53 ms、測試關（聽音樂）要 −60 ms 才準，差 113 ms；
+## 但提早 110 ms 後旗子聲聽起來「稍微太早」——差距裡有一部分是人跟著單獨鼓聲按會偏晚，不是聲音。
+## 所以分開：遊戲裡的提示音提早 75 ms（和音樂對齊），校正的鼓再多提早 35 ms（量出來的設定才和音樂對齊）
+const WEB_SFX_EXTRA_SEC := 0.075
+const WEB_CALIB_EXTRA_SEC := 0.035
 var _sfx_extra: float = WEB_SFX_EXTRA_SEC if OS.has_feature("web") else 0.0
+var _calib_extra: float = WEB_CALIB_EXTRA_SEC if OS.has_feature("web") else 0.0
+
+## 校正鼓聲用的時計：提示音時計（網頁上）再提早一點，抵銷「跟著單獨鼓聲按會偏晚」
+var calib_cue_beat: float:
+	get:
+		return cue_beat + _calib_extra * rate / sec_per_beat
 
 var _player: AudioStreamPlayer
 var _stream_length: float = 0.0
