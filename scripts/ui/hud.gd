@@ -31,6 +31,8 @@ var tempo_mode: bool = false
 var _gravity: float = 2400.0
 
 var _view: Control
+var _live: Control
+var _last_sig: Array = []
 var _message: String = ""
 var _message_timer: float = 0.0
 var _message_duration: float = 1.0
@@ -81,6 +83,12 @@ func _ready() -> void:
 	_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_view)
 	_view.draw.connect(_on_view_draw)
+	## 每拍跳動的節拍點另外一層、每幀重畫（很便宜）；其他字只在內容變了或有動畫時才重畫（網頁上畫字很貴）
+	_live = Control.new()
+	_live.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_live.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_live)
+	_live.draw.connect(_on_live_draw)
 	UiKit.minimap(GameState.level_index)
 	_deaths_shown = GameState.deaths
 
@@ -130,7 +138,17 @@ func _process(delta: float) -> void:
 		mat.set_shader_parameter("amount", _dark)
 		if player:
 			mat.set_shader_parameter("center", player.get_global_transform_with_canvas().origin)
-	_view.queue_redraw()
+	_live.queue_redraw()
+	var animating := _message_timer > 0.0 or _tip_timer > 0.0 or _hint_alpha > 0.0 or _bars > 0.0 \
+		or _death_bump > 0.0 or _combo_pop > 0.0 or _break_t > 0.0 or _fade > 0.0 or not _results.is_empty()
+	var main := get_tree().get_first_node_in_group("main")
+	var info: Variant = main.call("hud_section_info") if main else null
+	var sig: Array = [GameState.deaths, GameState.combo, info, _gravity, GameState.difficulty, _fps_text,
+		GameState.timing_log.size(), Conductor._sfx_extra, GameState.audio_offset_ms, _view.size, _watching,
+		roundi(Conductor.current_bpm), tempo_mode]
+	if animating or sig != _last_sig:
+		_last_sig = sig
+		_view.queue_redraw()
 
 
 ## 盲拍：0 = 全亮、1 = 全暗（角色周圍留一圈微光）
@@ -203,7 +221,6 @@ func _on_view_draw() -> void:
 		_draw_controls(safe, edge, lift)
 	if _bars > 0.0:
 		_draw_bars(size, edge)
-	_draw_beat_bar(safe, edge)
 	if LevelData.is_test(GameState.level_index) and not done:
 		_draw_timing_test(safe)
 
@@ -560,6 +577,13 @@ func _draw_tip(safe: Rect2) -> void:
 
 
 ## 下方中央：只留一個跟著拍子跳的小節拍點（不顯示接下來要按什麼，畫面下方保持乾淨）
+func _on_live_draw() -> void:
+	## 結算畫面、全黑轉場時不畫（原本在結算畫面底下）
+	if not _results.is_empty() or _fade > 0.5:
+		return
+	_draw_beat_bar(UiKit.safe_rect(_live.size), Color.WHITE)
+
+
 func _draw_beat_bar(safe: Rect2, _edge: Color) -> void:
 	var c := Vector2(safe.get_center().x, safe.end.y - 16.0)
 	var b := Conductor.song_beat
@@ -571,8 +595,8 @@ func _draw_beat_bar(safe: Rect2, _edge: Color) -> void:
 		var col: Color = [UiKit.PINK, UiKit.CYAN, UiKit.YELLOW, UiKit.TEXT][i]
 		if on:
 			## 當拍的點外面擴一圈
-			_view.draw_arc(Vector2(x, c.y), 8.0 + 14.0 * (1.0 - p), 0.0, TAU, 24, Color(col, 0.7 * p), 2.5, true)
-		_view.draw_circle(Vector2(x, c.y), (7.0 + 4.0 * p) if on else 4.5, Color(col, 0.95 if on else 0.3))
+			_live.draw_arc(Vector2(x, c.y), 8.0 + 14.0 * (1.0 - p), 0.0, TAU, 24, Color(col, 0.7 * p), 2.5, true)
+		_live.draw_circle(Vector2(x, c.y), (7.0 + 4.0 * p) if on else 4.5, Color(col, 0.95 if on else 0.3))
 
 
 ## 結算畫面下方三個按鈕（選關／再玩一次／下一關）的位置；pos 落在哪一顆就回傳 0～2，都沒有回傳 -1（給觸控用）
