@@ -558,6 +558,11 @@ func _apply_quality() -> void:
 	Engine.max_fps = 0
 	Engine.physics_ticks_per_second = int(q.get("physics_tps", 120))
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
+	## 低畫質：固定用 1280×720（隨螢幕比例加寬）畫好再放大，不照螢幕原生解析度畫。
+	## 大螢幕、Windows 縮放 150% 的筆電上要畫的像素少好幾倍；網頁版聲音也和畫面同一條執行緒，畫面卡聲音就跟著卡
+	var root := get_tree().root if is_inside_tree() else null
+	if root:
+		root.content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT if quality == 0 else Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 
 
 ## 判定窗（秒）：在 x 拍前多久按下還算準
