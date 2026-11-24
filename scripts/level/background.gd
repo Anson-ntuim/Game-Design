@@ -3,6 +3,8 @@ extends Node2D
 const BrokenRing := preload("res://scripts/level/memory_ring.gd")
 const FIRST_STREET_PARALLAX := 0.46
 const FIRST_STREET_HEIGHT := 0.76
+## 高架橋原圖裡兩塊霓虹招牌的上緣。
+const CITY_SIGN_TOPS := [Vector2(636, 470), Vector2(1760, 515)]
 ## 高架橋原圖中，愛心招牌正上方的三扇玻璃。保留窗框與裡面的剪影。
 const LANDING_WINDOWS := [Rect2(562, 426, 21, 30), Rect2(587, 426, 18, 30),
 	Rect2(610, 426, 21, 30)]
@@ -19,6 +21,17 @@ var quiet: bool = false
 var profile: String = ""
 var _ambient_time: float = 0.0
 var _window_beats: float = -1.0
+class CityNote:
+	var source: Vector2
+	var born: float
+	var far: bool
+
+	func lifetime() -> float:
+		return 6.2 if far else 5.4
+
+var _city_notes: Array[CityNote] = []
+var _next_city_note := 1.0
+var _next_note_far := false
 var _bird_rng := RandomNumberGenerator.new()
 var _next_flock := 4.0
 class MemoryFlock:
@@ -48,6 +61,8 @@ func _on_theme_changed(_index: int) -> void:
 
 func _process(delta: float) -> void:
 	_ambient_time += delta
+	if profile == "first_beat_sunset" and not quiet and _ambient_time >= _next_city_note:
+		_emit_city_note()
 	if _window_beats >= 0.0:
 		# 遊戲的 delta 已隨音樂速度縮放；世界時間一拍固定為參考 BPM 的拍長。
 		_window_beats += delta * Conductor.REFERENCE_BPM / 60.0
@@ -273,6 +288,71 @@ func _draw_first_beat_sunset(tl: Vector2, size: Vector2, center: Vector2) -> voi
 		var alpha := 0.5 * Conductor.pulse(4.5) * GameState.anim_amount()
 		_blit_parallax(signs, street_origin, size, center, FIRST_STREET_PARALLAX, "bottom",
 			Color(1, 1, 1, alpha), true, FIRST_STREET_HEIGHT)
+	if blocks != null:
+		_draw_city_notes(blocks, street_origin, size, center)
+
+
+func _emit_city_note() -> void:
+	_next_city_note = _ambient_time + (6.8 if _next_note_far else 2.9)
+	var camera := get_viewport().get_camera_2d()
+	if camera == null or GameState.current_theme().get("kind") != "layered":
+		return
+	var street := GameState.theme_texture("res://assets/themes/first_beat/bg/viaduct.png")
+	if street == null:
+		return
+	# 先找出當下最靠近玩家視野的招牌，出生後就固定在該街區，不會隨鏡頭換招牌。
+	var size := get_viewport_rect().size + Vector2(80, 80)
+	var scale_factor := size.y * FIRST_STREET_HEIGHT / street.get_height()
+	var target_x := (camera.get_screen_center_position().x * FIRST_STREET_PARALLAX + size.x * 0.08) / scale_factor
+	var width := float(street.get_width())
+	var note := CityNote.new()
+	var best := INF
+	for sign_top: Vector2 in CITY_SIGN_TOPS:
+		for x: float in [sign_top.x, 2.0 * width - sign_top.x]:
+			var dx := wrapf(x - target_x, -width, width)
+			if absf(dx) < best:
+				best = absf(dx)
+				note.source = Vector2(target_x + dx, sign_top.y)
+	note.born = _ambient_time
+	note.far = _next_note_far
+	_next_note_far = not _next_note_far
+	if _city_notes.size() == 2:
+		_city_notes.pop_front()
+	_city_notes.append(note)
+
+
+func _draw_city_notes(street: Texture2D, tl: Vector2, size: Vector2, center: Vector2) -> void:
+	var height := size.y * FIRST_STREET_HEIGHT
+	var scale_factor := height / street.get_height()
+	var origin := Vector2(center.x * (1.0 - FIRST_STREET_PARALLAX), tl.y + size.y - height)
+	for note in _city_notes:
+		var t := (_ambient_time - note.born) / note.lifetime()
+		if t >= 1.0:
+			continue
+		var sway := sin(t * TAU) * (9.0 if note.far else 14.0)
+		var rise := 260.0 if note.far else 300.0
+		var drift := Vector2(t * (80.0 if note.far else 124.0) + sway, -rise * t)
+		var at := origin + (note.source + drift) * scale_factor
+		var fade := smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.72, 1.0, t))
+		var ink := Color("ffd0e1", fade * (0.56 if note.far else 0.75))
+		var glyph_scale := scale_factor * (0.87 if note.far else 1.22)
+		draw_set_transform(at, -0.12 + 0.12 * sin(t * TAU), Vector2.ONE * glyph_scale)
+		_draw_city_note_glyph(note.far, ink)
+	draw_set_transform(Vector2.ZERO)
+
+
+## 簡單的八分音符剪影，單音和雙音分別位於遠、近兩層。
+func _draw_city_note_glyph(single: bool, ink: Color) -> void:
+	var stem := PackedVector2Array([Vector2(-3, 5), Vector2(-3, -8), Vector2(5, -10)])
+	if single:
+		stem[2] = Vector2(3, -4)
+	else:
+		stem.append(Vector2(5, 3))
+	draw_polyline(stem, Color("7d4169", ink.a * 0.60), 3.6, true)
+	draw_polyline(stem, ink, 1.8, true)
+	draw_circle(Vector2(-5, 5), 2.7, ink, true, -1.0, true)
+	if not single:
+		draw_circle(Vector2(3, 3), 2.7, ink, true, -1.0, true)
 
 
 func light_landing_windows() -> void:
