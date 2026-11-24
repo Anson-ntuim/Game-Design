@@ -1,6 +1,13 @@
 class_name Background
 extends Node2D
 const BrokenRing := preload("res://scripts/level/memory_ring.gd")
+const FIRST_STREET_PARALLAX := 0.46
+const FIRST_STREET_HEIGHT := 0.76
+## 高架橋原圖裡兩塊霓虹招牌的上緣。
+const CITY_SIGN_TOPS := [Vector2(636, 470), Vector2(1760, 515)]
+## 高架橋原圖中，愛心招牌正上方的三扇玻璃。保留窗框與裡面的剪影。
+const LANDING_WINDOWS := [Rect2(562, 426, 21, 30), Rect2(587, 426, 18, 30),
+	Rect2(610, 426, 21, 30)]
 ## 多層視差背景：依 GameState.visual_theme 切換經典霓虹／心動之城／暮色遺跡。
 ## 經典＝天空漸層、月亮、等化器、遺跡剪影；素材主題＝貼圖分層或全景＋輕量光點。
 ## 顏色取自目前風格的色盤，每個音樂段落仍會換氛圍。
@@ -13,6 +20,18 @@ var quiet: bool = false
 ## 關卡可選的背景演出；第一關先使用低干擾的動態城市試作。
 var profile: String = ""
 var _ambient_time: float = 0.0
+var _window_beats: float = -1.0
+class CityNote:
+	var source: Vector2
+	var born: float
+	var far: bool
+
+	func lifetime() -> float:
+		return 6.2 if far else 5.4
+
+var _city_notes: Array[CityNote] = []
+var _next_city_note := 1.0
+var _next_note_far := false
 var _bird_rng := RandomNumberGenerator.new()
 var _next_flock := 4.0
 class MemoryFlock:
@@ -42,6 +61,13 @@ func _on_theme_changed(_index: int) -> void:
 
 func _process(delta: float) -> void:
 	_ambient_time += delta
+	if profile == "first_beat_sunset" and not quiet and _ambient_time >= _next_city_note:
+		_emit_city_note()
+	if _window_beats >= 0.0:
+		# 遊戲的 delta 已隨音樂速度縮放；世界時間一拍固定為參考 BPM 的拍長。
+		_window_beats += delta * Conductor.REFERENCE_BPM / 60.0
+		if _window_beats >= 2.5:
+			clear_landing_windows()
 	if profile == "broken_memory" and _ambient_time >= _next_flock:
 		while not _flocks.is_empty() and _ambient_time - _flocks.front().start >= 10.0:
 			_flocks.pop_front()
@@ -104,7 +130,7 @@ func _draw() -> void:
 		"layered":
 			_draw_art_layers(theme, tl, size, center, quiet)
 			## 雨夜本身已有前後景雨絲與漣漪，通用圓形光點會使畫面過於雜亂。
-			if (detail > 0 or quiet) and profile not in ["rainy_street", "broken_memory"]:
+			if (detail > 0 or quiet) and profile not in ["rainy_street", "broken_memory", "first_beat_sunset"]:
 				_draw_motes(tl, size, center, b, pulse, groove)
 		"panorama":
 			_draw_panorama(theme, tl, size, center, quiet)
@@ -142,6 +168,9 @@ func _draw_classic(tl: Vector2, size: Vector2, center: Vector2, b: float, pulse:
 func _draw_art_layers(theme: Dictionary, tl: Vector2, size: Vector2, center: Vector2, dim: bool) -> void:
 	if profile == "broken_memory" and not dim:
 		_draw_broken_memory(tl, size, center)
+		return
+	if profile == "first_beat_sunset" and not dim:
+		_draw_first_beat_sunset(tl, size, center)
 		return
 	if profile == "calm_city" and not dim:
 		_draw_calm_city(tl, size, center)
@@ -232,6 +261,125 @@ func _draw_memory_bird(at: Vector2, bird_scale: float, tilt: float, wing_phase: 
 		Vector2(4,-2), Vector2(7,0), Vector2(3,1), Vector2(-2,2)]), silhouette)
 	draw_colored_polygon(PackedVector2Array([Vector2(-9,wing_y - 2), Vector2(-4,wing_y * 0.8),
 		Vector2(2,-1), Vector2(2,1), Vector2(-4,wing_y * 0.8 + 3)]), silhouette)
+	draw_set_transform(Vector2.ZERO)
+
+
+## 正式第一關的夕照街區。教學旗、光柱和落腳線都位於街景前方。
+func _draw_first_beat_sunset(tl: Vector2, size: Vector2, center: Vector2) -> void:
+	var base := "res://assets/themes/first_beat/bg/"
+	var sky := GameState.theme_texture(base + "sunset.png")
+	var blocks := GameState.theme_texture(base + "viaduct.png")
+	var signs := GameState.theme_texture(base + "sign_lights.png")
+	var far_cloud := GameState.theme_texture("res://assets/themes/heartbeat_city/bg/animated/clouds_far.png")
+	var near_cloud := GameState.theme_texture("res://assets/themes/heartbeat_city/bg/animated/clouds_near.png")
+	if sky != null:
+		_blit_cover(sky, tl, size, center, 0.02, Color.WHITE)
+	if far_cloud != null:
+		_blit_cover_looping(far_cloud, tl, size, _far_cloud_scroll, Color(1, 0.87, 0.91, 0.15))
+	if near_cloud != null:
+		_blit_cover_looping(near_cloud, tl, size, _near_cloud_scroll, Color(1, 0.85, 0.9, 0.16))
+	# 只移動街景的水平視差；高度依原圖比例，拱橋與實際可走的平台分開。
+	var street_origin := tl - Vector2(0, size.y * 0.07)
+	if blocks != null:
+		_blit_parallax(blocks, street_origin, size, center, FIRST_STREET_PARALLAX, "bottom",
+			Color(0.94, 0.91, 0.97, 0.94), true, FIRST_STREET_HEIGHT)
+		_draw_landing_windows(blocks, street_origin, size, center)
+	if signs != null:
+		var alpha := 0.5 * Conductor.pulse(4.5) * GameState.anim_amount()
+		_blit_parallax(signs, street_origin, size, center, FIRST_STREET_PARALLAX, "bottom",
+			Color(1, 1, 1, alpha), true, FIRST_STREET_HEIGHT)
+	if blocks != null:
+		_draw_city_notes(blocks, street_origin, size, center)
+
+
+func _emit_city_note() -> void:
+	_next_city_note = _ambient_time + (6.8 if _next_note_far else 2.9)
+	var camera := get_viewport().get_camera_2d()
+	if camera == null or GameState.current_theme().get("kind") != "layered":
+		return
+	var street := GameState.theme_texture("res://assets/themes/first_beat/bg/viaduct.png")
+	if street == null:
+		return
+	# 先找出當下最靠近玩家視野的招牌，出生後就固定在該街區，不會隨鏡頭換招牌。
+	var size := get_viewport_rect().size + Vector2(80, 80)
+	var scale_factor := size.y * FIRST_STREET_HEIGHT / street.get_height()
+	var target_x := (camera.get_screen_center_position().x * FIRST_STREET_PARALLAX + size.x * 0.08) / scale_factor
+	var width := float(street.get_width())
+	var note := CityNote.new()
+	var best := INF
+	for sign_top: Vector2 in CITY_SIGN_TOPS:
+		for x: float in [sign_top.x, 2.0 * width - sign_top.x]:
+			var dx := wrapf(x - target_x, -width, width)
+			if absf(dx) < best:
+				best = absf(dx)
+				note.source = Vector2(target_x + dx, sign_top.y)
+	note.born = _ambient_time
+	note.far = _next_note_far
+	_next_note_far = not _next_note_far
+	if _city_notes.size() == 2:
+		_city_notes.pop_front()
+	_city_notes.append(note)
+
+
+func _draw_city_notes(street: Texture2D, tl: Vector2, size: Vector2, center: Vector2) -> void:
+	var height := size.y * FIRST_STREET_HEIGHT
+	var scale_factor := height / street.get_height()
+	var origin := Vector2(center.x * (1.0 - FIRST_STREET_PARALLAX), tl.y + size.y - height)
+	for note in _city_notes:
+		var t := (_ambient_time - note.born) / note.lifetime()
+		if t >= 1.0:
+			continue
+		var sway := sin(t * TAU) * (9.0 if note.far else 14.0)
+		var rise := 260.0 if note.far else 300.0
+		var drift := Vector2(t * (80.0 if note.far else 124.0) + sway, -rise * t)
+		var at := origin + (note.source + drift) * scale_factor
+		var fade := smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.72, 1.0, t))
+		var ink := Color("ffd0e1", fade * (0.56 if note.far else 0.75))
+		var glyph_scale := scale_factor * (0.87 if note.far else 1.22)
+		draw_set_transform(at, -0.12 + 0.12 * sin(t * TAU), Vector2.ONE * glyph_scale)
+		_draw_city_note_glyph(note.far, ink)
+	draw_set_transform(Vector2.ZERO)
+
+
+## 簡單的八分音符剪影，單音和雙音分別位於遠、近兩層。
+func _draw_city_note_glyph(single: bool, ink: Color) -> void:
+	var stem := PackedVector2Array([Vector2(-3, 5), Vector2(-3, -8), Vector2(5, -10)])
+	if single:
+		stem[2] = Vector2(3, -4)
+	else:
+		stem.append(Vector2(5, 3))
+	draw_polyline(stem, Color("7d4169", ink.a * 0.60), 3.6, true)
+	draw_polyline(stem, ink, 1.8, true)
+	draw_circle(Vector2(-5, 5), 2.7, ink, true, -1.0, true)
+	if not single:
+		draw_circle(Vector2(3, 3), 2.7, ink, true, -1.0, true)
+
+
+func light_landing_windows() -> void:
+	_window_beats = 0.0
+
+
+func clear_landing_windows() -> void:
+	_window_beats = -1.0
+
+
+func _draw_landing_windows(street: Texture2D, tl: Vector2, size: Vector2, center: Vector2) -> void:
+	# 只點亮第一坑後面那棟樓，使用第一段街景的原圖座標；其他重複街區照常。
+	var height := size.y * FIRST_STREET_HEIGHT
+	var street_scale := height / street.get_height()
+	var origin := Vector2(center.x * (1.0 - FIRST_STREET_PARALLAX), tl.y + size.y - height)
+	if origin.x + LANDING_WINDOWS.back().end.x * street_scale < tl.x:
+		return
+	draw_set_transform(origin, 0.0, Vector2.ONE * street_scale)
+	for i in LANDING_WINDOWS.size():
+		var pane: Rect2 = LANDING_WINDOWS[i]
+		var age := _window_beats - 0.25 * i
+		var light := smoothstep(0.0, 0.15, age) * (1.0 - smoothstep(1.15, 2.0, age))
+		draw_rect(pane, Color(0.17, 0.12, 0.25, 0.64 * (1.0 - light)))
+		if light > 0.0:
+			draw_rect(pane.grow(3), Color(1.0, 0.70, 0.36, light * 0.09 * GameState.anim_amount()))
+			draw_texture_rect_region(street, pane, pane, Color(1.54, 1.46, 1.12, light))
+			draw_rect(pane, Color(1.0, 0.88, 0.56, 0.30 * light))
 	draw_set_transform(Vector2.ZERO)
 
 

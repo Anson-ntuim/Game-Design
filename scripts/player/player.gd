@@ -12,6 +12,7 @@ extends CharacterBody2D
 
 signal died
 signal damaged
+signal ground_jump_landed(takeoff_x: float, landing_position: Vector2)
 
 const LAYER_WORLD := 1
 const LAYER_HAZARD := 4
@@ -127,6 +128,8 @@ var _wall_push_timer: float = 0.0
 var _wall_push_dir: int = 0
 var _invincible_timer: float = 0.0
 var _was_on_floor: bool = true
+var _last_grounded_x: float = INF
+var _ground_takeoff_x: float = INF
 var _squash: Vector2 = Vector2.ONE
 var _trail: Array[Vector2] = []
 var _wing_timer: float = 0.0
@@ -209,6 +212,7 @@ func _physics_process(delta: float) -> void:
 	var input_x := _input_dir()
 
 	if on_floor:
+		_last_grounded_x = global_position.x
 		_coyote = coyote_time
 		_air_dash = true
 		## 剛被彈出去的那一幀，is_on_floor 還是上車前的舊值：往上飛的時候不算落地
@@ -426,6 +430,8 @@ func _floor_pad() -> Node:
 func _ground_jump() -> void:
 	## 那一下落地變成地面跳（也沒按錯）
 	_miss_pending = {}
+	# 容錯時間內才按跳，仍以最後有地面支撐的位置判斷從哪一岸出發。
+	_ground_takeoff_x = _last_grounded_x
 	var note := GameState.next_note()
 	GameState.play_sfx("pluck", note)
 	_begin_jump(0.0, 0.0, false, "ground")
@@ -701,6 +707,9 @@ func _check_hurtbox() -> void:
 
 
 func _on_landed() -> void:
+	if is_finite(_ground_takeoff_x):
+		ground_jump_landed.emit(_ground_takeoff_x, global_position)
+		_ground_takeoff_x = INF
 	_set_squash(Vector2(1.3, 0.75))
 	_jump_cancelable = false
 	## 低畫質略過落地過渡幀，少換貼圖
@@ -765,6 +774,8 @@ func respawn_at(pos: Vector2) -> void:
 
 
 func _reset_motion() -> void:
+	_last_grounded_x = INF
+	_ground_takeoff_x = INF
 	_miss_pending = {}
 	auto_running = false
 	auto_flag_wait = false

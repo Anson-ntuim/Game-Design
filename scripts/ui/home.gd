@@ -8,6 +8,7 @@ extends Node2D
 const MAIN_SCENE := "res://scenes/main.tscn"
 ## 關卡卡片的場景縮圖：背景主題 → 天空、近景兩層
 const THUMBS := {
+	"first_beat_sunset": ["res://assets/themes/first_beat/bg/sunset.png", "res://assets/themes/first_beat/bg/viaduct.png"],
 	"calm_city": ["res://assets/themes/heartbeat_city/bg/sky.png", "res://assets/themes/heartbeat_city/bg/city_near.png"],
 	"sakura_park": ["res://assets/themes/sakura_park/bg/sky.png", "res://assets/themes/sakura_park/bg/park_near.png"],
 	"music_festival": ["res://assets/themes/music_festival/bg/sky.png", "res://assets/themes/music_festival/bg/festival_near.png"],

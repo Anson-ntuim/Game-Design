@@ -41,7 +41,7 @@ const MOVER_TRAVEL_TILES := 6
 const LEVELS: Array[Dictionary] = [
 	{"name": "01", "desc": "教學", "stars": 1, "tags": ["跳躍", "尖刺", "光柱", "黃色音符"],
 		"patterns": Campaign1Data.PATTERNS, "chunks": Campaign1Data.CHUNKS,
-		"background_profile": "calm_city"},
+		"background_profile": "first_beat_sunset"},
 	{"name": "02", "desc": "環與平台", "stars": 2, "tags": ["衝刺環", "節拍平台", "旋律平台"],
 		"patterns": Campaign2Data.PATTERNS, "chunks": Campaign2Data.CHUNKS,
 		"background_profile": "sakura_park"},
