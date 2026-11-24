@@ -86,6 +86,8 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if LevelData.is_test(GameState.level_index) and _results.is_empty() and Input.is_action_just_pressed("confirm"):
+		_apply_timing_test()
 	_message_timer = maxf(0.0, _message_timer - delta)
 	_tip_timer = maxf(0.0, _tip_timer - delta)
 	_hint_age += delta
@@ -295,11 +297,44 @@ func _draw_stats(safe: Rect2, _edge: Color, lift: float) -> void:
 ## 測試關：上方中間顯示每一下實際按下比音符早晚幾 ms、最近幾下的平均，和一條早晚分布條
 const TIMING_RANGE_MS := 150.0
 const TIMING_RECENT := 16
+const TIMING_APPLY_MIN := 8
+
+
+## 最近幾下（只算有踩到的）：[下數, 平均 ms, 平均起伏 ms]
+func _timing_stats() -> Array[float]:
+	var tl: Array[Dictionary] = GameState.timing_log
+	var hits: Array[float] = []
+	for i in range(tl.size() - 1, -1, -1):
+		if String(tl[i]["v"]) != "miss":
+			hits.append(float(tl[i]["press"]))
+			if hits.size() >= TIMING_RECENT:
+				break
+	if hits.is_empty():
+		return [0.0, 0.0, 0.0]
+	var mean := 0.0
+	for h in hits:
+		mean += h
+	mean /= hits.size()
+	var dev := 0.0
+	for h in hits:
+		dev += absf(h - mean)
+	return [float(hits.size()), mean, dev / hits.size()]
+
+
+## 照測試結果修正延遲：平均按早（負）＝判定時計比你聽到的晚 → 延遲設定減少同樣多；紀錄清空重新量
+func _apply_timing_test() -> void:
+	var st := _timing_stats()
+	if st[0] < TIMING_APPLY_MIN:
+		return
+	GameState.set_audio_offset_ms(GameState.audio_offset_ms + st[1])
+	GameState.timing_log.clear()
+	GameState.play_sfx("pluck", 12.0, -6.0)
+	show_message("延遲設定改成 %+d ms" % roundi(GameState.audio_offset_ms), 1.6)
 
 func _draw_timing_test(safe: Rect2) -> void:
 	var tl: Array[Dictionary] = GameState.timing_log
 	var w := minf(520.0, safe.size.x - 40.0)
-	var box := Rect2(safe.get_center().x - w * 0.5, safe.position.y + 62.0, w, 112.0)
+	var box := Rect2(safe.get_center().x - w * 0.5, safe.position.y + 62.0, w, 124.0)
 	_capsule(box, Color(UiKit.NIGHT, 0.85))
 	var x0 := box.position.x + 18.0
 	var tw := box.size.x - 36.0
@@ -316,31 +351,20 @@ func _draw_timing_test(safe: Rect2) -> void:
 		line1 += "　判定算 %+d ms" % roundi(float(last["judge"]))
 	var col := UiKit.YELLOW if verdict == "perfect" else (UiKit.CYAN if verdict == "good" else UiKit.PINK)
 	UiKit.text(_view, Vector2(x0, box.position.y + 28), tw, line1, 18, col, HORIZONTAL_ALIGNMENT_CENTER)
-	## 最近幾下（只算有踩到的）的平均和起伏
-	var hits: Array[float] = []
-	for i in range(tl.size() - 1, -1, -1):
-		if String(tl[i]["v"]) != "miss":
-			hits.append(float(tl[i]["press"]))
-			if hits.size() >= TIMING_RECENT:
-				break
-	if not hits.is_empty():
-		var mean := 0.0
-		for h in hits:
-			mean += h
-		mean /= hits.size()
-		var dev := 0.0
-		for h in hits:
-			dev += absf(h - mean)
-		dev /= hits.size()
+	var st := _timing_stats()
+	if st[0] > 0.0:
 		UiKit.text(_view, Vector2(x0, box.position.y + 54), tw,
-			"最近 %d 下平均：按%s %d ms　起伏 ±%d ms　延遲設定 %+d ms" % [hits.size(), "早" if mean < 0.0 else "晚",
-			roundi(absf(mean)), roundi(dev), roundi(GameState.audio_offset_ms)], 14, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+			"最近 %d 下平均：按%s %d ms　起伏 ±%d ms　延遲設定 %+d ms" % [int(st[0]), "早" if st[1] < 0.0 else "晚",
+			roundi(absf(st[1])), roundi(st[2]), roundi(GameState.audio_offset_ms)], 14, UiKit.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	if st[0] >= TIMING_APPLY_MIN and absf(st[1]) >= 10.0:
+		UiKit.text(_view, Vector2(x0, box.position.y + 112), tw, "按 Enter 照這個修正延遲（改成 %+d ms）" % roundi(GameState.audio_offset_ms + st[1]),
+			14, UiKit.YELLOW, HORIZONTAL_ALIGNMENT_CENTER)
 	## 分布條：中間＝正拍，左早右晚，最近的點最亮
 	var by := box.position.y + 84.0
 	_view.draw_line(Vector2(x0, by), Vector2(x0 + tw, by), Color(UiKit.LINE, 0.9), 2.0)
 	_view.draw_line(Vector2(x0 + tw * 0.5, by - 10), Vector2(x0 + tw * 0.5, by + 10), Color(UiKit.TEXT, 0.8), 2.0)
-	UiKit.text(_view, Vector2(x0, by + 22), -1, "早", 12, UiKit.MUTED)
-	UiKit.text(_view, Vector2(x0 + tw - 14, by + 22), -1, "晚", 12, UiKit.MUTED)
+	UiKit.text(_view, Vector2(x0, by - 6), -1, "早", 12, UiKit.MUTED)
+	UiKit.text(_view, Vector2(x0 + tw - 14, by - 6), -1, "晚", 12, UiKit.MUTED)
 	var n := mini(tl.size(), TIMING_RECENT)
 	for i in n:
 		var e: Dictionary = tl[tl.size() - n + i]
