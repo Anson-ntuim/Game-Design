@@ -129,9 +129,9 @@ func _finish() -> void:
 	var used := _errors.slice(mini(WARMUP_TAPS, _errors.size() - MIN_TAPS))
 	used.sort()
 	var mid: float = used[used.size() / 2]
-	## 鼓聲從觸發到耳朵聽到要「裝置回報的輸出延遲」那麼久；音樂時鐘本來就扣掉了這段，
-	## 所以玩家設定只補剩下的部分（藍牙耳機、瀏覽器額外的延遲）。每次重算，不疊加在舊設定上
-	var ms := mid * 1000.0 - Conductor._output_latency * 1000.0
+	## 鼓聲用提示音時計，已經提早了「裝置回報的輸出延遲」，和音樂同時到耳朵；
+	## 所以按鍵比拍子晚多少，就是玩家設定要補的（藍牙耳機、瀏覽器額外的延遲）。每次重算，不疊加在舊設定上
+	var ms := mid * 1000.0
 	_result_ms = clampf(ms, GameState.AUDIO_OFFSET_MIN, GameState.AUDIO_OFFSET_MAX)
 	GameState.set_audio_offset_ms(_result_ms, false)
 	GameState.play_sfx("cue", 12.0, -4.0)
